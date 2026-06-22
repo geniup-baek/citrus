@@ -14,6 +14,9 @@ const issueForm = reactive({
   symptoms: '',
 })
 
+const photoFiles = ref([])
+const photoPreviews = ref([])
+
 const resolutionNote = ref('')
 
 const selectedIssue = computed(() =>
@@ -32,7 +35,39 @@ function greenhouseName(greenhouseId) {
   return store.state.facilities.find((facility) => facility.id === greenhouseId)?.name || 'Unknown'
 }
 
+function toDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('Failed to load image.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function handlePhotoChange(event) {
+  const files = Array.from(event.target.files || [])
+  photoFiles.value = files.slice(0, 5)
+
+  photoPreviews.value = await Promise.all(
+    photoFiles.value.map(async (file) => ({
+      name: file.name,
+      dataUrl: await toDataUrl(file),
+    })),
+  )
+}
+
 async function addIssue() {
+  const photos = await Promise.all(
+    photoFiles.value.map(async (file) => ({
+      id: crypto.randomUUID(),
+      name: file.name,
+      contentType: file.type,
+      size: file.size,
+      createdAt: new Date().toISOString(),
+      dataUrl: await toDataUrl(file),
+    })),
+  )
+
   await store.upsertIssue({
     title: issueForm.title,
     greenhouseId: issueForm.greenhouseId,
@@ -40,11 +75,14 @@ async function addIssue() {
     status: issueForm.status,
     symptoms: issueForm.symptoms,
     resolutionSteps: [],
+    photos,
   })
 
   issueForm.title = ''
   issueForm.status = 'investigating'
   issueForm.symptoms = ''
+  photoFiles.value = []
+  photoPreviews.value = []
 }
 
 async function addStep() {
@@ -93,6 +131,18 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
           Symptoms
           <textarea v-model="issueForm.symptoms" required rows="4" />
         </label>
+        <label>
+          Attach photos
+          <input accept="image/*" multiple type="file" @change="handlePhotoChange" />
+        </label>
+        <p class="muted">Up to 5 images can be attached to a report.</p>
+
+        <div v-if="photoPreviews.length" class="photo-grid">
+          <figure v-for="photo in photoPreviews" :key="photo.name" class="photo-card">
+            <img :src="photo.dataUrl" alt="Issue evidence" />
+            <figcaption>{{ photo.name }}</figcaption>
+          </figure>
+        </div>
         <button type="submit">Save issue</button>
       </form>
 
@@ -125,6 +175,19 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
             <p class="item-title">{{ issue.title }}</p>
             <p class="item-meta">{{ greenhouseName(issue.greenhouseId) }} · {{ issue.occurredAt }}</p>
             <p class="muted">{{ issue.symptoms }}</p>
+            <div v-if="issue.photos?.length" class="photo-grid compact-grid">
+              <a
+                v-for="photo in issue.photos"
+                :key="photo.id"
+                class="photo-card"
+                :href="photo.dataUrl"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <img :src="photo.dataUrl" alt="Issue evidence" />
+                <figcaption>{{ photo.name }}</figcaption>
+              </a>
+            </div>
           </div>
           <div class="row-actions">
             <button class="ghost" @click="selectedIssueId = issue.id">Resolution</button>

@@ -137,6 +137,35 @@ export const defaultTasks = [
   },
 ]
 
+export const defaultScheduleRules = [
+  {
+    id: 'schedule-1',
+    title: 'Weekly humidity check',
+    greenhouseId: 'house-2',
+    category: 'Environment',
+    frequency: 'weekly',
+    interval: 1,
+    dayOfWeek: 1,
+    dayOfMonth: 1,
+    startDate: '2026-06-01',
+    endDate: '',
+    enabled: true,
+  },
+  {
+    id: 'schedule-2',
+    title: 'Monthly nutrient EC calibration',
+    greenhouseId: 'house-1',
+    category: 'Fertigation',
+    frequency: 'monthly',
+    interval: 1,
+    dayOfWeek: 1,
+    dayOfMonth: 5,
+    startDate: '2026-06-01',
+    endDate: '',
+    enabled: true,
+  },
+]
+
 export const defaultIssues = [
   {
     id: 'issue-1',
@@ -155,5 +184,6 @@ export const defaultIssues = [
         note: 'Added circulation fan cycle for 15 minutes each hour.',
       },
     ],
+    photos: [],
   },
 ]

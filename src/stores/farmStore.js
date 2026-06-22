@@ -2,9 +2,14 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import {
   addDays,
+  differenceInCalendarDays,
   endOfMonth,
   endOfWeek,
   formatISO,
+  getISODay,
+  isAfter,
+  isBefore,
+  lastDayOfMonth,
   isSameDay,
   parseISO,
   startOfMonth,
@@ -15,6 +20,7 @@ import {
   annualTaskTemplates,
   defaultFacilities,
   defaultIssues,
+  defaultScheduleRules,
   defaultSeedlings,
   defaultTasks,
 } from '../data/defaults'
@@ -27,6 +33,7 @@ function createDefaultData() {
     facilities: [...defaultFacilities],
     seedlings: [...defaultSeedlings],
     tasks: [...defaultTasks],
+    scheduleRules: [...defaultScheduleRules],
     issues: [...defaultIssues],
     annualTaskTemplates: [...annualTaskTemplates],
     notifications: {},
@@ -41,6 +48,9 @@ function normalizeData(data) {
     facilities: Array.isArray(data?.facilities) ? data.facilities : defaults.facilities,
     seedlings: Array.isArray(data?.seedlings) ? data.seedlings : defaults.seedlings,
     tasks: Array.isArray(data?.tasks) ? data.tasks : defaults.tasks,
+    scheduleRules: Array.isArray(data?.scheduleRules)
+      ? data.scheduleRules
+      : defaults.scheduleRules,
     issues: Array.isArray(data?.issues) ? data.issues : defaults.issues,
     annualTaskTemplates: Array.isArray(data?.annualTaskTemplates)
       ? data.annualTaskTemplates
@@ -51,6 +61,67 @@ function normalizeData(data) {
         : defaults.notifications,
     updatedAt: data?.updatedAt || defaults.updatedAt,
   }
+}
+
+function normalizeIssue(issue) {
+  return {
+    ...issue,
+    resolutionSteps: Array.isArray(issue?.resolutionSteps) ? issue.resolutionSteps : [],
+    photos: Array.isArray(issue?.photos) ? issue.photos : [],
+  }
+}
+
+function normalizeRule(rule) {
+  return {
+    ...rule,
+    interval: Math.max(1, Number(rule?.interval || 1)),
+    dayOfWeek: Math.max(1, Math.min(7, Number(rule?.dayOfWeek || 1))),
+    dayOfMonth: Math.max(1, Math.min(31, Number(rule?.dayOfMonth || 1))),
+    enabled: rule?.enabled !== false,
+  }
+}
+
+function monthsDiff(fromDate, toDate) {
+  return (toDate.getFullYear() - fromDate.getFullYear()) * 12 + (toDate.getMonth() - fromDate.getMonth())
+}
+
+function matchRuleOnDate(rule, date) {
+  const start = parseISO(rule.startDate)
+  if (isBefore(date, start)) {
+    return false
+  }
+
+  if (rule.endDate) {
+    const end = parseISO(rule.endDate)
+    if (isAfter(date, end)) {
+      return false
+    }
+  }
+
+  const interval = Math.max(1, Number(rule.interval || 1))
+  const dayDiff = differenceInCalendarDays(date, start)
+
+  if (rule.frequency === 'daily') {
+    return dayDiff % interval === 0
+  }
+
+  if (rule.frequency === 'weekly') {
+    const weekday = Number(rule.dayOfWeek || getISODay(start))
+    if (getISODay(date) !== weekday) {
+      return false
+    }
+
+    return Math.floor(dayDiff / 7) % interval === 0
+  }
+
+  const monthDelta = monthsDiff(start, date)
+  if (monthDelta < 0 || monthDelta % interval !== 0) {
+    return false
+  }
+
+  const requestedDay = Number(rule.dayOfMonth || start.getDate())
+  const clampedDay = Math.min(requestedDay, lastDayOfMonth(date).getDate())
+  return date.getDate() === clampedDay
 }
 
 function toKey(dateString) {
@@ -167,7 +238,10 @@ export const useFarmStore = defineStore('farm', () => {
       unsubscriber.value = onSnapshot(ref, async (snapshot) => {
         if (snapshot.exists()) {
           state.value = normalizeData(snapshot.data())
+          state.value.scheduleRules = state.value.scheduleRules.map((rule) => normalizeRule(rule))
+          state.value.issues = state.value.issues.map((issue) => normalizeIssue(issue))
           persistLocal()
+          await runTaskScheduler({ daysAhead: 21, persist: true })
         } else {
           state.value = createDefaultData()
           await persistAll()
@@ -175,6 +249,9 @@ export const useFarmStore = defineStore('farm', () => {
       })
     } else {
       loadLocal()
+      state.value.scheduleRules = state.value.scheduleRules.map((rule) => normalizeRule(rule))
+      state.value.issues = state.value.issues.map((issue) => normalizeIssue(issue))
+      await runTaskScheduler({ daysAhead: 21, persist: true })
     }
 
     initialized.value = true
@@ -203,6 +280,7 @@ export const useFarmStore = defineStore('farm', () => {
     state.value.facilities = state.value.facilities.filter((item) => item.id !== id)
     state.value.seedlings = state.value.seedlings.filter((item) => item.greenhouseId !== id)
     state.value.tasks = state.value.tasks.filter((item) => item.greenhouseId !== id)
+    state.value.scheduleRules = state.value.scheduleRules.filter((item) => item.greenhouseId !== id)
     state.value.issues = state.value.issues.filter((item) => item.greenhouseId !== id)
     await persistAll()
   }
@@ -239,6 +317,8 @@ export const useFarmStore = defineStore('farm', () => {
         logs: Array.isArray(payload.logs) ? payload.logs : [],
         status: payload.status || 'todo',
         progress: Number(payload.progress || 0),
+        autoGenerated: payload.autoGenerated === true,
+        scheduleRuleId: payload.scheduleRuleId || null,
       })
     }
 
@@ -268,15 +348,16 @@ export const useFarmStore = defineStore('farm', () => {
     const index = state.value.issues.findIndex((item) => item.id === payload.id)
 
     if (index >= 0) {
-      state.value.issues[index] = {
+      state.value.issues[index] = normalizeIssue({
         ...state.value.issues[index],
         ...payload,
-      }
+      })
     } else {
       state.value.issues.unshift({
         ...payload,
         id: payload.id || crypto.randomUUID(),
         resolutionSteps: Array.isArray(payload.resolutionSteps) ? payload.resolutionSteps : [],
+        photos: Array.isArray(payload.photos) ? payload.photos : [],
       })
     }
 
@@ -348,6 +429,83 @@ export const useFarmStore = defineStore('farm', () => {
     })
   }
 
+  async function upsertScheduleRule(payload) {
+    const normalized = normalizeRule(payload)
+    const index = state.value.scheduleRules.findIndex((item) => item.id === normalized.id)
+
+    if (index >= 0) {
+      state.value.scheduleRules[index] = {
+        ...state.value.scheduleRules[index],
+        ...normalized,
+      }
+    } else {
+      state.value.scheduleRules.push({
+        ...normalized,
+        id: normalized.id || crypto.randomUUID(),
+      })
+    }
+
+    await persistAll()
+  }
+
+  async function removeScheduleRule(id) {
+    state.value.scheduleRules = state.value.scheduleRules.filter((rule) => rule.id !== id)
+    await persistAll()
+  }
+
+  async function runTaskScheduler({ daysAhead = 21, persist = true } = {}) {
+    const todayDate = new Date()
+    const endDate = addDays(todayDate, daysAhead)
+    const generatedTasks = []
+
+    for (const rule of state.value.scheduleRules) {
+      const normalizedRule = normalizeRule(rule)
+      if (!normalizedRule.enabled || !normalizedRule.greenhouseId || !normalizedRule.startDate) {
+        continue
+      }
+
+      for (let cursor = new Date(todayDate); cursor <= endDate; cursor = addDays(cursor, 1)) {
+        if (!matchRuleOnDate(normalizedRule, cursor)) {
+          continue
+        }
+
+        const dueDate = formatISO(cursor, { representation: 'date' })
+        const alreadyExists = state.value.tasks.some(
+          (task) =>
+            task.scheduleRuleId === normalizedRule.id &&
+            task.dueDate === dueDate,
+        )
+
+        if (alreadyExists) {
+          continue
+        }
+
+        generatedTasks.push({
+          id: crypto.randomUUID(),
+          title: normalizedRule.title,
+          greenhouseId: normalizedRule.greenhouseId,
+          dueDate,
+          frequency: normalizedRule.frequency,
+          category: normalizedRule.category,
+          status: 'todo',
+          progress: 0,
+          logs: [{ date: new Date().toISOString(), note: 'Auto-generated by scheduler rule.' }],
+          autoGenerated: true,
+          scheduleRuleId: normalizedRule.id,
+        })
+      }
+    }
+
+    if (generatedTasks.length) {
+      state.value.tasks.push(...generatedTasks)
+      if (persist) {
+        await persistAll()
+      }
+    }
+
+    return generatedTasks.length
+  }
+
   function listUpcomingDays(limit = 7) {
     const start = new Date()
     const end = addDays(start, limit)
@@ -379,6 +537,9 @@ export const useFarmStore = defineStore('farm', () => {
     upsertIssue,
     addIssueResolutionStep,
     removeIssue,
+    upsertScheduleRule,
+    removeScheduleRule,
+    runTaskScheduler,
     markTaskNotified,
     getTaskLastNotified,
     suggestSimilarIssues,

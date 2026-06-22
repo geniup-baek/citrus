@@ -6,6 +6,8 @@ import { useFarmStore } from '../stores/farmStore'
 const store = useFarmStore()
 const filter = ref('today')
 const selectedTaskId = ref('')
+const schedulerEditingId = ref('')
+const schedulerRunResult = ref('')
 
 const form = reactive({
   title: '',
@@ -22,6 +24,30 @@ const logForm = reactive({
   progress: 0,
   status: 'in-progress',
 })
+
+const schedulerForm = reactive({
+  id: '',
+  title: '',
+  greenhouseId: '',
+  category: 'Routine',
+  frequency: 'weekly',
+  interval: 1,
+  dayOfWeek: 1,
+  dayOfMonth: 1,
+  startDate: '',
+  endDate: '',
+  enabled: true,
+})
+
+const weekdayOptions = [
+  { label: 'Mon', value: 1 },
+  { label: 'Tue', value: 2 },
+  { label: 'Wed', value: 3 },
+  { label: 'Thu', value: 4 },
+  { label: 'Fri', value: 5 },
+  { label: 'Sat', value: 6 },
+  { label: 'Sun', value: 7 },
+]
 
 const filteredTasks = computed(() => {
   const now = new Date()
@@ -54,6 +80,8 @@ const filteredTasks = computed(() => {
 const selectedTask = computed(() =>
   store.state.tasks.find((task) => task.id === selectedTaskId.value),
 )
+
+const scheduleRules = computed(() => store.state.scheduleRules)
 
 function greenhouseName(greenhouseId) {
   return store.state.facilities.find((facility) => facility.id === greenhouseId)?.name || 'Unknown'
@@ -92,8 +120,69 @@ async function updateProgress() {
   logForm.note = ''
 }
 
+function clearSchedulerForm() {
+  schedulerForm.id = ''
+  schedulerForm.title = ''
+  schedulerForm.greenhouseId = store.state.facilities[0]?.id || ''
+  schedulerForm.category = 'Routine'
+  schedulerForm.frequency = 'weekly'
+  schedulerForm.interval = 1
+  schedulerForm.dayOfWeek = 1
+  schedulerForm.dayOfMonth = 1
+  schedulerForm.startDate = format(new Date(), 'yyyy-MM-dd')
+  schedulerForm.endDate = ''
+  schedulerForm.enabled = true
+  schedulerEditingId.value = ''
+}
+
+function editSchedulerRule(rule) {
+  schedulerForm.id = rule.id
+  schedulerForm.title = rule.title
+  schedulerForm.greenhouseId = rule.greenhouseId
+  schedulerForm.category = rule.category
+  schedulerForm.frequency = rule.frequency
+  schedulerForm.interval = rule.interval
+  schedulerForm.dayOfWeek = rule.dayOfWeek
+  schedulerForm.dayOfMonth = rule.dayOfMonth
+  schedulerForm.startDate = rule.startDate
+  schedulerForm.endDate = rule.endDate || ''
+  schedulerForm.enabled = rule.enabled !== false
+  schedulerEditingId.value = rule.id
+}
+
+async function saveScheduleRule() {
+  await store.upsertScheduleRule({
+    id: schedulerForm.id,
+    title: schedulerForm.title,
+    greenhouseId: schedulerForm.greenhouseId,
+    category: schedulerForm.category,
+    frequency: schedulerForm.frequency,
+    interval: Number(schedulerForm.interval),
+    dayOfWeek: Number(schedulerForm.dayOfWeek),
+    dayOfMonth: Number(schedulerForm.dayOfMonth),
+    startDate: schedulerForm.startDate,
+    endDate: schedulerForm.endDate,
+    enabled: schedulerForm.enabled,
+  })
+
+  clearSchedulerForm()
+}
+
+async function runScheduler() {
+  const generatedCount = await store.runTaskScheduler({ daysAhead: 21, persist: true })
+  schedulerRunResult.value = `Generated ${generatedCount} task(s) for the next 21 days.`
+}
+
+async function removeScheduleRule(id) {
+  await store.removeScheduleRule(id)
+  if (schedulerEditingId.value === id) {
+    clearSchedulerForm()
+  }
+}
+
 form.greenhouseId = store.state.facilities[0]?.id || ''
 form.dueDate = format(new Date(), 'yyyy-MM-dd')
+clearSchedulerForm()
 </script>
 
 <template>
@@ -147,6 +236,95 @@ form.dueDate = format(new Date(), 'yyyy-MM-dd')
           </button>
         </li>
       </ul>
+
+      <div class="sub-card">
+        <div class="row-actions align-start">
+          <h3>Recurring scheduler rules</h3>
+          <button class="ghost" @click="runScheduler">Run now</button>
+        </div>
+        <p v-if="schedulerRunResult" class="muted">{{ schedulerRunResult }}</p>
+
+        <form class="stack-form" @submit.prevent="saveScheduleRule">
+          <label>
+            Rule title
+            <input v-model="schedulerForm.title" required type="text" placeholder="Weekly pest scouting" />
+          </label>
+          <label>
+            Greenhouse
+            <select v-model="schedulerForm.greenhouseId" required>
+              <option v-for="facility in store.state.facilities" :key="facility.id" :value="facility.id">
+                {{ facility.name }}
+              </option>
+            </select>
+          </label>
+          <label>
+            Category
+            <input v-model="schedulerForm.category" type="text" />
+          </label>
+          <div class="row-scheduler-grid">
+            <label>
+              Frequency
+              <select v-model="schedulerForm.frequency">
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </label>
+            <label>
+              Every
+              <input v-model="schedulerForm.interval" min="1" type="number" />
+            </label>
+            <label v-if="schedulerForm.frequency === 'weekly'">
+              Weekday
+              <select v-model="schedulerForm.dayOfWeek">
+                <option v-for="option in weekdayOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
+            <label v-if="schedulerForm.frequency === 'monthly'">
+              Day of month
+              <input v-model="schedulerForm.dayOfMonth" min="1" max="31" type="number" />
+            </label>
+          </div>
+          <div class="row-scheduler-grid">
+            <label>
+              Start date
+              <input v-model="schedulerForm.startDate" required type="date" />
+            </label>
+            <label>
+              End date (optional)
+              <input v-model="schedulerForm.endDate" type="date" />
+            </label>
+          </div>
+          <label class="inline-checkbox">
+            <input v-model="schedulerForm.enabled" type="checkbox" />
+            Enable rule
+          </label>
+          <div class="row-actions">
+            <button type="submit">{{ schedulerEditingId ? 'Update rule' : 'Save rule' }}</button>
+            <button class="ghost" type="button" @click="clearSchedulerForm">Reset</button>
+          </div>
+        </form>
+
+        <ul class="list clean compact">
+          <li v-for="rule in scheduleRules" :key="rule.id" class="list-item card-like">
+            <div>
+              <p class="item-title">{{ rule.title }}</p>
+              <p class="item-meta">
+                {{ greenhouseName(rule.greenhouseId) }} · {{ rule.frequency }} · every {{ rule.interval }}
+              </p>
+              <p class="muted" v-if="rule.frequency === 'weekly'">Weekday {{ rule.dayOfWeek }}</p>
+              <p class="muted" v-if="rule.frequency === 'monthly'">Month day {{ rule.dayOfMonth }}</p>
+              <p class="muted">{{ rule.startDate }} ~ {{ rule.endDate || 'ongoing' }}</p>
+            </div>
+            <div class="row-actions">
+              <button class="ghost" @click="editSchedulerRule(rule)">Edit</button>
+              <button class="danger" @click="removeScheduleRule(rule.id)">Delete</button>
+            </div>
+          </li>
+        </ul>
+      </div>
     </article>
 
     <article class="card">
@@ -169,6 +347,7 @@ form.dueDate = format(new Date(), 'yyyy-MM-dd')
               {{ greenhouseName(task.greenhouseId) }} · {{ task.category }} · due {{ task.dueDate }}
             </p>
             <p class="muted">Progress {{ task.progress }}% · status {{ task.status }}</p>
+            <p v-if="task.autoGenerated" class="muted">Auto-generated task</p>
           </div>
           <div class="row-actions">
             <button class="ghost" @click="selectedTaskId = task.id">Record progress</button>
