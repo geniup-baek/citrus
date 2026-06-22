@@ -2,8 +2,10 @@
 import { computed, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { compressImageFile } from '../utils/imageProcessing'
+import { useLocaleStore } from '../stores/localeStore'
 
 const store = useFarmStore()
+const localeStore = useLocaleStore()
 const selectedIssueId = ref('')
 const recommendationQuery = ref('')
 
@@ -46,7 +48,20 @@ const recommendations = computed(() => {
 })
 
 function greenhouseName(greenhouseId) {
-  return store.state.facilities.find((facility) => facility.id === greenhouseId)?.name || 'Unknown'
+  return (
+    store.state.facilities.find((facility) => facility.id === greenhouseId)?.name ||
+    localeStore.t('common.unknown')
+  )
+}
+
+function issueStatusLabel(value) {
+  const map = {
+    investigating: localeStore.t('issues.statusInvestigating'),
+    mitigating: localeStore.t('issues.statusMitigating'),
+    resolved: localeStore.t('issues.statusResolved'),
+  }
+
+  return map[value] || value
 }
 
 async function handlePhotoChange(event) {
@@ -83,7 +98,12 @@ async function handlePhotoChange(event) {
 
   if (photoPreviews.value.length) {
     const ratio = originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100
-    compressionReport.value = `Compressed ${photoPreviews.value.length} file(s): ${Math.round(originalTotal / 1024)}KB -> ${Math.round(compressedTotal / 1024)}KB (${ratio}%).`
+    compressionReport.value = localeStore.t('issues.compressedReport', {
+      count: photoPreviews.value.length,
+      from: Math.round(originalTotal / 1024),
+      to: Math.round(compressedTotal / 1024),
+      ratio,
+    })
   } else {
     compressionReport.value = ''
   }
@@ -136,14 +156,14 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
 <template>
   <section class="page-grid two-columns">
     <article class="card">
-      <h2>Record issue</h2>
+      <h2>{{ localeStore.t('issues.recordIssue') }}</h2>
       <form class="stack-form" @submit.prevent="addIssue">
         <label>
-          Issue title
-          <input v-model="issueForm.title" required type="text" placeholder="Sudden yellowing" />
+          {{ localeStore.t('issues.issueTitle') }}
+          <input v-model="issueForm.title" required type="text" :placeholder="localeStore.t('issues.issueTitlePlaceholder')" />
         </label>
         <label>
-          Greenhouse
+          {{ localeStore.t('issues.greenhouse') }}
           <select v-model="issueForm.greenhouseId" required>
             <option v-for="facility in store.state.facilities" :key="facility.id" :value="facility.id">
               {{ facility.name }}
@@ -151,61 +171,61 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
           </select>
         </label>
         <label>
-          Date observed
+          {{ localeStore.t('issues.dateObserved') }}
           <input v-model="issueForm.occurredAt" required type="date" />
         </label>
         <label>
-          Status
+          {{ localeStore.t('issues.status') }}
           <select v-model="issueForm.status">
-            <option value="investigating">investigating</option>
-            <option value="mitigating">mitigating</option>
-            <option value="resolved">resolved</option>
+            <option value="investigating">{{ localeStore.t('issues.statusInvestigating') }}</option>
+            <option value="mitigating">{{ localeStore.t('issues.statusMitigating') }}</option>
+            <option value="resolved">{{ localeStore.t('issues.statusResolved') }}</option>
           </select>
         </label>
         <label>
-          Symptoms
+          {{ localeStore.t('issues.symptoms') }}
           <textarea v-model="issueForm.symptoms" required rows="4" />
         </label>
         <label>
-          Attach photos
+          {{ localeStore.t('issues.attachPhotos') }}
           <input accept="image/*" multiple type="file" @change="handlePhotoChange" />
         </label>
-        <p class="muted">Up to 5 images can be attached to a report.</p>
+        <p class="muted">{{ localeStore.t('issues.photoLimit') }}</p>
         <p v-if="compressionReport" class="muted">{{ compressionReport }}</p>
 
         <div v-if="photoPreviews.length" class="photo-grid">
           <figure v-for="photo in photoPreviews" :key="photo.name" class="photo-card">
-            <img :src="photo.dataUrl" alt="Issue evidence" />
+            <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
             <figcaption>{{ photo.name }}</figcaption>
           </figure>
         </div>
-        <button type="submit">Save issue</button>
+        <button type="submit">{{ localeStore.t('issues.saveIssue') }}</button>
       </form>
 
-      <h3 class="section-title">Find similar past issues</h3>
+      <h3 class="section-title">{{ localeStore.t('issues.findSimilar') }}</h3>
       <label>
-        Search text
+        {{ localeStore.t('issues.searchText') }}
         <textarea
           v-model="recommendationQuery"
           rows="3"
-          placeholder="Describe current symptoms and context"
+          :placeholder="localeStore.t('issues.searchPlaceholder')"
         />
       </label>
 
       <ul class="list clean compact">
         <li v-for="entry in recommendations" :key="entry.issue.id" class="list-item">
-          <p class="item-title">{{ entry.issue.title }} (score {{ entry.score.toFixed(2) }})</p>
+          <p class="item-title">{{ localeStore.t('issues.scoreLabel', { title: entry.issue.title, score: entry.score.toFixed(2) }) }}</p>
           <p class="item-meta">{{ entry.issue.symptoms }}</p>
-          <p class="muted">Text score {{ entry.textScore.toFixed(2) }} · Photo score {{ entry.photoScore.toFixed(2) }}</p>
+          <p class="muted">{{ localeStore.t('issues.textPhotoScore', { text: entry.textScore.toFixed(2), photo: entry.photoScore.toFixed(2) }) }}</p>
           <p class="muted">
-            Steps: {{ (entry.issue.resolutionSteps || []).map((step) => step.note).join(' | ') || 'No steps yet' }}
+            {{ localeStore.t('issues.steps') }}: {{ (entry.issue.resolutionSteps || []).map((step) => step.note).join(' | ') || localeStore.t('issues.noSteps') }}
           </p>
         </li>
       </ul>
     </article>
 
     <article class="card">
-      <h2>Issue history</h2>
+      <h2>{{ localeStore.t('issues.issueHistory') }}</h2>
       <ul class="list clean">
         <li v-for="issue in store.state.issues" :key="issue.id" class="list-item card-like">
           <div>
@@ -221,26 +241,26 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
                 target="_blank"
                 rel="noreferrer"
               >
-                <img :src="photo.dataUrl" alt="Issue evidence" />
+                <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
                 <figcaption>{{ photo.name }}</figcaption>
               </a>
             </div>
           </div>
           <div class="row-actions">
-            <button class="ghost" @click="selectedIssueId = issue.id">Resolution</button>
-            <button class="danger" @click="store.removeIssue(issue.id)">Delete</button>
+            <button class="ghost" @click="selectedIssueId = issue.id">{{ localeStore.t('issues.resolution') }}</button>
+            <button class="danger" @click="store.removeIssue(issue.id)">{{ localeStore.t('common.delete') }}</button>
           </div>
         </li>
       </ul>
 
       <div v-if="selectedIssue" class="sub-card">
-        <h3>Resolution log - {{ selectedIssue.title }}</h3>
+        <h3>{{ localeStore.t('issues.resolutionLog', { title: selectedIssue.title }) }}</h3>
         <form class="stack-form" @submit.prevent="addStep">
           <label>
-            New resolution step
+            {{ localeStore.t('issues.newResolutionStep') }}
             <textarea v-model="resolutionNote" rows="3" required />
           </label>
-          <button type="submit">Add step</button>
+          <button type="submit">{{ localeStore.t('issues.addStep') }}</button>
         </form>
 
         <ul class="list clean compact">

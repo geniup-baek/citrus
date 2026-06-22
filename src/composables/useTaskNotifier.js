@@ -1,9 +1,11 @@
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { formatISO, isSameDay, parseISO } from 'date-fns'
+import { useLocaleStore } from '../stores/localeStore'
 
 export function useTaskNotifier(store) {
   let intervalId = null
   const canNotify = () => 'Notification' in globalThis
+  const localeStore = useLocaleStore()
 
   const dueTodayPending = computed(() =>
     store.state.tasks.filter((task) => {
@@ -42,8 +44,8 @@ export function useTaskNotifier(store) {
 
       const facility = store.state.facilities.find((item) => item.id === task.greenhouseId)
 
-      new Notification('Citrus task reminder', {
-        body: `${task.title} - ${facility?.name || 'No greenhouse selected'}`,
+      new Notification(localeStore.t('notifier.title'), {
+        body: `${task.title} - ${facility?.name || localeStore.t('notifier.noGreenhouse')}`,
         tag: task.id,
       })
 

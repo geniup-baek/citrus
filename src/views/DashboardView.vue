@@ -2,9 +2,12 @@
 import { computed } from 'vue'
 import { format, parseISO } from 'date-fns'
 import { useFarmStore } from '../stores/farmStore'
+import { useLocaleStore } from '../stores/localeStore'
 import StatCard from '../components/StatCard.vue'
 
 const store = useFarmStore()
+const localeStore = useLocaleStore()
+const upcomingDays = 10
 
 const facilityCount = computed(() => store.state.facilities.length)
 const treeCount = computed(() =>
@@ -13,70 +16,125 @@ const treeCount = computed(() =>
 const dueToday = computed(() => store.tasksToday.filter((task) => task.status !== 'done'))
 const dueThisWeek = computed(() => store.tasksThisWeek.filter((task) => task.status !== 'done'))
 const unresolvedIssues = computed(() => store.openIssues)
-const upcoming = computed(() => store.listUpcomingDays(10))
+const upcoming = computed(() => store.listUpcomingDays(upcomingDays))
 
 function greenhouseName(greenhouseId) {
-  return store.state.facilities.find((facility) => facility.id === greenhouseId)?.name || 'Unknown'
+  return (
+    store.state.facilities.find((facility) => facility.id === greenhouseId)?.name ||
+    localeStore.t('common.unknown')
+  )
 }
 
 function prettyDate(dateText) {
   return format(parseISO(dateText), 'yyyy-MM-dd')
+}
+
+function taskStatusLabel(value) {
+  const map = {
+    todo: localeStore.t('tasks.statusTodo'),
+    'in-progress': localeStore.t('tasks.statusInProgress'),
+    done: localeStore.t('tasks.statusDone'),
+  }
+
+  return map[value] || value
+}
+
+function issueStatusLabel(value) {
+  const map = {
+    investigating: localeStore.t('issues.statusInvestigating'),
+    mitigating: localeStore.t('issues.statusMitigating'),
+    resolved: localeStore.t('issues.statusResolved'),
+  }
+
+  return map[value] || value
+}
+
+function frequencyLabel(value) {
+  const map = {
+    once: localeStore.t('tasks.frequencyOnce'),
+    daily: localeStore.t('tasks.frequencyDaily'),
+    weekly: localeStore.t('tasks.frequencyWeekly'),
+    monthly: localeStore.t('tasks.frequencyMonthly'),
+    yearly: localeStore.t('tasks.frequencyYearly'),
+  }
+
+  return map[value] || value
 }
 </script>
 
 <template>
   <section class="page-grid">
     <div class="card">
-      <h2>Today at a glance</h2>
+      <h2>{{ localeStore.t('dashboard.todayAtGlance') }}</h2>
       <div class="stats-grid">
-        <StatCard title="Facilities" :value="facilityCount" helper="4 houses currently in production" />
-        <StatCard title="Trees" :value="treeCount" helper="Hallabong and Karahyang combined" />
-        <StatCard title="Due today" :value="dueToday.length" helper="Pending or in-progress tasks" />
-        <StatCard title="Open issues" :value="unresolvedIssues.length" helper="Needs diagnosis or follow-up" />
+        <StatCard
+          :title="localeStore.t('dashboard.facilities')"
+          :value="facilityCount"
+          :helper="localeStore.t('dashboard.facilitiesHelper')"
+        />
+        <StatCard
+          :title="localeStore.t('dashboard.trees')"
+          :value="treeCount"
+          :helper="localeStore.t('dashboard.treesHelper')"
+        />
+        <StatCard
+          :title="localeStore.t('dashboard.dueToday')"
+          :value="dueToday.length"
+          :helper="localeStore.t('dashboard.dueTodayHelper')"
+        />
+        <StatCard
+          :title="localeStore.t('dashboard.openIssues')"
+          :value="unresolvedIssues.length"
+          :helper="localeStore.t('dashboard.openIssuesHelper')"
+        />
       </div>
     </div>
 
     <div class="card split-card">
       <div>
-        <h2>This week priorities</h2>
+        <h2>{{ localeStore.t('dashboard.weekPriorities') }}</h2>
         <ul class="list clean">
           <li v-for="task in dueThisWeek" :key="task.id" class="list-item">
             <div>
               <p class="item-title">{{ task.title }}</p>
-              <p class="item-meta">{{ greenhouseName(task.greenhouseId) }} · due {{ prettyDate(task.dueDate) }}</p>
+              <p class="item-meta">
+                {{ greenhouseName(task.greenhouseId) }} · {{ localeStore.t('common.due') }} {{ prettyDate(task.dueDate) }}
+              </p>
             </div>
-            <span class="pill">{{ task.status }}</span>
+            <span class="pill">{{ taskStatusLabel(task.status) }}</span>
           </li>
-          <li v-if="!dueThisWeek.length" class="muted">No pending work this week.</li>
+          <li v-if="!dueThisWeek.length" class="muted">{{ localeStore.t('dashboard.noWeekWork') }}</li>
         </ul>
       </div>
 
       <div>
-        <h2>Issue watch</h2>
+        <h2>{{ localeStore.t('dashboard.issueWatch') }}</h2>
         <ul class="list clean">
           <li v-for="issue in unresolvedIssues" :key="issue.id" class="list-item">
             <div>
               <p class="item-title">{{ issue.title }}</p>
               <p class="item-meta">{{ greenhouseName(issue.greenhouseId) }} · {{ issue.occurredAt }}</p>
             </div>
-            <span class="pill danger">{{ issue.status }}</span>
+            <span class="pill danger">{{ issueStatusLabel(issue.status) }}</span>
           </li>
-          <li v-if="!unresolvedIssues.length" class="muted">No unresolved issues.</li>
+          <li v-if="!unresolvedIssues.length" class="muted">{{ localeStore.t('dashboard.noIssues') }}</li>
         </ul>
       </div>
     </div>
 
     <div class="card">
-      <h2>Upcoming 10 days</h2>
+      <h2>{{ localeStore.t('dashboard.upcoming', { days: upcomingDays }) }}</h2>
       <ul class="list clean">
         <li v-for="task in upcoming" :key="task.id" class="list-item">
           <div>
             <p class="item-title">{{ task.title }}</p>
-            <p class="item-meta">{{ greenhouseName(task.greenhouseId) }} · due {{ prettyDate(task.dueDate) }}</p>
+            <p class="item-meta">
+              {{ greenhouseName(task.greenhouseId) }} · {{ localeStore.t('common.due') }} {{ prettyDate(task.dueDate) }}
+            </p>
           </div>
-          <span class="pill">{{ task.frequency }}</span>
+          <span class="pill">{{ frequencyLabel(task.frequency) }}</span>
         </li>
-        <li v-if="!upcoming.length" class="muted">No upcoming tasks. Add one from Tasks.</li>
+        <li v-if="!upcoming.length" class="muted">{{ localeStore.t('dashboard.noUpcoming') }}</li>
       </ul>
     </div>
   </section>

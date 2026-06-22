@@ -1,44 +1,49 @@
+<script setup>
+import { useLocaleStore } from '../stores/localeStore'
+
+const localeStore = useLocaleStore()
+</script>
+
 <template>
   <section class="page-grid">
     <article class="card">
-      <h2>Citrus lineage quick map</h2>
+      <h2>{{ localeStore.t('knowledge.lineageMap') }}</h2>
       <p class="muted">
-        This page is a shared reference for workers, useful when discussing growth behavior,
-        fruit traits, and expected stress response.
+        {{ localeStore.t('knowledge.intro') }}
       </p>
 
       <div class="lineage-grid">
         <div class="lineage-node">
           <h3>Hallabong</h3>
-          <p>Known as Dekopon in Japan.</p>
-          <p class="muted">Parentage: Kiyomi tangor x Ponkan mandarin</p>
+          <p>{{ localeStore.t('knowledge.hallabongKnown') }}</p>
+          <p class="muted">{{ localeStore.t('knowledge.hallabongParentage') }}</p>
         </div>
         <div class="lineage-node">
           <h3>Karahyang</h3>
-          <p>Premium late-maturing citrus with aromatic peel.</p>
-          <p class="muted">Often managed similarly to high-sugar hybrid mandarins.</p>
+          <p>{{ localeStore.t('knowledge.karahyangDesc') }}</p>
+          <p class="muted">{{ localeStore.t('knowledge.karahyangGuide') }}</p>
         </div>
       </div>
     </article>
 
     <article class="card">
-      <h2>Useful field checklist</h2>
+      <h2>{{ localeStore.t('knowledge.checklist') }}</h2>
       <ul class="list clean compact">
         <li class="list-item">
-          <p class="item-title">Canopy climate</p>
-          <p class="muted">Keep humidity and airflow balanced to reduce fungal pressure.</p>
+          <p class="item-title">{{ localeStore.t('knowledge.canopyClimate') }}</p>
+          <p class="muted">{{ localeStore.t('knowledge.canopyClimateDesc') }}</p>
         </li>
         <li class="list-item">
-          <p class="item-title">Brix trend tracking</p>
-          <p class="muted">Track weekly Brix in pre-harvest stage for picking decisions.</p>
+          <p class="item-title">{{ localeStore.t('knowledge.brixTracking') }}</p>
+          <p class="muted">{{ localeStore.t('knowledge.brixTrackingDesc') }}</p>
         </li>
         <li class="list-item">
-          <p class="item-title">Irrigation hygiene</p>
-          <p class="muted">Flush lines and verify pressure differences between rows.</p>
+          <p class="item-title">{{ localeStore.t('knowledge.irrigationHygiene') }}</p>
+          <p class="muted">{{ localeStore.t('knowledge.irrigationHygieneDesc') }}</p>
         </li>
         <li class="list-item">
-          <p class="item-title">Pest threshold policy</p>
-          <p class="muted">Record trap counts with action thresholds for each greenhouse.</p>
+          <p class="item-title">{{ localeStore.t('knowledge.pestPolicy') }}</p>
+          <p class="muted">{{ localeStore.t('knowledge.pestPolicyDesc') }}</p>
         </li>
       </ul>
     </article>

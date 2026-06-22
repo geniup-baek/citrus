@@ -2,9 +2,11 @@
 import { onBeforeUnmount, onMounted } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import { useFarmStore } from './stores/farmStore'
+import { useLocaleStore } from './stores/localeStore'
 import { useTaskNotifier } from './composables/useTaskNotifier'
 
 const store = useFarmStore()
+const localeStore = useLocaleStore()
 
 onMounted(async () => {
   await store.init()
@@ -22,7 +24,7 @@ useTaskNotifier(store)
     <AppHeader />
 
     <p v-if="!store.firebaseEnabled" class="sync-banner">
-      Cloud sync is disabled. Add Firebase environment variables for team-wide shared data.
+      {{ localeStore.t('app.syncDisabled') }}
     </p>
 
     <main class="content">

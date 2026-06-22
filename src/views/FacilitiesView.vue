@@ -1,8 +1,10 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
+import { useLocaleStore } from '../stores/localeStore'
 
 const store = useFarmStore()
+const localeStore = useLocaleStore()
 const editingId = ref('')
 
 const form = reactive({
@@ -47,43 +49,43 @@ async function saveFacility() {
 <template>
   <section class="page-grid two-columns">
     <article class="card">
-      <h2>{{ editingId ? 'Edit facility' : 'Add facility' }}</h2>
+      <h2>{{ editingId ? localeStore.t('facilities.editTitle') : localeStore.t('facilities.addTitle') }}</h2>
       <form class="stack-form" @submit.prevent="saveFacility">
         <label>
-          Facility name
+          {{ localeStore.t('facilities.name') }}
           <input v-model="form.name" required type="text" placeholder="Greenhouse 5" />
         </label>
         <label>
-          Area (m²)
+          {{ localeStore.t('facilities.area') }}
           <input v-model="form.area" required min="0" type="number" />
         </label>
         <label>
-          Tree count
+          {{ localeStore.t('facilities.treeCount') }}
           <input v-model="form.trees" required min="0" type="number" />
         </label>
         <label>
-          Notes
-          <textarea v-model="form.notes" rows="3" placeholder="Any operating details" />
+          {{ localeStore.t('facilities.notes') }}
+          <textarea v-model="form.notes" rows="3" :placeholder="localeStore.t('facilities.notesPlaceholder')" />
         </label>
         <div class="row-actions">
-          <button type="submit">Save</button>
-          <button class="ghost" type="button" @click="clearForm">Reset</button>
+          <button type="submit">{{ localeStore.t('common.save') }}</button>
+          <button class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.reset') }}</button>
         </div>
       </form>
     </article>
 
     <article class="card">
-      <h2>Facility inventory</h2>
+      <h2>{{ localeStore.t('facilities.inventory') }}</h2>
       <ul class="list clean">
         <li v-for="facility in store.state.facilities" :key="facility.id" class="list-item card-like">
           <div>
             <p class="item-title">{{ facility.name }}</p>
-            <p class="item-meta">{{ facility.area }} m² · {{ facility.trees }} trees</p>
+            <p class="item-meta">{{ facility.area }} m² · {{ facility.trees }} {{ localeStore.t('facilities.treeUnit') }}</p>
             <p class="muted">{{ facility.notes }}</p>
           </div>
           <div class="row-actions">
-            <button class="ghost" @click="editFacility(facility)">Edit</button>
-            <button class="danger" @click="store.removeFacility(facility.id)">Delete</button>
+            <button class="ghost" @click="editFacility(facility)">{{ localeStore.t('common.edit') }}</button>
+            <button class="danger" @click="store.removeFacility(facility.id)">{{ localeStore.t('common.delete') }}</button>
           </div>
         </li>
       </ul>
