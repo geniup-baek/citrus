@@ -39,6 +39,11 @@ const schedulerForm = reactive({
   enabled: true,
 })
 
+const schedulerSettingsForm = reactive({
+  generationDays: 21,
+  duplicatePolicy: 'rule-and-date',
+})
+
 const weekdayOptions = [
   { label: 'Mon', value: 1 },
   { label: 'Tue', value: 2 },
@@ -47,6 +52,21 @@ const weekdayOptions = [
   { label: 'Fri', value: 5 },
   { label: 'Sat', value: 6 },
   { label: 'Sun', value: 7 },
+]
+
+const duplicatePolicyOptions = [
+  {
+    value: 'rule-and-date',
+    label: 'Skip duplicates by rule/date',
+  },
+  {
+    value: 'title-and-date',
+    label: 'Skip duplicates by title/date',
+  },
+  {
+    value: 'allow',
+    label: 'Allow duplicates',
+  },
 ]
 
 const filteredTasks = computed(() => {
@@ -169,8 +189,13 @@ async function saveScheduleRule() {
 }
 
 async function runScheduler() {
-  const generatedCount = await store.runTaskScheduler({ daysAhead: 21, persist: true })
-  schedulerRunResult.value = `Generated ${generatedCount} task(s) for the next 21 days.`
+  await saveSchedulerSettings()
+  const generatedCount = await store.runTaskScheduler({
+    daysAhead: Number(schedulerSettingsForm.generationDays),
+    duplicatePolicy: schedulerSettingsForm.duplicatePolicy,
+    persist: true,
+  })
+  schedulerRunResult.value = `Generated ${generatedCount} task(s) for the next ${schedulerSettingsForm.generationDays} days.`
 }
 
 async function removeScheduleRule(id) {
@@ -180,8 +205,17 @@ async function removeScheduleRule(id) {
   }
 }
 
+async function saveSchedulerSettings() {
+  await store.updateScheduleSettings({
+    generationDays: Number(schedulerSettingsForm.generationDays),
+    duplicatePolicy: schedulerSettingsForm.duplicatePolicy,
+  })
+}
+
 form.greenhouseId = store.state.facilities[0]?.id || ''
 form.dueDate = format(new Date(), 'yyyy-MM-dd')
+schedulerSettingsForm.generationDays = store.state.scheduleSettings?.generationDays || 21
+schedulerSettingsForm.duplicatePolicy = store.state.scheduleSettings?.duplicatePolicy || 'rule-and-date'
 clearSchedulerForm()
 </script>
 
@@ -243,6 +277,30 @@ clearSchedulerForm()
           <button class="ghost" @click="runScheduler">Run now</button>
         </div>
         <p v-if="schedulerRunResult" class="muted">{{ schedulerRunResult }}</p>
+
+        <form class="stack-form" @submit.prevent="saveSchedulerSettings">
+          <div class="row-scheduler-grid">
+            <label>
+              Generation range (days)
+              <input v-model="schedulerSettingsForm.generationDays" min="1" max="180" type="number" />
+            </label>
+            <label>
+              Duplicate policy
+              <select v-model="schedulerSettingsForm.duplicatePolicy">
+                <option
+                  v-for="option in duplicatePolicyOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
+          </div>
+          <div class="row-actions">
+            <button type="submit">Save scheduler defaults</button>
+          </div>
+        </form>
 
         <form class="stack-form" @submit.prevent="saveScheduleRule">
           <label>

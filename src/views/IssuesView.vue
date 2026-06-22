@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
+import { compressImageFile } from '../utils/imageProcessing'
 
 const store = useFarmStore()
 const selectedIssueId = ref('')
@@ -16,6 +17,7 @@ const issueForm = reactive({
 
 const photoFiles = ref([])
 const photoPreviews = ref([])
+const compressionReport = ref('')
 
 const resolutionNote = ref('')
 
@@ -24,49 +26,81 @@ const selectedIssue = computed(() =>
 )
 
 const recommendations = computed(() => {
-  if (!recommendationQuery.value.trim()) {
+  const derivedQuery = recommendationQuery.value.trim() || issueForm.symptoms.trim()
+  const queryPhotos = photoPreviews.value.map((photo) => ({
+    name: photo.name,
+    contentType: photo.contentType,
+    width: photo.width,
+    height: photo.height,
+    size: photo.size,
+  }))
+
+  if (!derivedQuery && !queryPhotos.length) {
     return []
   }
 
-  return store.suggestSimilarIssues(recommendationQuery.value)
+  return store.suggestSimilarIssues({
+    query: derivedQuery,
+    photos: queryPhotos,
+  })
 })
 
 function greenhouseName(greenhouseId) {
   return store.state.facilities.find((facility) => facility.id === greenhouseId)?.name || 'Unknown'
 }
 
-function toDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
-    reader.onerror = () => reject(new Error('Failed to load image.'))
-    reader.readAsDataURL(file)
-  })
-}
-
 async function handlePhotoChange(event) {
   const files = Array.from(event.target.files || [])
   photoFiles.value = files.slice(0, 5)
 
+  let originalTotal = 0
+  let compressedTotal = 0
+
   photoPreviews.value = await Promise.all(
-    photoFiles.value.map(async (file) => ({
-      name: file.name,
-      dataUrl: await toDataUrl(file),
-    })),
+    photoFiles.value.map(async (file) => {
+      const compressed = await compressImageFile(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.78,
+        outputType: 'image/jpeg',
+      })
+
+      originalTotal += compressed.originalSize
+      compressedTotal += compressed.compressedSize
+
+      return {
+        id: crypto.randomUUID(),
+        name: file.name,
+        dataUrl: compressed.dataUrl,
+        contentType: compressed.contentType,
+        size: compressed.compressedSize,
+        width: compressed.width,
+        height: compressed.height,
+        originalSize: compressed.originalSize,
+      }
+    }),
   )
+
+  if (photoPreviews.value.length) {
+    const ratio = originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100
+    compressionReport.value = `Compressed ${photoPreviews.value.length} file(s): ${Math.round(originalTotal / 1024)}KB -> ${Math.round(compressedTotal / 1024)}KB (${ratio}%).`
+  } else {
+    compressionReport.value = ''
+  }
 }
 
 async function addIssue() {
-  const photos = await Promise.all(
-    photoFiles.value.map(async (file) => ({
-      id: crypto.randomUUID(),
-      name: file.name,
-      contentType: file.type,
-      size: file.size,
-      createdAt: new Date().toISOString(),
-      dataUrl: await toDataUrl(file),
-    })),
-  )
+  const photos = photoPreviews.value.map((photo) => ({
+    id: photo.id,
+    name: photo.name,
+    contentType: photo.contentType,
+    size: photo.size,
+    width: photo.width,
+    height: photo.height,
+    originalSize: photo.originalSize,
+    createdAt: new Date().toISOString(),
+    dataUrl: photo.dataUrl,
+  }))
 
   await store.upsertIssue({
     title: issueForm.title,
@@ -83,6 +117,7 @@ async function addIssue() {
   issueForm.symptoms = ''
   photoFiles.value = []
   photoPreviews.value = []
+  compressionReport.value = ''
 }
 
 async function addStep() {
@@ -136,6 +171,7 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
           <input accept="image/*" multiple type="file" @change="handlePhotoChange" />
         </label>
         <p class="muted">Up to 5 images can be attached to a report.</p>
+        <p v-if="compressionReport" class="muted">{{ compressionReport }}</p>
 
         <div v-if="photoPreviews.length" class="photo-grid">
           <figure v-for="photo in photoPreviews" :key="photo.name" class="photo-card">
@@ -160,6 +196,7 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
         <li v-for="entry in recommendations" :key="entry.issue.id" class="list-item">
           <p class="item-title">{{ entry.issue.title }} (score {{ entry.score.toFixed(2) }})</p>
           <p class="item-meta">{{ entry.issue.symptoms }}</p>
+          <p class="muted">Text score {{ entry.textScore.toFixed(2) }} · Photo score {{ entry.photoScore.toFixed(2) }}</p>
           <p class="muted">
             Steps: {{ (entry.issue.resolutionSteps || []).map((step) => step.note).join(' | ') || 'No steps yet' }}
           </p>

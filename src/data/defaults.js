@@ -166,6 +166,11 @@ export const defaultScheduleRules = [
   },
 ]
 
+export const defaultScheduleSettings = {
+  generationDays: 21,
+  duplicatePolicy: 'rule-and-date',
+}
+
 export const defaultIssues = [
   {
     id: 'issue-1',

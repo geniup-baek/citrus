@@ -20,6 +20,7 @@ import {
   annualTaskTemplates,
   defaultFacilities,
   defaultIssues,
+  defaultScheduleSettings,
   defaultScheduleRules,
   defaultSeedlings,
   defaultTasks,
@@ -34,6 +35,7 @@ function createDefaultData() {
     seedlings: [...defaultSeedlings],
     tasks: [...defaultTasks],
     scheduleRules: [...defaultScheduleRules],
+    scheduleSettings: { ...defaultScheduleSettings },
     issues: [...defaultIssues],
     annualTaskTemplates: [...annualTaskTemplates],
     notifications: {},
@@ -51,6 +53,10 @@ function normalizeData(data) {
     scheduleRules: Array.isArray(data?.scheduleRules)
       ? data.scheduleRules
       : defaults.scheduleRules,
+    scheduleSettings:
+      data?.scheduleSettings && typeof data.scheduleSettings === 'object'
+        ? { ...defaults.scheduleSettings, ...data.scheduleSettings }
+        : defaults.scheduleSettings,
     issues: Array.isArray(data?.issues) ? data.issues : defaults.issues,
     annualTaskTemplates: Array.isArray(data?.annualTaskTemplates)
       ? data.annualTaskTemplates
@@ -78,6 +84,15 @@ function normalizeRule(rule) {
     dayOfWeek: Math.max(1, Math.min(7, Number(rule?.dayOfWeek || 1))),
     dayOfMonth: Math.max(1, Math.min(31, Number(rule?.dayOfMonth || 1))),
     enabled: rule?.enabled !== false,
+  }
+}
+
+function normalizeScheduleSettings(settings) {
+  return {
+    generationDays: Math.max(1, Math.min(180, Number(settings?.generationDays || 21))),
+    duplicatePolicy: ['rule-and-date', 'title-and-date', 'allow'].includes(settings?.duplicatePolicy)
+      ? settings.duplicatePolicy
+      : 'rule-and-date',
   }
 }
 
@@ -134,7 +149,7 @@ function scoreSimilarity(base, sample) {
     new Set(
       String(text || '')
         .toLowerCase()
-        .split(/[^a-z0-9]+/)
+        .split(/[^a-z0-9\uac00-\ud7a3]+/)
         .filter((token) => token.length > 2),
     )
 
@@ -154,6 +169,43 @@ function scoreSimilarity(base, sample) {
   })
 
   return overlap / new Set([...a, ...b]).size
+}
+
+function createPhotoTokenSet(photos = []) {
+  const tokens = []
+
+  photos.forEach((photo) => {
+    const source = [
+      photo?.name,
+      photo?.contentType,
+      photo?.width ? `w${photo.width}` : '',
+      photo?.height ? `h${photo.height}` : '',
+      photo?.size ? `s${Math.round(photo.size / 10000)}` : '',
+    ].join(' ')
+
+    source
+      .toLowerCase()
+      .split(/[^a-z0-9\uac00-\ud7a3]+/)
+      .filter((token) => token.length > 1)
+      .forEach((token) => tokens.push(token))
+  })
+
+  return new Set(tokens)
+}
+
+function scoreTokenSetSimilarity(sourceSet, targetSet) {
+  if (!sourceSet.size || !targetSet.size) {
+    return 0
+  }
+
+  let hit = 0
+  sourceSet.forEach((token) => {
+    if (targetSet.has(token)) {
+      hit += 1
+    }
+  })
+
+  return hit / new Set([...sourceSet, ...targetSet]).size
 }
 
 export const useFarmStore = defineStore('farm', () => {
@@ -239,9 +291,14 @@ export const useFarmStore = defineStore('farm', () => {
         if (snapshot.exists()) {
           state.value = normalizeData(snapshot.data())
           state.value.scheduleRules = state.value.scheduleRules.map((rule) => normalizeRule(rule))
+          state.value.scheduleSettings = normalizeScheduleSettings(state.value.scheduleSettings)
           state.value.issues = state.value.issues.map((issue) => normalizeIssue(issue))
           persistLocal()
-          await runTaskScheduler({ daysAhead: 21, persist: true })
+          await runTaskScheduler({
+            daysAhead: state.value.scheduleSettings.generationDays,
+            duplicatePolicy: state.value.scheduleSettings.duplicatePolicy,
+            persist: true,
+          })
         } else {
           state.value = createDefaultData()
           await persistAll()
@@ -250,8 +307,13 @@ export const useFarmStore = defineStore('farm', () => {
     } else {
       loadLocal()
       state.value.scheduleRules = state.value.scheduleRules.map((rule) => normalizeRule(rule))
+      state.value.scheduleSettings = normalizeScheduleSettings(state.value.scheduleSettings)
       state.value.issues = state.value.issues.map((issue) => normalizeIssue(issue))
-      await runTaskScheduler({ daysAhead: 21, persist: true })
+      await runTaskScheduler({
+        daysAhead: state.value.scheduleSettings.generationDays,
+        duplicatePolicy: state.value.scheduleSettings.duplicatePolicy,
+        persist: true,
+      })
     }
 
     initialized.value = true
@@ -390,17 +452,31 @@ export const useFarmStore = defineStore('farm', () => {
   }
 
   function suggestSimilarIssues(query) {
+    const queryObject = typeof query === 'string' ? { query, photos: [] } : query || {}
+    const queryText = queryObject.query || ''
+    const queryPhotoTokens = createPhotoTokenSet(queryObject.photos || [])
+
     return state.value.issues
       .map((issue) => {
-        const corpus = [
+        const textCorpus = [
           issue.title,
           issue.symptoms,
           ...(issue.resolutionSteps || []).map((step) => step.note),
+          ...(issue.photos || []).map((photo) => photo.name),
         ].join(' ')
+
+        const textScore = scoreSimilarity(queryText, textCorpus)
+        const issuePhotoTokens = createPhotoTokenSet(issue.photos || [])
+        const photoScore = scoreTokenSetSimilarity(queryPhotoTokens, issuePhotoTokens)
+        const blendedScore = queryPhotoTokens.size
+          ? textScore * 0.75 + photoScore * 0.25
+          : textScore
 
         return {
           issue,
-          score: scoreSimilarity(query, corpus),
+          score: blendedScore,
+          textScore,
+          photoScore,
         }
       })
       .filter((item) => item.score > 0.1)
@@ -453,9 +529,38 @@ export const useFarmStore = defineStore('farm', () => {
     await persistAll()
   }
 
-  async function runTaskScheduler({ daysAhead = 21, persist = true } = {}) {
+  async function updateScheduleSettings(payload) {
+    state.value.scheduleSettings = normalizeScheduleSettings({
+      ...state.value.scheduleSettings,
+      ...payload,
+    })
+    await persistAll()
+  }
+
+  function isDuplicateTask(normalizedRule, dueDate, duplicatePolicy) {
+    if (duplicatePolicy === 'allow') {
+      return false
+    }
+
+    if (duplicatePolicy === 'title-and-date') {
+      return state.value.tasks.some(
+        (task) =>
+          task.title === normalizedRule.title &&
+          task.greenhouseId === normalizedRule.greenhouseId &&
+          task.dueDate === dueDate,
+      )
+    }
+
+    return state.value.tasks.some(
+      (task) => task.scheduleRuleId === normalizedRule.id && task.dueDate === dueDate,
+    )
+  }
+
+  async function runTaskScheduler({ daysAhead, duplicatePolicy, persist = true } = {}) {
+    const resolvedDays = Math.max(1, Number(daysAhead || state.value.scheduleSettings.generationDays || 21))
+    const resolvedPolicy = duplicatePolicy || state.value.scheduleSettings.duplicatePolicy || 'rule-and-date'
     const todayDate = new Date()
-    const endDate = addDays(todayDate, daysAhead)
+    const endDate = addDays(todayDate, resolvedDays)
     const generatedTasks = []
 
     for (const rule of state.value.scheduleRules) {
@@ -470,11 +575,7 @@ export const useFarmStore = defineStore('farm', () => {
         }
 
         const dueDate = formatISO(cursor, { representation: 'date' })
-        const alreadyExists = state.value.tasks.some(
-          (task) =>
-            task.scheduleRuleId === normalizedRule.id &&
-            task.dueDate === dueDate,
-        )
+        const alreadyExists = isDuplicateTask(normalizedRule, dueDate, resolvedPolicy)
 
         if (alreadyExists) {
           continue
@@ -539,6 +640,7 @@ export const useFarmStore = defineStore('farm', () => {
     removeIssue,
     upsertScheduleRule,
     removeScheduleRule,
+    updateScheduleSettings,
     runTaskScheduler,
     markTaskNotified,
     getTaskLastNotified,
