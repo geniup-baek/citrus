@@ -156,6 +156,57 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
 <template>
   <section class="page-grid two-columns">
     <article class="card">
+      <h2>{{ localeStore.t('issues.issueHistory') }}</h2>
+      <ul class="list clean">
+        <li v-for="issue in store.state.issues" :key="issue.id" class="list-item card-like">
+          <div>
+            <p class="item-title">{{ issue.title }}</p>
+            <p class="item-meta">{{ greenhouseName(issue.greenhouseId) }} · {{ issue.occurredAt }}</p>
+            <p class="muted">{{ issue.symptoms }}</p>
+            <div v-if="issue.photos?.length" class="photo-grid compact-grid">
+              <figure
+                v-for="photo in issue.photos"
+                :key="photo.id"
+                class="photo-card"
+              >
+                <a :href="photo.dataUrl" target="_blank" rel="noreferrer">
+                  <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                </a>
+                <figcaption>{{ photo.name }}</figcaption>
+              </figure>
+            </div>
+          </div>
+          <div class="row-actions">
+            <button class="ghost" @click="selectedIssueId = issue.id">{{ localeStore.t('issues.resolution') }}</button>
+            <button class="danger" @click="store.removeIssue(issue.id)">{{ localeStore.t('common.delete') }}</button>
+          </div>
+        </li>
+      </ul>
+
+      <div v-if="selectedIssue" class="sub-card">
+        <h3>{{ localeStore.t('issues.resolutionLog', { title: selectedIssue.title }) }}</h3>
+        <form class="stack-form" @submit.prevent="addStep">
+          <label>
+            {{ localeStore.t('issues.newResolutionStep') }}
+            <textarea v-model="resolutionNote" rows="3" required />
+          </label>
+          <button type="submit">{{ localeStore.t('issues.addStep') }}</button>
+        </form>
+
+        <ul class="list clean compact">
+          <li
+            v-for="step in selectedIssue.resolutionSteps"
+            :key="step.date + step.note"
+            class="list-item"
+          >
+            <p class="item-meta">{{ step.date }}</p>
+            <p>{{ step.note }}</p>
+          </li>
+        </ul>
+      </div>
+    </article>
+
+    <article class="card">
       <h2>{{ localeStore.t('issues.recordIssue') }}</h2>
       <form class="stack-form" @submit.prevent="addIssue">
         <label>
@@ -222,57 +273,6 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
           </p>
         </li>
       </ul>
-    </article>
-
-    <article class="card">
-      <h2>{{ localeStore.t('issues.issueHistory') }}</h2>
-      <ul class="list clean">
-        <li v-for="issue in store.state.issues" :key="issue.id" class="list-item card-like">
-          <div>
-            <p class="item-title">{{ issue.title }}</p>
-            <p class="item-meta">{{ greenhouseName(issue.greenhouseId) }} · {{ issue.occurredAt }}</p>
-            <p class="muted">{{ issue.symptoms }}</p>
-            <div v-if="issue.photos?.length" class="photo-grid compact-grid">
-              <figure
-                v-for="photo in issue.photos"
-                :key="photo.id"
-                class="photo-card"
-              >
-                <a :href="photo.dataUrl" target="_blank" rel="noreferrer">
-                  <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
-                </a>
-                <figcaption>{{ photo.name }}</figcaption>
-              </figure>
-            </div>
-          </div>
-          <div class="row-actions">
-            <button class="ghost" @click="selectedIssueId = issue.id">{{ localeStore.t('issues.resolution') }}</button>
-            <button class="danger" @click="store.removeIssue(issue.id)">{{ localeStore.t('common.delete') }}</button>
-          </div>
-        </li>
-      </ul>
-
-      <div v-if="selectedIssue" class="sub-card">
-        <h3>{{ localeStore.t('issues.resolutionLog', { title: selectedIssue.title }) }}</h3>
-        <form class="stack-form" @submit.prevent="addStep">
-          <label>
-            {{ localeStore.t('issues.newResolutionStep') }}
-            <textarea v-model="resolutionNote" rows="3" required />
-          </label>
-          <button type="submit">{{ localeStore.t('issues.addStep') }}</button>
-        </form>
-
-        <ul class="list clean compact">
-          <li
-            v-for="step in selectedIssue.resolutionSteps"
-            :key="step.date + step.note"
-            class="list-item"
-          >
-            <p class="item-meta">{{ step.date }}</p>
-            <p>{{ step.note }}</p>
-          </li>
-        </ul>
-      </div>
     </article>
   </section>
 </template>

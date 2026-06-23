@@ -66,6 +66,26 @@ clearForm()
 <template>
   <section class="page-grid two-columns">
     <article class="card">
+      <h2>{{ localeStore.t('seedlings.overview') }}</h2>
+      <ul class="list clean">
+        <li v-for="seedling in store.state.seedlings" :key="seedling.id" class="list-item card-like">
+          <div>
+            <p class="item-title">{{ seedling.variety }} · {{ seedling.quantity }} {{ localeStore.t('seedlings.treeUnit') }}</p>
+            <p class="item-meta">
+              {{ greenhouseName(seedling.greenhouseId) }} · {{ localeStore.t('seedlings.planted') }} {{ seedling.plantedAt }}
+            </p>
+            <p class="muted">{{ localeStore.t('seedlings.rootstockLabel') }}: {{ seedling.rootstock || localeStore.t('seedlings.na') }}</p>
+            <p class="muted">{{ seedling.notes }}</p>
+          </div>
+          <div class="row-actions">
+            <button class="ghost" @click="editSeedling(seedling)">{{ localeStore.t('common.edit') }}</button>
+            <button class="danger" @click="store.removeSeedling(seedling.id)">{{ localeStore.t('common.delete') }}</button>
+          </div>
+        </li>
+      </ul>
+    </article>
+
+    <article class="card">
       <h2>{{ editingId ? localeStore.t('seedlings.editTitle') : localeStore.t('seedlings.addTitle') }}</h2>
       <form class="stack-form" @submit.prevent="saveSeedling">
         <label>
@@ -104,26 +124,6 @@ clearForm()
           <button class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.reset') }}</button>
         </div>
       </form>
-    </article>
-
-    <article class="card">
-      <h2>{{ localeStore.t('seedlings.overview') }}</h2>
-      <ul class="list clean">
-        <li v-for="seedling in store.state.seedlings" :key="seedling.id" class="list-item card-like">
-          <div>
-            <p class="item-title">{{ seedling.variety }} · {{ seedling.quantity }} {{ localeStore.t('seedlings.treeUnit') }}</p>
-            <p class="item-meta">
-              {{ greenhouseName(seedling.greenhouseId) }} · {{ localeStore.t('seedlings.planted') }} {{ seedling.plantedAt }}
-            </p>
-            <p class="muted">{{ localeStore.t('seedlings.rootstockLabel') }}: {{ seedling.rootstock || localeStore.t('seedlings.na') }}</p>
-            <p class="muted">{{ seedling.notes }}</p>
-          </div>
-          <div class="row-actions">
-            <button class="ghost" @click="editSeedling(seedling)">{{ localeStore.t('common.edit') }}</button>
-            <button class="danger" @click="store.removeSeedling(seedling.id)">{{ localeStore.t('common.delete') }}</button>
-          </div>
-        </li>
-      </ul>
     </article>
   </section>
 </template>

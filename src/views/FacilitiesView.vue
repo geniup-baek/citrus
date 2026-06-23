@@ -49,6 +49,23 @@ async function saveFacility() {
 <template>
   <section class="page-grid two-columns">
     <article class="card">
+      <h2>{{ localeStore.t('facilities.inventory') }}</h2>
+      <ul class="list clean">
+        <li v-for="facility in store.state.facilities" :key="facility.id" class="list-item card-like">
+          <div>
+            <p class="item-title">{{ facility.name }}</p>
+            <p class="item-meta">{{ facility.area }} m² · {{ facility.trees }} {{ localeStore.t('facilities.treeUnit') }}</p>
+            <p class="muted">{{ facility.notes }}</p>
+          </div>
+          <div class="row-actions">
+            <button class="ghost" @click="editFacility(facility)">{{ localeStore.t('common.edit') }}</button>
+            <button class="danger" @click="store.removeFacility(facility.id)">{{ localeStore.t('common.delete') }}</button>
+          </div>
+        </li>
+      </ul>
+    </article>
+
+    <article class="card">
       <h2>{{ editingId ? localeStore.t('facilities.editTitle') : localeStore.t('facilities.addTitle') }}</h2>
       <form class="stack-form" @submit.prevent="saveFacility">
         <label>
@@ -72,23 +89,6 @@ async function saveFacility() {
           <button class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.reset') }}</button>
         </div>
       </form>
-    </article>
-
-    <article class="card">
-      <h2>{{ localeStore.t('facilities.inventory') }}</h2>
-      <ul class="list clean">
-        <li v-for="facility in store.state.facilities" :key="facility.id" class="list-item card-like">
-          <div>
-            <p class="item-title">{{ facility.name }}</p>
-            <p class="item-meta">{{ facility.area }} m² · {{ facility.trees }} {{ localeStore.t('facilities.treeUnit') }}</p>
-            <p class="muted">{{ facility.notes }}</p>
-          </div>
-          <div class="row-actions">
-            <button class="ghost" @click="editFacility(facility)">{{ localeStore.t('common.edit') }}</button>
-            <button class="danger" @click="store.removeFacility(facility.id)">{{ localeStore.t('common.delete') }}</button>
-          </div>
-        </li>
-      </ul>
     </article>
   </section>
 </template>
