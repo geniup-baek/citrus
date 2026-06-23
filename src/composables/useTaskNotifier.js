@@ -10,7 +10,7 @@ export function useTaskNotifier(store) {
   const dueTodayPending = computed(() =>
     store.state.tasks.filter((task) => {
       const dueDate = parseISO(task.dueDate)
-      return isSameDay(dueDate, new Date()) && task.status !== 'done'
+      return isSameDay(dueDate, new Date()) && task.status !== '완료'
     }),
   )
 

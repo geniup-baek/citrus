@@ -6,25 +6,26 @@ import { useLocaleStore } from '../stores/localeStore'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
-const selectedIssueId = ref('')
-const recommendationQuery = ref('')
+const editingId = ref('')
+const showForm = ref(true)
+const lightboxPhoto = ref(null)
 
 const issueForm = reactive({
   title: '',
   greenhouseId: '',
   occurredAt: '',
-  status: 'investigating',
+  status: '조사중',
   symptoms: '',
 })
 
 const photoFiles = ref([])
 const photoPreviews = ref([])
 const compressionReport = ref('')
-
 const resolutionNote = ref('')
+const recommendationQuery = ref('')
 
-const selectedIssue = computed(() =>
-  store.state.issues.find((issue) => issue.id === selectedIssueId.value),
+const editingIssue = computed(() =>
+  store.state.issues.find((issue) => issue.id === editingId.value),
 )
 
 const recommendations = computed(() => {
@@ -36,15 +37,8 @@ const recommendations = computed(() => {
     height: photo.height,
     size: photo.size,
   }))
-
-  if (!derivedQuery && !queryPhotos.length) {
-    return []
-  }
-
-  return store.suggestSimilarIssues({
-    query: derivedQuery,
-    photos: queryPhotos,
-  })
+  if (!derivedQuery && !queryPhotos.length) return []
+  return store.suggestSimilarIssues({ query: derivedQuery, photos: queryPhotos })
 })
 
 function greenhouseName(greenhouseId) {
@@ -55,13 +49,15 @@ function greenhouseName(greenhouseId) {
 }
 
 function issueStatusLabel(value) {
-  const map = {
-    investigating: localeStore.t('issues.statusInvestigating'),
-    mitigating: localeStore.t('issues.statusMitigating'),
-    resolved: localeStore.t('issues.statusResolved'),
-  }
+  return value
+}
 
-  return map[value] || value
+function openLightbox(photo) {
+  lightboxPhoto.value = photo
+}
+
+function closeLightbox() {
+  lightboxPhoto.value = null
 }
 
 async function handlePhotoChange(event) {
@@ -79,10 +75,8 @@ async function handlePhotoChange(event) {
         quality: 0.78,
         outputType: 'image/jpeg',
       })
-
       originalTotal += compressed.originalSize
       compressedTotal += compressed.compressedSize
-
       return {
         id: crypto.randomUUID(),
         name: file.name,
@@ -109,8 +103,51 @@ async function handlePhotoChange(event) {
   }
 }
 
-async function addIssue() {
-  const photos = photoPreviews.value.map((photo) => ({
+function removePreviewPhoto(id) {
+  photoPreviews.value = photoPreviews.value.filter((p) => p.id !== id)
+}
+
+async function removeExistingPhoto(photoId) {
+  if (!editingIssue.value) return
+  await store.upsertIssue({
+    ...editingIssue.value,
+    photos: editingIssue.value.photos.filter((p) => p.id !== photoId),
+  })
+}
+
+function clearForm() {
+  issueForm.title = ''
+  issueForm.greenhouseId = store.state.facilities[0]?.id || ''
+  issueForm.occurredAt = new Date().toISOString().slice(0, 10)
+  issueForm.status = '조사중'
+  issueForm.symptoms = ''
+  photoFiles.value = []
+  photoPreviews.value = []
+  compressionReport.value = ''
+  resolutionNote.value = ''
+  editingId.value = ''
+}
+
+function editIssue(issue) {
+  editingId.value = issue.id
+  issueForm.title = issue.title
+  issueForm.greenhouseId = issue.greenhouseId
+  issueForm.occurredAt = issue.occurredAt
+  issueForm.status = issue.status
+  issueForm.symptoms = issue.symptoms
+  photoFiles.value = []
+  photoPreviews.value = []
+  compressionReport.value = ''
+  resolutionNote.value = ''
+}
+
+function closeForm() {
+  clearForm()
+  showForm.value = false
+}
+
+async function saveIssue() {
+  const newPhotos = photoPreviews.value.map((photo) => ({
     id: photo.id,
     name: photo.name,
     contentType: photo.contentType,
@@ -122,41 +159,44 @@ async function addIssue() {
     dataUrl: photo.dataUrl,
   }))
 
+  const existingPhotos = editingIssue.value?.photos || []
+  const existingSteps = editingIssue.value?.resolutionSteps || []
+
   await store.upsertIssue({
+    id: editingId.value || undefined,
     title: issueForm.title,
     greenhouseId: issueForm.greenhouseId,
     occurredAt: issueForm.occurredAt,
     status: issueForm.status,
     symptoms: issueForm.symptoms,
-    resolutionSteps: [],
-    photos,
+    resolutionSteps: existingSteps,
+    photos: [...existingPhotos, ...newPhotos],
   })
 
-  issueForm.title = ''
-  issueForm.status = 'investigating'
-  issueForm.symptoms = ''
-  photoFiles.value = []
-  photoPreviews.value = []
-  compressionReport.value = ''
+  clearForm()
 }
 
 async function addStep() {
-  if (!selectedIssue.value || !resolutionNote.value.trim()) {
-    return
-  }
-
-  await store.addIssueResolutionStep(selectedIssue.value.id, resolutionNote.value)
+  if (!editingIssue.value || !resolutionNote.value.trim()) return
+  await store.addIssueResolutionStep(editingIssue.value.id, resolutionNote.value)
   resolutionNote.value = ''
 }
 
-issueForm.greenhouseId = store.state.facilities[0]?.id || ''
-issueForm.occurredAt = new Date().toISOString().slice(0, 10)
+clearForm()
 </script>
 
 <template>
-  <section class="page-grid two-columns">
+  <div v-if="lightboxPhoto" class="lightbox-overlay" @click="closeLightbox">
+    <img :src="lightboxPhoto.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+  </div>
+
+  <section :class="['page-grid', showForm ? 'two-columns' : '']">
     <article class="card">
-      <h2>{{ localeStore.t('issues.issueHistory') }}</h2>
+      <div class="row-actions align-start">
+        <h2>{{ localeStore.t('issues.issueHistory') }}</h2>
+        <button v-if="!showForm" class="ghost" @click="showForm = true">{{ localeStore.t('common.edit') }}</button>
+        <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+      </div>
       <ul class="list clean">
         <li v-for="issue in store.state.issues" :key="issue.id" class="list-item card-like">
           <div>
@@ -164,51 +204,28 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
             <p class="item-meta">{{ greenhouseName(issue.greenhouseId) }} · {{ issue.occurredAt }}</p>
             <p class="muted">{{ issue.symptoms }}</p>
             <div v-if="issue.photos?.length" class="photo-grid compact-grid">
-              <figure
-                v-for="photo in issue.photos"
-                :key="photo.id"
-                class="photo-card"
-              >
-                <a :href="photo.dataUrl" target="_blank" rel="noreferrer">
+              <figure v-for="photo in issue.photos" :key="photo.id" class="photo-card">
+                <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
                   <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
-                </a>
+                </button>
                 <figcaption>{{ photo.name }}</figcaption>
               </figure>
             </div>
           </div>
           <div class="row-actions">
-            <button class="ghost" @click="selectedIssueId = issue.id">{{ localeStore.t('issues.resolution') }}</button>
-            <button class="danger" @click="store.removeIssue(issue.id)">{{ localeStore.t('common.delete') }}</button>
+            <span class="pill" :class="{ danger: issue.status !== '해결' }">{{ issueStatusLabel(issue.status) }}</span>
+            <template v-if="showForm">
+              <button class="ghost" @click="editIssue(issue)">{{ localeStore.t('common.edit') }}</button>
+              <button class="danger" @click="store.removeIssue(issue.id)">{{ localeStore.t('common.delete') }}</button>
+            </template>
           </div>
         </li>
       </ul>
-
-      <div v-if="selectedIssue" class="sub-card">
-        <h3>{{ localeStore.t('issues.resolutionLog', { title: selectedIssue.title }) }}</h3>
-        <form class="stack-form" @submit.prevent="addStep">
-          <label>
-            {{ localeStore.t('issues.newResolutionStep') }}
-            <textarea v-model="resolutionNote" rows="3" required />
-          </label>
-          <button type="submit">{{ localeStore.t('issues.addStep') }}</button>
-        </form>
-
-        <ul class="list clean compact">
-          <li
-            v-for="step in selectedIssue.resolutionSteps"
-            :key="step.date + step.note"
-            class="list-item"
-          >
-            <p class="item-meta">{{ step.date }}</p>
-            <p>{{ step.note }}</p>
-          </li>
-        </ul>
-      </div>
     </article>
 
-    <article class="card">
-      <h2>{{ localeStore.t('issues.recordIssue') }}</h2>
-      <form class="stack-form" @submit.prevent="addIssue">
+    <article v-if="showForm" class="card">
+      <h2>{{ editingId ? localeStore.t('issues.editTitle') : localeStore.t('issues.recordIssue') }}</h2>
+      <form class="stack-form" @submit.prevent="saveIssue">
         <label>
           {{ localeStore.t('issues.issueTitle') }}
           <input v-model="issueForm.title" required type="text" :placeholder="localeStore.t('issues.issueTitlePlaceholder')" />
@@ -228,41 +245,75 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
         <label>
           {{ localeStore.t('issues.status') }}
           <select v-model="issueForm.status">
-            <option value="investigating">{{ localeStore.t('issues.statusInvestigating') }}</option>
-            <option value="mitigating">{{ localeStore.t('issues.statusMitigating') }}</option>
-            <option value="resolved">{{ localeStore.t('issues.statusResolved') }}</option>
+            <option value="조사중">{{ localeStore.t('issues.statusInvestigating') }}</option>
+            <option value="대응중">{{ localeStore.t('issues.statusMitigating') }}</option>
+            <option value="해결">{{ localeStore.t('issues.statusResolved') }}</option>
           </select>
         </label>
         <label>
           {{ localeStore.t('issues.symptoms') }}
           <textarea v-model="issueForm.symptoms" required rows="4" />
         </label>
+
+        <template v-if="editingIssue?.photos?.length">
+          <p class="muted">{{ localeStore.t('issues.existingPhotos') }}</p>
+          <div class="photo-grid">
+            <figure v-for="photo in editingIssue.photos" :key="photo.id" class="photo-card">
+              <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+              </button>
+              <button type="button" class="danger photo-card-delete" @click="removeExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+            </figure>
+          </div>
+        </template>
+
         <label>
           {{ localeStore.t('issues.attachPhotos') }}
           <input accept="image/*" multiple type="file" @change="handlePhotoChange" />
         </label>
         <p class="muted">{{ localeStore.t('issues.photoLimit') }}</p>
         <p v-if="compressionReport" class="muted">{{ compressionReport }}</p>
-
         <div v-if="photoPreviews.length" class="photo-grid">
-          <figure v-for="photo in photoPreviews" :key="photo.name" class="photo-card">
-            <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
-            <figcaption>{{ photo.name }}</figcaption>
+          <figure v-for="photo in photoPreviews" :key="photo.id" class="photo-card">
+            <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+              <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+            </button>
+            <button type="button" class="danger photo-card-delete" @click="removePreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
           </figure>
         </div>
-        <button type="submit">{{ localeStore.t('issues.saveIssue') }}</button>
+
+        <div class="row-actions">
+          <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
+          <button class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.reset') }}</button>
+        </div>
       </form>
+
+      <template v-if="editingIssue">
+        <h3 class="section-title">{{ localeStore.t('issues.resolutionLog', { title: editingIssue.title }) }}</h3>
+        <form class="stack-form" @submit.prevent="addStep">
+          <label>
+            {{ localeStore.t('issues.newResolutionStep') }}
+            <textarea v-model="resolutionNote" rows="3" required />
+          </label>
+          <button type="submit">{{ localeStore.t('issues.addStep') }}</button>
+        </form>
+        <ul class="list clean compact">
+          <li
+            v-for="step in editingIssue.resolutionSteps"
+            :key="step.date + step.note"
+            class="list-item"
+          >
+            <p class="item-meta">{{ step.date }}</p>
+            <p>{{ step.note }}</p>
+          </li>
+        </ul>
+      </template>
 
       <h3 class="section-title">{{ localeStore.t('issues.findSimilar') }}</h3>
       <label>
         {{ localeStore.t('issues.searchText') }}
-        <textarea
-          v-model="recommendationQuery"
-          rows="3"
-          :placeholder="localeStore.t('issues.searchPlaceholder')"
-        />
+        <textarea v-model="recommendationQuery" rows="3" :placeholder="localeStore.t('issues.searchPlaceholder')" />
       </label>
-
       <ul class="list clean compact">
         <li v-for="entry in recommendations" :key="entry.issue.id" class="list-item">
           <p class="item-title">{{ localeStore.t('issues.scoreLabel', { title: entry.issue.title, score: entry.score.toFixed(2) }) }}</p>

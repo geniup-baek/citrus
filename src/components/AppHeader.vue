@@ -9,10 +9,12 @@ const localeStore = useLocaleStore()
 const links = computed(() => [
   { to: '/', label: localeStore.t('nav.dashboard') },
   { to: '/facilities', label: localeStore.t('nav.facilities') },
+  { to: '/ancillary', label: localeStore.t('nav.ancillary') },
   { to: '/seedlings', label: localeStore.t('nav.seedlings') },
   { to: '/tasks', label: localeStore.t('nav.tasks') },
   { to: '/issues', label: localeStore.t('nav.issues') },
   { to: '/knowledge', label: localeStore.t('nav.knowledge') },
+  { to: '/settings', label: localeStore.t('settings.title') },
 ])
 
 const activePath = computed(() => route.path)
@@ -26,24 +28,6 @@ const activePath = computed(() => route.path)
         <h1>{{ localeStore.t('header.title') }}</h1>
       </div>
 
-      <div class="lang-switch" :aria-label="localeStore.t('lang.switchTo')">
-        <button
-          class="ghost"
-          type="button"
-          :class="{ active: localeStore.locale === 'ko' }"
-          @click="localeStore.setLocale('ko')"
-        >
-          {{ localeStore.t('lang.ko') }}
-        </button>
-        <button
-          class="ghost"
-          type="button"
-          :class="{ active: localeStore.locale === 'en' }"
-          @click="localeStore.setLocale('en')"
-        >
-          {{ localeStore.t('lang.en') }}
-        </button>
-      </div>
     </div>
 
     <nav class="main-nav" :aria-label="localeStore.t('nav.mainNavigation')">

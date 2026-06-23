@@ -18,6 +18,8 @@ import {
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import {
   annualTaskTemplates,
+  defaultAncillaries,
+  defaultAppSettings,
   defaultFacilities,
   defaultIssues,
   defaultScheduleSettings,
@@ -32,6 +34,8 @@ const STORAGE_KEY = 'citrus-farm-shared-v1'
 function createDefaultData() {
   return {
     facilities: [...defaultFacilities],
+    ancillaries: [...defaultAncillaries],
+    appSettings: { ...defaultAppSettings },
     seedlings: [...defaultSeedlings],
     tasks: [...defaultTasks],
     scheduleRules: [...defaultScheduleRules],
@@ -48,6 +52,16 @@ function normalizeData(data) {
 
   return {
     facilities: Array.isArray(data?.facilities) ? data.facilities : defaults.facilities,
+    ancillaries: Array.isArray(data?.ancillaries) ? data.ancillaries : defaults.ancillaries,
+    appSettings: (() => {
+      const stored = data?.appSettings && typeof data.appSettings === 'object' ? data.appSettings : {}
+      const merged = { ...defaults.appSettings, ...stored }
+      const storedCats = Array.isArray(stored.taskCategories) ? stored.taskCategories : []
+      merged.taskCategories = [...new Set([...defaults.appSettings.taskCategories, ...storedCats])]
+      const storedRootstocks = Array.isArray(stored.rootstockTypes) ? stored.rootstockTypes : []
+      merged.rootstockTypes = [...new Set([...defaults.appSettings.rootstockTypes, ...storedRootstocks])]
+      return merged
+    })(),
     seedlings: Array.isArray(data?.seedlings) ? data.seedlings : defaults.seedlings,
     tasks: Array.isArray(data?.tasks) ? data.tasks : defaults.tasks,
     scheduleRules: Array.isArray(data?.scheduleRules)
@@ -58,9 +72,7 @@ function normalizeData(data) {
         ? { ...defaults.scheduleSettings, ...data.scheduleSettings }
         : defaults.scheduleSettings,
     issues: Array.isArray(data?.issues) ? data.issues : defaults.issues,
-    annualTaskTemplates: Array.isArray(data?.annualTaskTemplates)
-      ? data.annualTaskTemplates
-      : defaults.annualTaskTemplates,
+    annualTaskTemplates: [...annualTaskTemplates],
     notifications:
       data?.notifications && typeof data.notifications === 'object'
         ? data.notifications
@@ -116,11 +128,11 @@ function matchRuleOnDate(rule, date) {
   const interval = Math.max(1, Number(rule.interval || 1))
   const dayDiff = differenceInCalendarDays(date, start)
 
-  if (rule.frequency === 'daily') {
+  if (rule.frequency === '매일') {
     return dayDiff % interval === 0
   }
 
-  if (rule.frequency === 'weekly') {
+  if (rule.frequency === '매주') {
     const weekday = Number(rule.dayOfWeek || getISODay(start))
     if (getISODay(date) !== weekday) {
       return false
@@ -220,11 +232,11 @@ export const useFarmStore = defineStore('farm', () => {
   const monthEnd = computed(() => endOfMonth(today.value))
 
   const openIssues = computed(() =>
-    state.value.issues.filter((issue) => issue.status !== 'resolved'),
+    state.value.issues.filter((issue) => issue.status !== '해결'),
   )
 
   const taskSummary = computed(() => {
-    const counts = { todo: 0, 'in-progress': 0, done: 0 }
+    const counts = { '예정': 0, '진행중': 0, '완료': 0 }
     state.value.tasks.forEach((task) => {
       counts[task.status] += 1
     })
@@ -253,14 +265,25 @@ export const useFarmStore = defineStore('farm', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.value))
   }
 
+  let firestoreDebounceTimer = null
+
+  function scheduleFirestoreWrite() {
+    if (!firebaseEnabled || !db) return
+    clearTimeout(firestoreDebounceTimer)
+    firestoreDebounceTimer = setTimeout(async () => {
+      try {
+        const ref = doc(db, 'shared', 'farmData')
+        await setDoc(ref, state.value, { merge: true })
+      } catch (e) {
+        console.warn('[farmStore] Firestore write failed, will retry on next change.', e)
+      }
+    }, 500)
+  }
+
   async function persistAll() {
     state.value.updatedAt = new Date().toISOString()
     persistLocal()
-
-    if (firebaseEnabled && db) {
-      const ref = doc(db, 'shared', 'farmData')
-      await setDoc(ref, state.value, { merge: true })
-    }
+    scheduleFirestoreWrite()
   }
 
   function loadLocal() {
@@ -294,11 +317,6 @@ export const useFarmStore = defineStore('farm', () => {
           state.value.scheduleSettings = normalizeScheduleSettings(state.value.scheduleSettings)
           state.value.issues = state.value.issues.map((issue) => normalizeIssue(issue))
           persistLocal()
-          await runTaskScheduler({
-            daysAhead: state.value.scheduleSettings.generationDays,
-            duplicatePolicy: state.value.scheduleSettings.duplicatePolicy,
-            persist: true,
-          })
         } else {
           state.value = createDefaultData()
           await persistAll()
@@ -373,15 +391,21 @@ export const useFarmStore = defineStore('farm', () => {
         ...payload,
       }
     } else {
-      state.value.tasks.push({
-        ...payload,
-        id: payload.id || crypto.randomUUID(),
-        logs: Array.isArray(payload.logs) ? payload.logs : [],
-        status: payload.status || 'todo',
-        progress: Number(payload.progress || 0),
-        autoGenerated: payload.autoGenerated === true,
-        scheduleRuleId: payload.scheduleRuleId || null,
-      })
+      const dupKey = `${payload.title}|${payload.dueDate}|${payload.greenhouseId}`
+      const alreadyExists = state.value.tasks.some(
+        (t) => `${t.title}|${t.dueDate}|${t.greenhouseId}` === dupKey,
+      )
+      if (!alreadyExists) {
+        state.value.tasks.push({
+          ...payload,
+          id: payload.id || crypto.randomUUID(),
+          logs: Array.isArray(payload.logs) ? payload.logs : [],
+          status: payload.status || '예정',
+          progress: Number(payload.progress || 0),
+          autoGenerated: payload.autoGenerated === true,
+          scheduleRuleId: payload.scheduleRuleId || null,
+        })
+      }
     }
 
     await persistAll()
@@ -497,9 +521,9 @@ export const useFarmStore = defineStore('farm', () => {
       title: template.title,
       greenhouseId,
       dueDate: formatISO(dueDate, { representation: 'date' }),
-      frequency: 'yearly',
-      category: 'Yearly routine',
-      status: 'todo',
+      frequency: '매년',
+      category: template.category ?? '연간 정기 작업',
+      status: '예정',
       progress: 0,
       logs: [{ date: new Date().toISOString(), note: template.notes }],
     })
@@ -522,6 +546,19 @@ export const useFarmStore = defineStore('farm', () => {
     }
 
     await persistAll()
+  }
+
+  async function deduplicateTasks() {
+    const seen = new Set()
+    const before = state.value.tasks.length
+    state.value.tasks = state.value.tasks.filter((task) => {
+      const key = `${task.title}|${task.dueDate}|${task.greenhouseId}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    await persistAll()
+    return before - state.value.tasks.length
   }
 
   async function removeScheduleRule(id) {
@@ -588,9 +625,9 @@ export const useFarmStore = defineStore('farm', () => {
           dueDate,
           frequency: normalizedRule.frequency,
           category: normalizedRule.category,
-          status: 'todo',
+          status: '예정',
           progress: 0,
-          logs: [{ date: new Date().toISOString(), note: 'Auto-generated by scheduler rule.' }],
+          logs: [{ date: new Date().toISOString(), note: '스케줄 규칙에 의해 자동 생성.' }],
           autoGenerated: true,
           scheduleRuleId: normalizedRule.id,
         })
@@ -613,8 +650,40 @@ export const useFarmStore = defineStore('farm', () => {
 
     return state.value.tasks.filter((task) => {
       const due = parseISO(task.dueDate)
-      return due >= start && due <= end && task.status !== 'done'
+      return due >= start && due <= end && task.status !== '완료'
     })
+  }
+
+  async function updateAppSettings(payload) {
+    state.value.appSettings = { ...state.value.appSettings, ...payload }
+    await persistAll()
+  }
+
+  async function reorderFacilities(newList) {
+    state.value.facilities = newList
+    await persistAll()
+  }
+
+  async function reorderAncillaries(newList) {
+    state.value.ancillaries = newList
+    await persistAll()
+  }
+
+  async function upsertAncillary(payload) {
+    const index = state.value.ancillaries.findIndex((item) => item.id === payload.id)
+
+    if (index >= 0) {
+      state.value.ancillaries[index] = { ...state.value.ancillaries[index], ...payload }
+    } else {
+      state.value.ancillaries.push({ ...payload, id: payload.id || crypto.randomUUID() })
+    }
+
+    await persistAll()
+  }
+
+  async function removeAncillary(id) {
+    state.value.ancillaries = state.value.ancillaries.filter((item) => item.id !== id)
+    await persistAll()
   }
 
   return {
@@ -630,6 +699,11 @@ export const useFarmStore = defineStore('farm', () => {
     cleanup,
     upsertFacility,
     removeFacility,
+    reorderFacilities,
+    reorderAncillaries,
+    updateAppSettings,
+    upsertAncillary,
+    removeAncillary,
     upsertSeedling,
     removeSeedling,
     upsertTask,
@@ -645,6 +719,7 @@ export const useFarmStore = defineStore('farm', () => {
     markTaskNotified,
     getTaskLastNotified,
     suggestSimilarIssues,
+    deduplicateTasks,
     createTaskFromTemplate,
     listUpcomingDays,
   }

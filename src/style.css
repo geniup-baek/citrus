@@ -180,6 +180,25 @@ h2 {
   padding: 0.7rem;
 }
 
+.stat-card-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.stat-card-link:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.list-item-link {
+  display: contents;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
 .stat-title {
   margin: 0;
   color: var(--muted);
@@ -332,6 +351,311 @@ button.danger {
   color: #8f1f13;
 }
 
+button.pill {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+button.pill:hover {
+  opacity: 0.75;
+}
+
+.pill-todo {
+  background: #eef2ff;
+  color: #3730a3;
+  border-color: #c7d2fe;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  padding: 0.18rem 0.52rem;
+}
+
+.pill-ongoing {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #fed7aa;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  padding: 0.18rem 0.52rem;
+}
+
+.pill-done {
+  background: #f0fdf4;
+  color: #166534;
+  border-color: #bbf7d0;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  padding: 0.18rem 0.52rem;
+}
+
+.task-panel-tabs {
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.75rem;
+}
+
+/* ── 캘린더 ───────────────────────────────────────────── */
+.cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.cal-month-label {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+  margin-bottom: 0.5rem;
+}
+
+.cal-header {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0.3rem 0;
+}
+
+.cal-cell {
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.4rem;
+  cursor: pointer;
+  background: var(--surface);
+  transition: background 0.1s;
+  overflow: hidden;
+}
+
+.cal-cell:hover {
+  background: var(--surface-strong);
+}
+
+.cal-other {
+  opacity: 0.38;
+}
+
+.cal-today .cal-num {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cal-selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.cal-num {
+  font-size: 0.78rem;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.cal-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cal-chip {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  background: #e0e7ff;
+  color: #3730a3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.cal-chip.ongoing {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.cal-chip.done {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.cal-chip.more {
+  background: var(--surface-strong);
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ── 작업 보드 요약 strip ─────────────────────────────── */
+.summary-strip {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.summary-chip {
+  background: var(--surface-strong);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.28rem 0.72rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.summary-chip:hover {
+  background: var(--line);
+}
+
+.summary-chip.chip-danger {
+  background: #fde2dd;
+  border-color: #efb3a9;
+  color: #8f1f13;
+}
+
+.summary-chip.chip-active {
+  background: var(--primary);
+  color: var(--primary-ink);
+  border-color: transparent;
+}
+
+.summary-chip.chip-danger.chip-active {
+  background: var(--danger);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* ── 카테고리 chip 필터 ────────────────────────────────── */
+.category-chip-row {
+  display: flex;
+  gap: 0.3rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.category-chip-row::-webkit-scrollbar {
+  height: 3px;
+}
+
+.category-chip-row::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.category-chip {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.22rem 0.62rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.category-chip.active {
+  background: var(--primary);
+  color: var(--primary-ink);
+  border-color: transparent;
+}
+
+/* ── 기한 초과 작업 카드 ───────────────────────────────── */
+.task-overdue {
+  border-left: 3px solid var(--danger) !important;
+}
+
+/* ── 우선순위 dot ──────────────────────────────────────── */
+.priority-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.priority-dot.high {
+  background: var(--danger);
+}
+
+.priority-dot.normal {
+  background: #c0a060;
+}
+
+.priority-dot.low {
+  background: var(--success);
+}
+
+/* ── 작업 카드 레이아웃 ────────────────────────────────── */
+.task-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ── 계절 작업 그룹 ────────────────────────────────────── */
+/* ── 묘목 정렬·필터 compact 바 ────────────────────────── */
+.sort-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.filter-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.compact-select {
+  padding: 0.28rem 0.45rem;
+  font-size: 0.82rem;
+  border-radius: 0.5rem;
+}
+
+.compact-btn {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.82rem;
+}
+
+.filter-sep {
+  color: var(--line);
+  font-size: 0.9rem;
+  padding: 0 0.1rem;
+}
+
+.season-group {
+  margin-bottom: 1rem;
+}
+
+.season-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.45rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
 .muted {
   margin: 0;
   color: var(--muted);
@@ -388,6 +712,40 @@ button.danger {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.photo-card-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+
+.photo-card-delete {
+  width: 100%;
+  border-radius: 0;
+  font-size: 0.75rem;
+  padding: 0.25rem;
+}
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  cursor: zoom-out;
+}
+
+.lightbox-overlay img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 0.5rem;
 }
 
 @keyframes rise-in {
