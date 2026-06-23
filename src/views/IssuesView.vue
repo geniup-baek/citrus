@@ -233,17 +233,16 @@ issueForm.occurredAt = new Date().toISOString().slice(0, 10)
             <p class="item-meta">{{ greenhouseName(issue.greenhouseId) }} · {{ issue.occurredAt }}</p>
             <p class="muted">{{ issue.symptoms }}</p>
             <div v-if="issue.photos?.length" class="photo-grid compact-grid">
-              <a
+              <figure
                 v-for="photo in issue.photos"
                 :key="photo.id"
                 class="photo-card"
-                :href="photo.dataUrl"
-                target="_blank"
-                rel="noreferrer"
               >
-                <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                <a :href="photo.dataUrl" target="_blank" rel="noreferrer">
+                  <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                </a>
                 <figcaption>{{ photo.name }}</figcaption>
-              </a>
+              </figure>
             </div>
           </div>
           <div class="row-actions">
