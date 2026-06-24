@@ -665,6 +665,86 @@ button.pill:hover {
   margin: 1rem 0 0.55rem;
 }
 
+/* ── 설정 화면 ─────────────────────────────────────────── */
+.settings-subtitle {
+  margin: 0.25rem 0 1rem;
+  font-size: 0.86rem;
+}
+
+.settings-groups {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-group {
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.settings-group-head h3 {
+  margin: 0;
+}
+
+.settings-group-hint {
+  font-size: 0.78rem;
+  margin: 0.3rem 0 0.65rem;
+}
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.settings-item-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.92rem;
+  word-break: break-all;
+}
+
+.settings-item-actions {
+  flex-shrink: 0;
+  gap: 0.25rem;
+}
+
+.icon-btn {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1;
+  min-width: 2rem;
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.settings-add-row {
+  margin-top: 0.75rem;
+}
+
+.settings-add-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-error {
+  margin: 0.4rem 0 0;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
 .lineage-grid {
   margin-top: 0.8rem;
   display: grid;
@@ -767,6 +847,10 @@ button.pill:hover {
 
   .page-grid.two-columns,
   .split-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-groups {
     grid-template-columns: minmax(0, 1fr);
   }
 

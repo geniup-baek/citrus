@@ -18,7 +18,7 @@ export const annualTaskTemplates = [
     id: 'tpl-jan-harvest-close',
     title: '수확 마무리·선별·출하',
     recommendedMonth: 1,
-    category: '수확',
+    category: '저장·출하',
     notes: '한라봉·카라향 최종 수확 완료. 등급별 선별 후 저장·출하 관리.',
   },
   {
@@ -75,14 +75,14 @@ export const annualTaskTemplates = [
     id: 'tpl-apr-bud-mgmt',
     title: '신초·발아 관리',
     recommendedMonth: 4,
-    category: '측정',
+    category: '생육관리',
     notes: '동별 발아율·신초 생장량 기록. 생장 불량 구간 파악 후 원인 분석.',
   },
   {
     id: 'tpl-may-drop-watch',
     title: '생리적 낙과 관찰',
     recommendedMonth: 5,
-    category: '측정',
+    category: '생육관리',
     notes: '1~2차 생리 낙과 시기. 과도 낙과 시 칼슘 엽면 시비 및 관수량 조절 검토.',
   },
   {
@@ -147,7 +147,7 @@ export const annualTaskTemplates = [
     id: 'tpl-sep-coloring',
     title: '착색 관리',
     recommendedMonth: 9,
-    category: '측정',
+    category: '생육관리',
     notes: '과면 착색 진행 상황 동별 기록. 야간 온도 15~18℃ 유지. 관수량 점진적 감소.',
   },
   {
@@ -330,7 +330,7 @@ export const defaultAppSettings = {
   ancillaryTypes: ['창고', '숙소', '사무실', '기타'],
   seedlingVarieties: ['한라봉', '카라향'],
   rootstockTypes: ['탱자', '시트란지', '유자', '당귤', '기타'],
-  taskCategories: ['방제', '시비', '관수', '전정', '수확', '적과', '봉지', '토양', '환경', '시설', '측정', '기타'],
+  taskCategories: ['방제', '시비', '관수', '전정', '적과', '봉지', '수확', '저장·출하', '생육관리', '측정', '환경', '시설', '토양', '기타'],
 }
 
 export const defaultScheduleSettings = {
