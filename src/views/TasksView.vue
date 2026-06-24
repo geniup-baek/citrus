@@ -469,31 +469,29 @@ clearSchedulerForm()
 
       <!-- ▸ 목록 뷰 -->
       <template v-if="viewMode === 'list'">
-        <div class="inline-filters" style="margin-bottom: 0.45rem;">
-          <button :class="{ ghost: filter !== 'annual' }" @click="filter = 'annual'">{{ localeStore.t('tasks.filterAnnual') }}</button>
-          <button :class="{ ghost: filter !== 'month' }" @click="filter = 'month'">{{ localeStore.t('tasks.filterMonth') }}</button>
-          <button :class="{ ghost: filter !== 'week' }" @click="filter = 'week'">{{ localeStore.t('tasks.filterWeek') }}</button>
-          <button :class="{ ghost: filter !== 'today' }" @click="filter = 'today'">{{ localeStore.t('tasks.filterToday') }}</button>
-          <button :class="{ ghost: filter !== 'overdue' }" @click="filter = 'overdue'">{{ localeStore.t('tasks.filterOverdue') }}</button>
-          <button :class="{ ghost: filter !== 'all' }" @click="filter = 'all'">{{ localeStore.t('tasks.filterAll') }}</button>
-        </div>
-
-        <div class="category-chip-row">
-          <button class="category-chip" :class="{ active: categoryFilter === 'all' }" @click="categoryFilter = 'all'">전체</button>
-          <button
-            v-for="cat in taskCategories"
-            :key="cat"
-            class="category-chip"
-            :class="{ active: categoryFilter === cat }"
-            @click="categoryFilter = cat"
-          >{{ cat }}</button>
-        </div>
-
-        <div class="inline-filters" style="margin-bottom: 0.75rem;">
-          <button :class="{ ghost: statusFilter !== 'all' }" @click="statusFilter = 'all'">전체</button>
-          <button :class="{ ghost: statusFilter !== '예정' }" @click="statusFilter = '예정'">{{ localeStore.t('tasks.statusTodo') }}</button>
-          <button :class="{ ghost: statusFilter !== '진행중' }" @click="statusFilter = '진행중'">{{ localeStore.t('tasks.statusInProgress') }}</button>
-          <button :class="{ ghost: statusFilter !== '완료' }" @click="statusFilter = '완료'">{{ localeStore.t('tasks.statusDone') }}</button>
+        <div class="sort-filter-bar">
+          <span class="filter-label">{{ localeStore.t('tasks.filterPeriod') }}</span>
+          <select v-model="filter" class="compact-select">
+            <option value="annual">{{ localeStore.t('tasks.filterAnnual') }}</option>
+            <option value="month">{{ localeStore.t('tasks.filterMonth') }}</option>
+            <option value="week">{{ localeStore.t('tasks.filterWeek') }}</option>
+            <option value="today">{{ localeStore.t('tasks.filterToday') }}</option>
+            <option value="overdue">{{ localeStore.t('tasks.filterOverdue') }}</option>
+            <option value="all">{{ localeStore.t('tasks.filterAll') }}</option>
+          </select>
+          <span class="filter-sep">|</span>
+          <span class="filter-label">{{ localeStore.t('tasks.filterCategory') }}</span>
+          <select v-model="categoryFilter" class="compact-select">
+            <option value="all">{{ localeStore.t('tasks.filterAll') }}</option>
+            <option v-for="cat in taskCategories" :key="cat" :value="cat">{{ cat }}</option>
+          </select>
+          <span class="filter-label">{{ localeStore.t('tasks.filterStatus') }}</span>
+          <select v-model="statusFilter" class="compact-select">
+            <option value="all">{{ localeStore.t('tasks.filterAll') }}</option>
+            <option value="예정">{{ localeStore.t('tasks.statusTodo') }}</option>
+            <option value="진행중">{{ localeStore.t('tasks.statusInProgress') }}</option>
+            <option value="완료">{{ localeStore.t('tasks.statusDone') }}</option>
+          </select>
         </div>
 
         <ul class="list clean">
