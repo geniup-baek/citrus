@@ -19,6 +19,7 @@ import {
 import { useRoute } from 'vue-router'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
+import { compressImageFile } from '../utils/imageProcessing'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -36,6 +37,18 @@ const selectedTaskId = ref('')
 const schedulerEditingId = ref('')
 const templateResult = ref('')
 const deduplicateResult = ref('')
+
+// 작업 로그 사진 첨부
+const logPhotoPreviews = ref([])
+const logCompressionReport = ref('')
+const lightboxPhoto = ref(null)
+
+// 작업 로그 편집
+const editingLogId = ref('')
+const editLogNote = ref('')
+const editLogPhotos = ref([])
+const editLogNewPreviews = ref([])
+const editLogCompressionReport = ref('')
 
 // 캘린더
 const calendarMonth = ref(new Date())
@@ -296,6 +309,9 @@ function openDetail(taskId) {
   logForm.note = ''
   logForm.progress = task?.progress || 0
   logForm.status = task?.status || '진행중'
+  logPhotoPreviews.value = []
+  logCompressionReport.value = ''
+  cancelEditLog()
   rightPanel.value = 'detail'
 }
 
@@ -340,10 +356,139 @@ async function saveTaskDetail() {
 }
 
 // ── 진행 기록 ───────────────────────────────────────────────────────────────
+function logKey(log) {
+  return log.id || log.date
+}
+
+// 파일 → 압축된 미리보기 + 리포트
+async function filesToPreviews(files) {
+  let originalTotal = 0
+  let compressedTotal = 0
+
+  const previews = await Promise.all(
+    files.map(async (file) => {
+      const compressed = await compressImageFile(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.78,
+        outputType: 'image/jpeg',
+      })
+      originalTotal += compressed.originalSize
+      compressedTotal += compressed.compressedSize
+      return {
+        id: crypto.randomUUID(),
+        name: file.name,
+        dataUrl: compressed.dataUrl,
+        contentType: compressed.contentType,
+        size: compressed.compressedSize,
+        width: compressed.width,
+        height: compressed.height,
+        originalSize: compressed.originalSize,
+      }
+    }),
+  )
+
+  const report = previews.length
+    ? localeStore.t('tasks.compressedReport', {
+        count: previews.length,
+        from: Math.round(originalTotal / 1024),
+        to: Math.round(compressedTotal / 1024),
+        ratio: originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100,
+      })
+    : ''
+
+  return { previews, report }
+}
+
+// 미리보기 → 저장용 사진 객체
+function previewToPhoto(photo) {
+  return {
+    id: photo.id,
+    name: photo.name,
+    contentType: photo.contentType,
+    size: photo.size,
+    width: photo.width,
+    height: photo.height,
+    originalSize: photo.originalSize,
+    createdAt: new Date().toISOString(),
+    dataUrl: photo.dataUrl,
+  }
+}
+
+async function handleLogPhotoChange(event) {
+  const files = Array.from(event.target.files || []).slice(0, 5)
+  const { previews, report } = await filesToPreviews(files)
+  logPhotoPreviews.value = previews
+  logCompressionReport.value = report
+}
+
+function removeLogPreviewPhoto(id) {
+  logPhotoPreviews.value = logPhotoPreviews.value.filter((p) => p.id !== id)
+}
+
+function openLightbox(photo) {
+  lightboxPhoto.value = photo
+}
+
+function closeLightbox() {
+  lightboxPhoto.value = null
+}
+
 async function updateProgress() {
   if (!selectedTask.value || !logForm.note) return
-  await store.addTaskLog(selectedTask.value.id, logForm.note, Number(logForm.progress), logForm.status)
+  const photos = logPhotoPreviews.value.map(previewToPhoto)
+  await store.addTaskLog(selectedTask.value.id, logForm.note, Number(logForm.progress), logForm.status, photos)
   logForm.note = ''
+  logPhotoPreviews.value = []
+  logCompressionReport.value = ''
+}
+
+// ── 로그 편집 / 삭제 ─────────────────────────────────────────────────────────
+function startEditLog(log) {
+  editingLogId.value = logKey(log)
+  editLogNote.value = log.note
+  editLogPhotos.value = [...(log.photos || [])]
+  editLogNewPreviews.value = []
+  editLogCompressionReport.value = ''
+}
+
+function cancelEditLog() {
+  editingLogId.value = ''
+  editLogNote.value = ''
+  editLogPhotos.value = []
+  editLogNewPreviews.value = []
+  editLogCompressionReport.value = ''
+}
+
+function removeEditExistingPhoto(id) {
+  editLogPhotos.value = editLogPhotos.value.filter((p) => p.id !== id)
+}
+
+async function handleEditLogPhotoChange(event) {
+  const files = Array.from(event.target.files || []).slice(0, 5)
+  const { previews, report } = await filesToPreviews(files)
+  editLogNewPreviews.value = previews
+  editLogCompressionReport.value = report
+}
+
+function removeEditNewPhoto(id) {
+  editLogNewPreviews.value = editLogNewPreviews.value.filter((p) => p.id !== id)
+}
+
+async function saveEditLog() {
+  if (!selectedTask.value || !editingLogId.value || !editLogNote.value.trim()) return
+  const photos = [...editLogPhotos.value, ...editLogNewPreviews.value.map(previewToPhoto)]
+  await store.updateTaskLog(selectedTask.value.id, editingLogId.value, {
+    note: editLogNote.value,
+    photos,
+  })
+  cancelEditLog()
+}
+
+async function deleteLog(log) {
+  if (!selectedTask.value) return
+  await store.removeTaskLog(selectedTask.value.id, logKey(log))
+  if (editingLogId.value === logKey(log)) cancelEditLog()
 }
 
 // ── 반복 규칙 ────────────────────────────────────────────────────────────────
@@ -431,6 +576,10 @@ clearSchedulerForm()
 </script>
 
 <template>
+  <div v-if="lightboxPhoto" class="lightbox-overlay" @click="closeLightbox">
+    <img :src="lightboxPhoto.dataUrl" :alt="localeStore.t('tasks.logPhoto')" />
+  </div>
+
   <section class="page-grid two-columns">
 
     <!-- ── 왼쪽: 작업 보드 ─────────────────────────────── -->
@@ -781,14 +930,84 @@ clearSchedulerForm()
           <label>{{ localeStore.t('tasks.logNote') }}
             <textarea v-model="logForm.note" required rows="3" />
           </label>
+          <label>{{ localeStore.t('tasks.attachPhotos') }}
+            <input accept="image/*" multiple type="file" @change="handleLogPhotoChange" />
+          </label>
+          <p class="muted" style="font-size: 0.78rem;">{{ localeStore.t('tasks.photoLimit') }}</p>
+          <p v-if="logCompressionReport" class="muted" style="font-size: 0.78rem;">{{ logCompressionReport }}</p>
+          <div v-if="logPhotoPreviews.length" class="photo-grid">
+            <figure v-for="photo in logPhotoPreviews" :key="photo.id" class="photo-card">
+              <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                <img :src="photo.dataUrl" :alt="localeStore.t('tasks.logPhoto')" />
+              </button>
+              <button type="button" class="danger photo-card-delete" @click="removeLogPreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+            </figure>
+          </div>
           <button type="submit">{{ localeStore.t('tasks.addLog') }}</button>
         </form>
 
         <p class="muted" style="font-size: 0.82rem; font-weight: 600; margin-bottom: 0.4rem;">{{ localeStore.t('tasks.logHistory') }}</p>
         <ul class="list clean">
-          <li v-for="log in (selectedTask?.logs || [])" :key="log.date + log.note" class="list-item">
-            <p class="item-meta">{{ formatLogDate(log.date) }}</p>
-            <p style="font-size: 0.9rem;">{{ log.note }}</p>
+          <li v-for="log in (selectedTask?.logs || [])" :key="logKey(log)" class="list-item">
+            <!-- 표시 모드 -->
+            <template v-if="editingLogId !== logKey(log)">
+              <div class="row-actions align-start">
+                <p class="item-meta">{{ formatLogDate(log.date) }}</p>
+                <div class="row-actions">
+                  <button class="ghost" type="button" @click="startEditLog(log)">{{ localeStore.t('common.edit') }}</button>
+                  <button class="danger" type="button" @click="deleteLog(log)">{{ localeStore.t('common.delete') }}</button>
+                </div>
+              </div>
+              <p style="font-size: 0.9rem; white-space: pre-wrap;">{{ log.note }}</p>
+              <div v-if="log.photos?.length" class="photo-grid compact-grid">
+                <figure v-for="photo in log.photos" :key="photo.id" class="photo-card">
+                  <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                    <img :src="photo.dataUrl" :alt="localeStore.t('tasks.logPhoto')" />
+                  </button>
+                  <figcaption>{{ photo.name }}</figcaption>
+                </figure>
+              </div>
+            </template>
+
+            <!-- 편집 모드 -->
+            <template v-else>
+              <p class="item-meta">{{ formatLogDate(log.date) }}</p>
+              <form class="stack-form" @submit.prevent="saveEditLog">
+                <label>{{ localeStore.t('tasks.logNote') }}
+                  <textarea v-model="editLogNote" required rows="3" />
+                </label>
+
+                <template v-if="editLogPhotos.length">
+                  <p class="muted" style="font-size: 0.78rem;">{{ localeStore.t('tasks.existingPhotos') }}</p>
+                  <div class="photo-grid">
+                    <figure v-for="photo in editLogPhotos" :key="photo.id" class="photo-card">
+                      <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                        <img :src="photo.dataUrl" :alt="localeStore.t('tasks.logPhoto')" />
+                      </button>
+                      <button type="button" class="danger photo-card-delete" @click="removeEditExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+                    </figure>
+                  </div>
+                </template>
+
+                <label>{{ localeStore.t('tasks.attachPhotos') }}
+                  <input accept="image/*" multiple type="file" @change="handleEditLogPhotoChange" />
+                </label>
+                <p v-if="editLogCompressionReport" class="muted" style="font-size: 0.78rem;">{{ editLogCompressionReport }}</p>
+                <div v-if="editLogNewPreviews.length" class="photo-grid">
+                  <figure v-for="photo in editLogNewPreviews" :key="photo.id" class="photo-card">
+                    <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                      <img :src="photo.dataUrl" :alt="localeStore.t('tasks.logPhoto')" />
+                    </button>
+                    <button type="button" class="danger photo-card-delete" @click="removeEditNewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+                  </figure>
+                </div>
+
+                <div class="row-actions">
+                  <button type="submit">{{ localeStore.t('common.change') }}</button>
+                  <button class="ghost" type="button" @click="cancelEditLog">{{ localeStore.t('common.cancel') }}</button>
+                </div>
+              </form>
+            </template>
           </li>
           <li v-if="!selectedTask?.logs?.length" class="muted" style="font-size: 0.85rem;">{{ localeStore.t('tasks.noLogs') }}</li>
         </ul>

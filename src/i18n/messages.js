@@ -28,6 +28,7 @@ export const messages = {
     change: '변경',
     close: '닫기',
     exitEdit: '편집종료',
+    cancel: '취소',
   },
   app: {
     syncDisabled: '클라우드 동기화가 비활성화되었습니다. 팀 공유를 위해 Firebase 환경 변수를 설정하세요.',
@@ -197,6 +198,11 @@ export const messages = {
     summaryOverdue: '기한 초과',
     logHistory: '기록 이력',
     noLogs: '기록 없음',
+    attachPhotos: '사진 첨부',
+    photoLimit: '기록당 최대 5장까지 첨부할 수 있습니다.',
+    compressedReport: '{count}개 파일 압축: {from}KB -> {to}KB ({ratio}%)',
+    logPhoto: '작업 사진',
+    existingPhotos: '첨부된 사진',
   },
   issues: {
     editTitle: '문제 편집',

@@ -416,17 +416,53 @@ export const useFarmStore = defineStore('farm', () => {
     await persistAll()
   }
 
-  async function addTaskLog(taskId, note, progress, status) {
+  async function addTaskLog(taskId, note, progress, status, photos = []) {
     const task = state.value.tasks.find((item) => item.id === taskId)
     if (!task) {
       return
     }
 
     task.logs = task.logs || []
-    task.logs.unshift({ date: new Date().toISOString(), note })
+    task.logs.unshift({
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      note,
+      photos: Array.isArray(photos) ? photos : [],
+    })
     task.progress = Math.max(0, Math.min(100, Number(progress)))
     task.status = status
 
+    await persistAll()
+  }
+
+  async function updateTaskLog(taskId, logId, patch) {
+    const task = state.value.tasks.find((item) => item.id === taskId)
+    if (!task || !Array.isArray(task.logs)) {
+      return
+    }
+
+    const log = task.logs.find((item) => (item.id || item.date) === logId)
+    if (!log) {
+      return
+    }
+
+    if (patch.note !== undefined) {
+      log.note = patch.note
+    }
+    if (patch.photos !== undefined) {
+      log.photos = Array.isArray(patch.photos) ? patch.photos : []
+    }
+
+    await persistAll()
+  }
+
+  async function removeTaskLog(taskId, logId) {
+    const task = state.value.tasks.find((item) => item.id === taskId)
+    if (!task || !Array.isArray(task.logs)) {
+      return
+    }
+
+    task.logs = task.logs.filter((item) => (item.id || item.date) !== logId)
     await persistAll()
   }
 
@@ -457,7 +493,32 @@ export const useFarmStore = defineStore('farm', () => {
     }
 
     issue.resolutionSteps = issue.resolutionSteps || []
-    issue.resolutionSteps.push({ date: new Date().toISOString(), note })
+    issue.resolutionSteps.push({ id: crypto.randomUUID(), date: new Date().toISOString(), note })
+    await persistAll()
+  }
+
+  async function updateIssueResolutionStep(issueId, stepId, note) {
+    const issue = state.value.issues.find((item) => item.id === issueId)
+    if (!issue || !Array.isArray(issue.resolutionSteps)) {
+      return
+    }
+
+    const step = issue.resolutionSteps.find((item) => (item.id || item.date) === stepId)
+    if (!step) {
+      return
+    }
+
+    step.note = note
+    await persistAll()
+  }
+
+  async function removeIssueResolutionStep(issueId, stepId) {
+    const issue = state.value.issues.find((item) => item.id === issueId)
+    if (!issue || !Array.isArray(issue.resolutionSteps)) {
+      return
+    }
+
+    issue.resolutionSteps = issue.resolutionSteps.filter((item) => (item.id || item.date) !== stepId)
     await persistAll()
   }
 
@@ -709,8 +770,12 @@ export const useFarmStore = defineStore('farm', () => {
     upsertTask,
     removeTask,
     addTaskLog,
+    updateTaskLog,
+    removeTaskLog,
     upsertIssue,
     addIssueResolutionStep,
+    updateIssueResolutionStep,
+    removeIssueResolutionStep,
     removeIssue,
     upsertScheduleRule,
     removeScheduleRule,

@@ -24,6 +24,10 @@ const compressionReport = ref('')
 const resolutionNote = ref('')
 const recommendationQuery = ref('')
 
+// 해결 로그 편집
+const editingStepId = ref('')
+const editStepNote = ref('')
+
 const editingIssue = computed(() =>
   store.state.issues.find((issue) => issue.id === editingId.value),
 )
@@ -126,6 +130,7 @@ function clearForm() {
   compressionReport.value = ''
   resolutionNote.value = ''
   editingId.value = ''
+  cancelEditStep()
 }
 
 function editIssue(issue) {
@@ -139,6 +144,7 @@ function editIssue(issue) {
   photoPreviews.value = []
   compressionReport.value = ''
   resolutionNote.value = ''
+  cancelEditStep()
 }
 
 function closeForm() {
@@ -180,6 +186,32 @@ async function addStep() {
   if (!editingIssue.value || !resolutionNote.value.trim()) return
   await store.addIssueResolutionStep(editingIssue.value.id, resolutionNote.value)
   resolutionNote.value = ''
+}
+
+function stepKey(step) {
+  return step.id || step.date
+}
+
+function startEditStep(step) {
+  editingStepId.value = stepKey(step)
+  editStepNote.value = step.note
+}
+
+function cancelEditStep() {
+  editingStepId.value = ''
+  editStepNote.value = ''
+}
+
+async function saveEditStep() {
+  if (!editingIssue.value || !editingStepId.value || !editStepNote.value.trim()) return
+  await store.updateIssueResolutionStep(editingIssue.value.id, editingStepId.value, editStepNote.value)
+  cancelEditStep()
+}
+
+async function deleteStep(step) {
+  if (!editingIssue.value) return
+  await store.removeIssueResolutionStep(editingIssue.value.id, stepKey(step))
+  if (editingStepId.value === stepKey(step)) cancelEditStep()
 }
 
 clearForm()
@@ -300,11 +332,29 @@ clearForm()
         <ul class="list clean compact">
           <li
             v-for="step in editingIssue.resolutionSteps"
-            :key="step.date + step.note"
+            :key="stepKey(step)"
             class="list-item"
           >
-            <p class="item-meta">{{ step.date }}</p>
-            <p>{{ step.note }}</p>
+            <template v-if="editingStepId !== stepKey(step)">
+              <div class="row-actions align-start">
+                <p class="item-meta">{{ step.date }}</p>
+                <div class="row-actions">
+                  <button class="ghost" type="button" @click="startEditStep(step)">{{ localeStore.t('common.edit') }}</button>
+                  <button class="danger" type="button" @click="deleteStep(step)">{{ localeStore.t('common.delete') }}</button>
+                </div>
+              </div>
+              <p style="white-space: pre-wrap;">{{ step.note }}</p>
+            </template>
+            <template v-else>
+              <p class="item-meta">{{ step.date }}</p>
+              <form class="stack-form" @submit.prevent="saveEditStep">
+                <textarea v-model="editStepNote" required rows="3" />
+                <div class="row-actions">
+                  <button type="submit">{{ localeStore.t('common.change') }}</button>
+                  <button class="ghost" type="button" @click="cancelEditStep">{{ localeStore.t('common.cancel') }}</button>
+                </div>
+              </form>
+            </template>
           </li>
         </ul>
       </template>
