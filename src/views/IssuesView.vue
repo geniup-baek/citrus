@@ -7,7 +7,7 @@ import { useLocaleStore } from '../stores/localeStore'
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const editingId = ref('')
-const showForm = ref(true)
+const showForm = ref(false)
 const lightboxPhoto = ref(null)
 
 const issueForm = reactive({
@@ -21,12 +21,22 @@ const issueForm = reactive({
 const photoFiles = ref([])
 const photoPreviews = ref([])
 const compressionReport = ref('')
-const resolutionNote = ref('')
 const recommendationQuery = ref('')
+
+// 해결 기록 인라인 패널
+const expandedId = ref('')
+const stepNote = ref('')
+
+// 해결 기록 사진
+const stepPhotoPreviews = ref([])
+const stepCompressionReport = ref('')
 
 // 해결 로그 편집
 const editingStepId = ref('')
 const editStepNote = ref('')
+const editStepPhotos = ref([])
+const editStepNewPreviews = ref([])
+const editStepCompressionReport = ref('')
 
 const editingIssue = computed(() =>
   store.state.issues.find((issue) => issue.id === editingId.value),
@@ -54,6 +64,14 @@ function greenhouseName(greenhouseId) {
 
 function issueStatusLabel(value) {
   return value
+}
+
+const ISSUE_STATUS_ORDER = ['조사중', '대응중', '해결']
+
+async function cycleIssueStatus(issue) {
+  const idx = ISSUE_STATUS_ORDER.indexOf(issue.status)
+  const next = ISSUE_STATUS_ORDER[(idx + 1) % ISSUE_STATUS_ORDER.length]
+  await store.upsertIssue({ ...issue, status: next })
 }
 
 function openLightbox(photo) {
@@ -128,7 +146,6 @@ function clearForm() {
   photoFiles.value = []
   photoPreviews.value = []
   compressionReport.value = ''
-  resolutionNote.value = ''
   editingId.value = ''
   cancelEditStep()
 }
@@ -143,7 +160,6 @@ function editIssue(issue) {
   photoFiles.value = []
   photoPreviews.value = []
   compressionReport.value = ''
-  resolutionNote.value = ''
   cancelEditStep()
 }
 
@@ -182,10 +198,90 @@ async function saveIssue() {
   clearForm()
 }
 
-async function addStep() {
-  if (!editingIssue.value || !resolutionNote.value.trim()) return
-  await store.addIssueResolutionStep(editingIssue.value.id, resolutionNote.value)
-  resolutionNote.value = ''
+// 파일 → 압축된 미리보기 + 리포트
+async function filesToPreviews(files) {
+  let originalTotal = 0
+  let compressedTotal = 0
+
+  const previews = await Promise.all(
+    files.map(async (file) => {
+      const compressed = await compressImageFile(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.78,
+        outputType: 'image/jpeg',
+      })
+      originalTotal += compressed.originalSize
+      compressedTotal += compressed.compressedSize
+      return {
+        id: crypto.randomUUID(),
+        name: file.name,
+        dataUrl: compressed.dataUrl,
+        contentType: compressed.contentType,
+        size: compressed.compressedSize,
+        width: compressed.width,
+        height: compressed.height,
+        originalSize: compressed.originalSize,
+      }
+    }),
+  )
+
+  const report = previews.length
+    ? localeStore.t('issues.compressedReport', {
+        count: previews.length,
+        from: Math.round(originalTotal / 1024),
+        to: Math.round(compressedTotal / 1024),
+        ratio: originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100,
+      })
+    : ''
+
+  return { previews, report }
+}
+
+function previewToPhoto(photo) {
+  return {
+    id: photo.id,
+    name: photo.name,
+    contentType: photo.contentType,
+    size: photo.size,
+    width: photo.width,
+    height: photo.height,
+    originalSize: photo.originalSize,
+    createdAt: new Date().toISOString(),
+    dataUrl: photo.dataUrl,
+  }
+}
+
+function toggleLogPanel(issue) {
+  if (expandedId.value === issue.id) {
+    expandedId.value = ''
+  } else {
+    expandedId.value = issue.id
+    stepNote.value = ''
+    stepPhotoPreviews.value = []
+    stepCompressionReport.value = ''
+    cancelEditStep()
+  }
+}
+
+async function handleStepPhotoChange(event) {
+  const files = Array.from(event.target.files || []).slice(0, 5)
+  const { previews, report } = await filesToPreviews(files)
+  stepPhotoPreviews.value = previews
+  stepCompressionReport.value = report
+}
+
+function removeStepPreviewPhoto(id) {
+  stepPhotoPreviews.value = stepPhotoPreviews.value.filter((p) => p.id !== id)
+}
+
+async function recordStep(issue) {
+  if (!stepNote.value.trim()) return
+  const photos = stepPhotoPreviews.value.map(previewToPhoto)
+  await store.addIssueResolutionStep(issue.id, stepNote.value, photos)
+  stepNote.value = ''
+  stepPhotoPreviews.value = []
+  stepCompressionReport.value = ''
 }
 
 function stepKey(step) {
@@ -195,23 +291,55 @@ function stepKey(step) {
 function startEditStep(step) {
   editingStepId.value = stepKey(step)
   editStepNote.value = step.note
+  editStepPhotos.value = [...(step.photos || [])]
+  editStepNewPreviews.value = []
+  editStepCompressionReport.value = ''
 }
 
 function cancelEditStep() {
   editingStepId.value = ''
   editStepNote.value = ''
+  editStepPhotos.value = []
+  editStepNewPreviews.value = []
+  editStepCompressionReport.value = ''
 }
 
-async function saveEditStep() {
-  if (!editingIssue.value || !editingStepId.value || !editStepNote.value.trim()) return
-  await store.updateIssueResolutionStep(editingIssue.value.id, editingStepId.value, editStepNote.value)
+function removeEditStepExistingPhoto(id) {
+  editStepPhotos.value = editStepPhotos.value.filter((p) => p.id !== id)
+}
+
+async function handleEditStepPhotoChange(event) {
+  const files = Array.from(event.target.files || []).slice(0, 5)
+  const { previews, report } = await filesToPreviews(files)
+  editStepNewPreviews.value = previews
+  editStepCompressionReport.value = report
+}
+
+function removeEditStepNewPhoto(id) {
+  editStepNewPreviews.value = editStepNewPreviews.value.filter((p) => p.id !== id)
+}
+
+async function saveEditStep(issue) {
+  if (!editingStepId.value || !editStepNote.value.trim()) return
+  const photos = [...editStepPhotos.value, ...editStepNewPreviews.value.map(previewToPhoto)]
+  await store.updateIssueResolutionStep(issue.id, editingStepId.value, {
+    note: editStepNote.value,
+    photos,
+  })
   cancelEditStep()
 }
 
-async function deleteStep(step) {
-  if (!editingIssue.value) return
-  await store.removeIssueResolutionStep(editingIssue.value.id, stepKey(step))
+async function deleteStep(issue, step) {
+  await store.removeIssueResolutionStep(issue.id, stepKey(step))
   if (editingStepId.value === stepKey(step)) cancelEditStep()
+}
+
+function formatStepDate(dateStr) {
+  try {
+    return new Date(dateStr).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return dateStr
+  }
 }
 
 clearForm()
@@ -245,11 +373,95 @@ clearForm()
             </div>
           </div>
           <div class="row-actions">
-            <span class="pill" :class="{ danger: issue.status !== '해결' }">{{ issueStatusLabel(issue.status) }}</span>
+            <button class="pill" :class="{ danger: issue.status !== '해결' }" :title="localeStore.t('tasks.statusChange')" @click="cycleIssueStatus(issue)">{{ issueStatusLabel(issue.status) }}</button>
+            <button class="ghost" type="button" @click="toggleLogPanel(issue)">{{ localeStore.t('issues.resolution') }}</button>
             <template v-if="showForm">
               <button class="ghost" @click="editIssue(issue)">{{ localeStore.t('common.edit') }}</button>
               <button class="danger" @click="store.removeIssue(issue.id)">{{ localeStore.t('common.delete') }}</button>
             </template>
+          </div>
+
+          <!-- 해결 기록 인라인 패널 -->
+          <div v-if="expandedId === issue.id" class="log-panel">
+            <form class="log-panel-form" @submit.prevent="recordStep(issue)">
+              <input v-model="stepNote" type="text" :placeholder="localeStore.t('issues.newResolutionStep')" />
+              <label class="step-photo-label">{{ localeStore.t('issues.attachPhotos') }}
+                <input accept="image/*" multiple type="file" @change="handleStepPhotoChange" />
+              </label>
+              <p v-if="stepCompressionReport" class="muted" style="font-size: 0.78rem;">{{ stepCompressionReport }}</p>
+              <div v-if="stepPhotoPreviews.length" class="photo-grid">
+                <figure v-for="photo in stepPhotoPreviews" :key="photo.id" class="photo-card">
+                  <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                    <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                  </button>
+                  <button type="button" class="danger photo-card-delete" @click="removeStepPreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+                </figure>
+              </div>
+              <button type="submit">{{ localeStore.t('issues.addStep') }}</button>
+            </form>
+
+            <p class="muted log-history-label">{{ localeStore.t('issues.steps') }}</p>
+            <ul class="list clean compact">
+              <li v-for="step in issue.resolutionSteps" :key="stepKey(step)" class="list-item">
+                <template v-if="editingStepId !== stepKey(step)">
+                  <div class="log-entry">
+                    <span class="log-entry-info">
+                      <span class="item-meta">{{ formatStepDate(step.date) }}</span>
+                      <span>{{ step.note }}</span>
+                    </span>
+                    <span class="log-entry-actions">
+                      <button class="ghost icon-btn" type="button" :title="localeStore.t('common.edit')" :aria-label="localeStore.t('common.edit')" @click="startEditStep(step)">✎</button>
+                      <button class="danger icon-btn" type="button" :title="localeStore.t('common.delete')" :aria-label="localeStore.t('common.delete')" @click="deleteStep(issue, step)">✕</button>
+                    </span>
+                  </div>
+                  <div v-if="step.photos?.length" class="photo-grid compact-grid">
+                    <figure v-for="photo in step.photos" :key="photo.id" class="photo-card">
+                      <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                        <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                      </button>
+                      <figcaption>{{ photo.name }}</figcaption>
+                    </figure>
+                  </div>
+                </template>
+                <template v-else>
+                  <p class="item-meta">{{ formatStepDate(step.date) }}</p>
+                  <form class="stack-form" @submit.prevent="saveEditStep(issue)">
+                    <textarea v-model="editStepNote" required rows="3" />
+
+                    <template v-if="editStepPhotos.length">
+                      <p class="muted" style="font-size: 0.78rem;">{{ localeStore.t('issues.existingPhotos') }}</p>
+                      <div class="photo-grid">
+                        <figure v-for="photo in editStepPhotos" :key="photo.id" class="photo-card">
+                          <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                            <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                          </button>
+                          <button type="button" class="danger photo-card-delete" @click="removeEditStepExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+                        </figure>
+                      </div>
+                    </template>
+
+                    <label class="step-photo-label">{{ localeStore.t('issues.attachPhotos') }}
+                      <input accept="image/*" multiple type="file" @change="handleEditStepPhotoChange" />
+                    </label>
+                    <p v-if="editStepCompressionReport" class="muted" style="font-size: 0.78rem;">{{ editStepCompressionReport }}</p>
+                    <div v-if="editStepNewPreviews.length" class="photo-grid">
+                      <figure v-for="photo in editStepNewPreviews" :key="photo.id" class="photo-card">
+                        <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                          <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                        </button>
+                        <button type="button" class="danger photo-card-delete" @click="removeEditStepNewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+                      </figure>
+                    </div>
+
+                    <div class="row-actions">
+                      <button type="submit">{{ localeStore.t('common.change') }}</button>
+                      <button class="ghost" type="button" @click="cancelEditStep">{{ localeStore.t('common.cancel') }}</button>
+                    </div>
+                  </form>
+                </template>
+              </li>
+              <li v-if="!issue.resolutionSteps?.length" class="muted">{{ localeStore.t('issues.noSteps') }}</li>
+            </ul>
           </div>
         </li>
       </ul>
@@ -319,45 +531,6 @@ clearForm()
           <button class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.reset') }}</button>
         </div>
       </form>
-
-      <template v-if="editingIssue">
-        <h3 class="section-title">{{ localeStore.t('issues.resolutionLog', { title: editingIssue.title }) }}</h3>
-        <form class="stack-form" @submit.prevent="addStep">
-          <label>
-            {{ localeStore.t('issues.newResolutionStep') }}
-            <textarea v-model="resolutionNote" rows="3" required />
-          </label>
-          <button type="submit">{{ localeStore.t('issues.addStep') }}</button>
-        </form>
-        <ul class="list clean compact">
-          <li
-            v-for="step in editingIssue.resolutionSteps"
-            :key="stepKey(step)"
-            class="list-item"
-          >
-            <template v-if="editingStepId !== stepKey(step)">
-              <div class="row-actions align-start">
-                <p class="item-meta">{{ step.date }}</p>
-                <div class="row-actions">
-                  <button class="ghost" type="button" @click="startEditStep(step)">{{ localeStore.t('common.edit') }}</button>
-                  <button class="danger" type="button" @click="deleteStep(step)">{{ localeStore.t('common.delete') }}</button>
-                </div>
-              </div>
-              <p style="white-space: pre-wrap;">{{ step.note }}</p>
-            </template>
-            <template v-else>
-              <p class="item-meta">{{ step.date }}</p>
-              <form class="stack-form" @submit.prevent="saveEditStep">
-                <textarea v-model="editStepNote" required rows="3" />
-                <div class="row-actions">
-                  <button type="submit">{{ localeStore.t('common.change') }}</button>
-                  <button class="ghost" type="button" @click="cancelEditStep">{{ localeStore.t('common.cancel') }}</button>
-                </div>
-              </form>
-            </template>
-          </li>
-        </ul>
-      </template>
 
       <h3 class="section-title">{{ localeStore.t('issues.findSimilar') }}</h3>
       <label>

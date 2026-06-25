@@ -779,42 +779,55 @@ button.pill:hover {
   font-size: 0.9rem;
 }
 
-/* ── 재고 입출고 패널 ──────────────────────────────────── */
-.inventory-txn-panel {
+/* ── 공용 로그/이력 입력 패널 (작업로그·해결로그·재고 입출고) ── */
+.log-panel {
   margin-top: 0.6rem;
   padding-top: 0.6rem;
   border-top: 1px solid var(--line);
 }
 
-.inventory-txn-form {
+.log-panel-form {
   display: grid;
   gap: 0.5rem;
   margin-bottom: 0.7rem;
 }
 
-.inventory-txn-form input[type='number'] {
+.log-panel-form input[type='number'] {
   max-width: 7rem;
 }
 
-.inventory-txn-form input[type='text'] {
+.log-panel-form input[type='text'] {
   flex: 1;
   min-width: 0;
 }
 
-.inventory-history-label {
+.log-history-label {
   font-size: 0.8rem;
   font-weight: 600;
   margin-bottom: 0.3rem;
 }
 
-.inventory-txn-item {
+.step-photo-label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.inventory-txn-amount {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 공용 로그/이력 행 (작업로그·해결로그·재고 입출고) ──── */
+.log-entry {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
 }
 
-.inventory-txn-info {
+.log-entry-info {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -822,9 +835,10 @@ button.pill:hover {
   min-width: 0;
 }
 
-.inventory-txn-amount {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+.log-entry-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 .lineage-grid {

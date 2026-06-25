@@ -432,7 +432,7 @@ export const useFarmStore = defineStore('farm', () => {
     await persistAll()
   }
 
-  async function addTaskLog(taskId, note, progress, status, photos = []) {
+  async function addTaskLog(taskId, note, photos = []) {
     const task = state.value.tasks.find((item) => item.id === taskId)
     if (!task) {
       return
@@ -445,8 +445,6 @@ export const useFarmStore = defineStore('farm', () => {
       note,
       photos: Array.isArray(photos) ? photos : [],
     })
-    task.progress = Math.max(0, Math.min(100, Number(progress)))
-    task.status = status
 
     await persistAll()
   }
@@ -502,18 +500,23 @@ export const useFarmStore = defineStore('farm', () => {
     await persistAll()
   }
 
-  async function addIssueResolutionStep(issueId, note) {
+  async function addIssueResolutionStep(issueId, note, photos = []) {
     const issue = state.value.issues.find((item) => item.id === issueId)
     if (!issue) {
       return
     }
 
     issue.resolutionSteps = issue.resolutionSteps || []
-    issue.resolutionSteps.push({ id: crypto.randomUUID(), date: new Date().toISOString(), note })
+    issue.resolutionSteps.push({
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      note,
+      photos: Array.isArray(photos) ? photos : [],
+    })
     await persistAll()
   }
 
-  async function updateIssueResolutionStep(issueId, stepId, note) {
+  async function updateIssueResolutionStep(issueId, stepId, patch) {
     const issue = state.value.issues.find((item) => item.id === issueId)
     if (!issue || !Array.isArray(issue.resolutionSteps)) {
       return
@@ -524,7 +527,12 @@ export const useFarmStore = defineStore('farm', () => {
       return
     }
 
-    step.note = note
+    if (patch.note !== undefined) {
+      step.note = patch.note
+    }
+    if (patch.photos !== undefined) {
+      step.photos = Array.isArray(patch.photos) ? patch.photos : []
+    }
     await persistAll()
   }
 
@@ -825,6 +833,29 @@ export const useFarmStore = defineStore('farm', () => {
     await persistAll()
   }
 
+  async function updateInventoryTxn(itemId, txnId, patch) {
+    const item = state.value.inventory.find((entry) => entry.id === itemId)
+    if (!item || !Array.isArray(item.txns)) return
+
+    const txn = item.txns.find((entry) => (entry.id || entry.date) === txnId)
+    if (!txn) return
+
+    const newType = patch.type === '사용' ? '사용' : '입고'
+    const newAmount = Math.abs(Number(patch.amount) || 0)
+    if (newAmount === 0) return
+
+    // 기존 효과 되돌리고 새 효과 적용
+    const oldDelta = txn.type === '사용' ? -Number(txn.amount || 0) : Number(txn.amount || 0)
+    const newDelta = newType === '사용' ? -newAmount : newAmount
+    item.quantity = Math.max(0, Number(item.quantity || 0) - oldDelta + newDelta)
+
+    txn.type = newType
+    txn.amount = newAmount
+    if (patch.note !== undefined) txn.note = patch.note
+
+    await persistAll()
+  }
+
   async function removeInventoryTxn(itemId, txnId) {
     const item = state.value.inventory.find((entry) => entry.id === itemId)
     if (!item || !Array.isArray(item.txns)) return
@@ -932,6 +963,7 @@ export const useFarmStore = defineStore('farm', () => {
     upsertInventoryItem,
     removeInventoryItem,
     addInventoryTxn,
+    updateInventoryTxn,
     removeInventoryTxn,
     upsertSeedling,
     removeSeedling,

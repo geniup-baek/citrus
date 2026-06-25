@@ -34,6 +34,14 @@ const txnForm = reactive({
   note: '',
 })
 
+// 입출고 이력 편집
+const editingTxnId = ref('')
+const editTxnForm = reactive({
+  type: '입고',
+  amount: '',
+  note: '',
+})
+
 // ── 상태 판정 ────────────────────────────────────────────────────────────────
 function isLowStock(item) {
   return item.minQuantity > 0 && item.quantity <= item.minQuantity
@@ -151,6 +159,7 @@ function toggleExpand(item) {
     txnForm.type = '입고'
     txnForm.amount = ''
     txnForm.note = ''
+    cancelEditTxn()
   }
 }
 
@@ -164,10 +173,35 @@ async function recordTxn(item) {
 
 async function deleteTxn(item, txn) {
   await store.removeInventoryTxn(item.id, txn.id || txn.date)
+  if (editingTxnId.value === txnKey(txn)) cancelEditTxn()
 }
 
 function txnKey(txn) {
   return txn.id || txn.date
+}
+
+function startEditTxn(txn) {
+  editingTxnId.value = txnKey(txn)
+  editTxnForm.type = txn.type === '사용' ? '사용' : '입고'
+  editTxnForm.amount = txn.amount
+  editTxnForm.note = txn.note || ''
+}
+
+function cancelEditTxn() {
+  editingTxnId.value = ''
+  editTxnForm.amount = ''
+  editTxnForm.note = ''
+}
+
+async function saveEditTxn(item) {
+  const amount = Number(editTxnForm.amount)
+  if (!amount || amount <= 0) return
+  await store.updateInventoryTxn(item.id, editingTxnId.value, {
+    type: editTxnForm.type,
+    amount,
+    note: editTxnForm.note,
+  })
+  cancelEditTxn()
 }
 
 function formatTxnDate(dateStr) {
@@ -251,8 +285,8 @@ clearForm()
           </div>
 
           <!-- 입출고 패널 -->
-          <div v-if="expandedId === item.id" class="inventory-txn-panel">
-            <form class="inventory-txn-form" @submit.prevent="recordTxn(item)">
+          <div v-if="expandedId === item.id" class="log-panel">
+            <form class="log-panel-form" @submit.prevent="recordTxn(item)">
               <div class="inline-filters">
                 <button type="button" :class="{ ghost: txnForm.type !== '입고' }" @click="txnForm.type = '입고'">{{ localeStore.t('inventory.stockIn') }}</button>
                 <button type="button" :class="{ ghost: txnForm.type !== '사용' }" @click="txnForm.type = '사용'">{{ localeStore.t('inventory.stockOut') }}</button>
@@ -264,16 +298,36 @@ clearForm()
               </div>
             </form>
 
-            <p class="muted inventory-history-label">{{ localeStore.t('inventory.history') }}</p>
+            <p class="muted log-history-label">{{ localeStore.t('inventory.history') }}</p>
             <ul class="list clean compact">
-              <li v-for="txn in item.txns" :key="txnKey(txn)" class="list-item inventory-txn-item">
-                <span class="inventory-txn-info">
-                  <span class="pill" :class="txn.type === '사용' ? 'danger' : ''">{{ txn.type }}</span>
-                  <span class="inventory-txn-amount">{{ txn.type === '사용' ? '−' : '+' }}{{ txn.amount }}</span>
-                  <span class="item-meta">{{ formatTxnDate(txn.date) }}</span>
-                  <span v-if="txn.note" class="muted">{{ txn.note }}</span>
-                </span>
-                <button class="danger icon-btn" type="button" :title="localeStore.t('common.delete')" @click="deleteTxn(item, txn)">✕</button>
+              <li v-for="txn in item.txns" :key="txnKey(txn)" class="list-item">
+                <!-- 표시 모드 -->
+                <div v-if="editingTxnId !== txnKey(txn)" class="log-entry">
+                  <span class="log-entry-info">
+                    <span class="pill" :class="txn.type === '사용' ? 'danger' : ''">{{ txn.type }}</span>
+                    <span class="inventory-txn-amount">{{ txn.type === '사용' ? '−' : '+' }}{{ txn.amount }}</span>
+                    <span class="item-meta">{{ formatTxnDate(txn.date) }}</span>
+                    <span v-if="txn.note" class="muted">{{ txn.note }}</span>
+                  </span>
+                  <span class="log-entry-actions">
+                    <button class="ghost icon-btn" type="button" :title="localeStore.t('common.edit')" :aria-label="localeStore.t('common.edit')" @click="startEditTxn(txn)">✎</button>
+                    <button class="danger icon-btn" type="button" :title="localeStore.t('common.delete')" :aria-label="localeStore.t('common.delete')" @click="deleteTxn(item, txn)">✕</button>
+                  </span>
+                </div>
+
+                <!-- 편집 모드 -->
+                <form v-else class="log-panel-form" @submit.prevent="saveEditTxn(item)">
+                  <div class="inline-filters">
+                    <button type="button" :class="{ ghost: editTxnForm.type !== '입고' }" @click="editTxnForm.type = '입고'">{{ localeStore.t('inventory.stockIn') }}</button>
+                    <button type="button" :class="{ ghost: editTxnForm.type !== '사용' }" @click="editTxnForm.type = '사용'">{{ localeStore.t('inventory.stockOut') }}</button>
+                  </div>
+                  <div class="row-actions">
+                    <input v-model="editTxnForm.amount" type="number" min="0" step="any" :placeholder="localeStore.t('inventory.amount')" />
+                    <input v-model="editTxnForm.note" type="text" :placeholder="localeStore.t('inventory.txnNote')" />
+                    <button type="submit">{{ localeStore.t('common.change') }}</button>
+                    <button class="ghost" type="button" @click="cancelEditTxn">{{ localeStore.t('common.cancel') }}</button>
+                  </div>
+                </form>
               </li>
               <li v-if="!item.txns?.length" class="muted">{{ localeStore.t('inventory.noHistory') }}</li>
             </ul>
