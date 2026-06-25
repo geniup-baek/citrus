@@ -198,6 +198,7 @@ export const messages = {
     summaryOverdue: '기한 초과',
     logHistory: '기록 이력',
     noLogs: '기록 없음',
+    logAttachment: '기록 첨부',
     attachPhotos: '사진 첨부',
     photoLimit: '기록당 최대 5장까지 첨부할 수 있습니다.',
     compressedReport: '{count}개 파일 압축: {from}KB -> {to}KB ({ratio}%)',
