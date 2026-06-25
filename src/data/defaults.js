@@ -359,3 +359,62 @@ export const defaultIssues = [
     photos: [],
   },
 ]
+
+export const defaultInventory = [
+  {
+    id: 'inv-1',
+    name: '복합비료 21-17-17',
+    category: '비료',
+    unit: '포(20kg)',
+    quantity: 12,
+    minQuantity: 5,
+    expiryDate: '',
+    notes: '봄·여름 기비/추비용 균형 비료.',
+    txns: [
+      { id: 'inv-1-t1', date: '2026-03-05T01:00:00.000Z', type: '입고', amount: 20, note: '봄 영농철 대비 입고.' },
+      { id: 'inv-1-t2', date: '2026-04-10T02:00:00.000Z', type: '사용', amount: 8, note: '봄 기비 살포(전 재배동).' },
+    ],
+  },
+  {
+    id: 'inv-2',
+    name: '황산칼리',
+    category: '비료',
+    unit: '포(20kg)',
+    quantity: 3,
+    minQuantity: 4,
+    expiryDate: '',
+    notes: '하계 추비용 칼리 증량. 당도·착색 향상.',
+    txns: [
+      { id: 'inv-2-t1', date: '2026-05-20T01:00:00.000Z', type: '입고', amount: 6, note: '하계 추비 대비 입고.' },
+      { id: 'inv-2-t2', date: '2026-06-15T02:00:00.000Z', type: '사용', amount: 3, note: '8월 추비 사전 분할 사용.' },
+    ],
+  },
+  {
+    id: 'inv-3',
+    name: '아바멕틴 유제',
+    category: '농약',
+    unit: '병(500mL)',
+    quantity: 2,
+    minQuantity: 2,
+    expiryDate: '2027-08-31',
+    notes: '응애·총채벌레 방제용 살충제. 안전사용기준 준수.',
+    txns: [
+      { id: 'inv-3-t1', date: '2026-04-01T01:00:00.000Z', type: '입고', amount: 4, note: '1차 방제 대비 입고.' },
+      { id: 'inv-3-t2', date: '2026-04-15T02:00:00.000Z', type: '사용', amount: 2, note: '1차 방제 살포.' },
+    ],
+  },
+  {
+    id: 'inv-4',
+    name: '만코제브 수화제',
+    category: '농약',
+    unit: '봉(1kg)',
+    quantity: 5,
+    minQuantity: 3,
+    expiryDate: '2026-07-31',
+    notes: '더뎅이병·검은점무늬병 예방 살균제. 유효기간 임박.',
+    txns: [
+      { id: 'inv-4-t1', date: '2026-03-10T01:00:00.000Z', type: '입고', amount: 6, note: '예방 방제용 입고.' },
+      { id: 'inv-4-t2', date: '2026-06-05T02:00:00.000Z', type: '사용', amount: 1, note: '3차 방제 살포.' },
+    ],
+  },
+]

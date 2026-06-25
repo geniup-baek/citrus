@@ -19,6 +19,7 @@ const datasetLabels = {
   tasks: () => localeStore.t('nav.tasks'),
   scheduleRules: () => localeStore.t('settings.backupRules'),
   issues: () => localeStore.t('nav.issues'),
+  inventory: () => localeStore.t('nav.inventory'),
 }
 
 const currentCounts = computed(() => store.backupSummary(store.exportBackup()))

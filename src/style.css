@@ -779,6 +779,54 @@ button.pill:hover {
   font-size: 0.9rem;
 }
 
+/* ── 재고 입출고 패널 ──────────────────────────────────── */
+.inventory-txn-panel {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+
+.inventory-txn-form {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+
+.inventory-txn-form input[type='number'] {
+  max-width: 7rem;
+}
+
+.inventory-txn-form input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.inventory-history-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.inventory-txn-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.inventory-txn-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.inventory-txn-amount {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .lineage-grid {
   margin-top: 0.8rem;
   display: grid;

@@ -26,6 +26,7 @@ import {
   defaultScheduleRules,
   defaultSeedlings,
   defaultTasks,
+  defaultInventory,
 } from '../data/defaults'
 import { db, firebaseEnabled } from '../services/firebase'
 
@@ -41,6 +42,7 @@ function createDefaultData() {
     scheduleRules: [...defaultScheduleRules],
     scheduleSettings: { ...defaultScheduleSettings },
     issues: [...defaultIssues],
+    inventory: [...defaultInventory],
     annualTaskTemplates: [...annualTaskTemplates],
     notifications: {},
     updatedAt: new Date().toISOString(),
@@ -72,6 +74,7 @@ function normalizeData(data) {
         ? { ...defaults.scheduleSettings, ...data.scheduleSettings }
         : defaults.scheduleSettings,
     issues: Array.isArray(data?.issues) ? data.issues : defaults.issues,
+    inventory: Array.isArray(data?.inventory) ? data.inventory : defaults.inventory,
     annualTaskTemplates: [...annualTaskTemplates],
     notifications:
       data?.notifications && typeof data.notifications === 'object'
@@ -86,6 +89,17 @@ function normalizeIssue(issue) {
     ...issue,
     resolutionSteps: Array.isArray(issue?.resolutionSteps) ? issue.resolutionSteps : [],
     photos: Array.isArray(issue?.photos) ? issue.photos : [],
+  }
+}
+
+function normalizeInventoryItem(item) {
+  return {
+    ...item,
+    category: item?.category === '농약' ? '농약' : '비료',
+    quantity: Number(item?.quantity || 0),
+    minQuantity: Math.max(0, Number(item?.minQuantity || 0)),
+    expiryDate: item?.expiryDate || '',
+    txns: Array.isArray(item?.txns) ? item.txns : [],
   }
 }
 
@@ -316,6 +330,7 @@ export const useFarmStore = defineStore('farm', () => {
           state.value.scheduleRules = state.value.scheduleRules.map((rule) => normalizeRule(rule))
           state.value.scheduleSettings = normalizeScheduleSettings(state.value.scheduleSettings)
           state.value.issues = state.value.issues.map((issue) => normalizeIssue(issue))
+          state.value.inventory = state.value.inventory.map((item) => normalizeInventoryItem(item))
           persistLocal()
         } else {
           state.value = createDefaultData()
@@ -327,6 +342,7 @@ export const useFarmStore = defineStore('farm', () => {
       state.value.scheduleRules = state.value.scheduleRules.map((rule) => normalizeRule(rule))
       state.value.scheduleSettings = normalizeScheduleSettings(state.value.scheduleSettings)
       state.value.issues = state.value.issues.map((issue) => normalizeIssue(issue))
+      state.value.inventory = state.value.inventory.map((item) => normalizeInventoryItem(item))
       await runTaskScheduler({
         daysAhead: state.value.scheduleSettings.generationDays,
         duplicatePolicy: state.value.scheduleSettings.duplicatePolicy,
@@ -747,11 +763,88 @@ export const useFarmStore = defineStore('farm', () => {
     await persistAll()
   }
 
+  // ── 비료·농약 재고 ────────────────────────────────────────────────────────────
+  async function upsertInventoryItem(payload) {
+    const index = state.value.inventory.findIndex((item) => item.id === payload.id)
+
+    if (index >= 0) {
+      // 메타데이터만 갱신 (수량/이력은 입출고로만 변경)
+      const { quantity, txns, ...meta } = payload
+      state.value.inventory[index] = normalizeInventoryItem({
+        ...state.value.inventory[index],
+        ...meta,
+      })
+    } else {
+      const initialQty = Math.max(0, Number(payload.quantity || 0))
+      const txns = []
+      if (initialQty > 0) {
+        txns.push({
+          id: crypto.randomUUID(),
+          date: new Date().toISOString(),
+          type: '입고',
+          amount: initialQty,
+          note: '초기 재고 등록',
+        })
+      }
+      state.value.inventory.push(
+        normalizeInventoryItem({
+          ...payload,
+          id: payload.id || crypto.randomUUID(),
+          quantity: initialQty,
+          txns,
+        }),
+      )
+    }
+
+    await persistAll()
+  }
+
+  async function removeInventoryItem(id) {
+    state.value.inventory = state.value.inventory.filter((item) => item.id !== id)
+    await persistAll()
+  }
+
+  async function addInventoryTxn(itemId, type, amount, note) {
+    const item = state.value.inventory.find((entry) => entry.id === itemId)
+    if (!item) return
+
+    const qty = Math.abs(Number(amount) || 0)
+    if (qty === 0) return
+
+    const delta = type === '사용' ? -qty : qty
+    item.txns = item.txns || []
+    item.txns.unshift({
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      type: type === '사용' ? '사용' : '입고',
+      amount: qty,
+      note: note || '',
+    })
+    item.quantity = Math.max(0, Number(item.quantity || 0) + delta)
+
+    await persistAll()
+  }
+
+  async function removeInventoryTxn(itemId, txnId) {
+    const item = state.value.inventory.find((entry) => entry.id === itemId)
+    if (!item || !Array.isArray(item.txns)) return
+
+    const txn = item.txns.find((entry) => (entry.id || entry.date) === txnId)
+    if (!txn) return
+
+    // 효과 되돌리기
+    const delta = txn.type === '사용' ? Number(txn.amount || 0) : -Number(txn.amount || 0)
+    item.quantity = Math.max(0, Number(item.quantity || 0) + delta)
+    item.txns = item.txns.filter((entry) => (entry.id || entry.date) !== txnId)
+
+    await persistAll()
+  }
+
   // ── 백업 / 복원 ──────────────────────────────────────────────────────────────
   // 사용자가 변경할 수 있는 모든 데이터를 백업한다.
   // (annualTaskTemplates = 앱 고정 템플릿, notifications = 시스템 추적값이므로 제외)
   const BACKUP_TYPE = 'citrus-farm-backup'
-  const BACKUP_ARRAY_KEYS = ['facilities', 'ancillaries', 'seedlings', 'tasks', 'scheduleRules', 'issues']
+  const BACKUP_ARRAY_KEYS = ['facilities', 'ancillaries', 'seedlings', 'tasks', 'scheduleRules', 'issues', 'inventory']
   const BACKUP_OBJECT_KEYS = ['appSettings', 'scheduleSettings']
   const BACKUP_KEYS = [...BACKUP_ARRAY_KEYS, ...BACKUP_OBJECT_KEYS]
 
@@ -811,6 +904,7 @@ export const useFarmStore = defineStore('farm', () => {
     normalized.scheduleRules = normalized.scheduleRules.map((rule) => normalizeRule(rule))
     normalized.scheduleSettings = normalizeScheduleSettings(normalized.scheduleSettings)
     normalized.issues = normalized.issues.map((issue) => normalizeIssue(issue))
+    normalized.inventory = normalized.inventory.map((item) => normalizeInventoryItem(item))
     state.value = normalized
 
     await persistAll()
@@ -835,6 +929,10 @@ export const useFarmStore = defineStore('farm', () => {
     updateAppSettings,
     upsertAncillary,
     removeAncillary,
+    upsertInventoryItem,
+    removeInventoryItem,
+    addInventoryTxn,
+    removeInventoryTxn,
     upsertSeedling,
     removeSeedling,
     upsertTask,

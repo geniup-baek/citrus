@@ -5,6 +5,7 @@ import AncillaryView from '../views/AncillaryView.vue'
 import SeedlingsView from '../views/SeedlingsView.vue'
 import TasksView from '../views/TasksView.vue'
 import IssuesView from '../views/IssuesView.vue'
+import InventoryView from '../views/InventoryView.vue'
 import KnowledgeView from '../views/KnowledgeView.vue'
 import SettingsView from '../views/SettingsView.vue'
 
@@ -17,6 +18,7 @@ const router = createRouter({
     { path: '/seedlings', name: 'seedlings', component: SeedlingsView },
     { path: '/tasks', name: 'tasks', component: TasksView },
     { path: '/issues', name: 'issues', component: IssuesView },
+    { path: '/inventory', name: 'inventory', component: InventoryView },
     { path: '/knowledge', name: 'knowledge', component: KnowledgeView },
     { path: '/settings', name: 'settings', component: SettingsView },
   ],
