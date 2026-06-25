@@ -73,6 +73,7 @@ async function confirmRestore() {
 
 const inputs = ref({
   ancillaryTypes: '',
+  equipmentTypes: '',
   seedlingVarieties: '',
   rootstockTypes: '',
   taskCategories: '',
@@ -80,6 +81,7 @@ const inputs = ref({
 
 const errors = ref({
   ancillaryTypes: '',
+  equipmentTypes: '',
   seedlingVarieties: '',
   rootstockTypes: '',
   taskCategories: '',
@@ -87,6 +89,7 @@ const errors = ref({
 
 const groups = [
   { key: 'ancillaryTypes',    label: () => localeStore.t('settings.ancillaryTypes'),    hint: () => localeStore.t('settings.ancillaryHint') },
+  { key: 'equipmentTypes',    label: () => localeStore.t('settings.equipmentTypes'),    hint: () => localeStore.t('settings.equipmentHint') },
   { key: 'seedlingVarieties', label: () => localeStore.t('settings.seedlingVarieties'), hint: () => localeStore.t('settings.seedlingHint') },
   { key: 'rootstockTypes',    label: () => localeStore.t('settings.rootstockTypes'),    hint: () => localeStore.t('settings.rootstockHint') },
   { key: 'taskCategories',    label: () => localeStore.t('settings.taskCategories'),    hint: () => localeStore.t('settings.taskCategoryHint') },

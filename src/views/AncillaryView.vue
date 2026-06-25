@@ -1,22 +1,34 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
+import { compressImageFile } from '../utils/imageProcessing'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const editingId = ref('')
 const showForm = ref(false)
 
-const typeOptions = computed(() => store.state.appSettings?.ancillaryTypes ?? ['창고', '숙소', '사무실', '기타'])
+const facilityTypeOptions = computed(() => store.state.appSettings?.ancillaryTypes ?? ['창고', '숙소', '사무실', '기타'])
+const equipmentTypeOptions = computed(() => store.state.appSettings?.equipmentTypes ?? ['방제기', '트랙터', '기타'])
+// 구분에 따라 유형 옵션을 전환
+const typeOptions = computed(() => (form.category === '장비' ? equipmentTypeOptions.value : facilityTypeOptions.value))
 
 const form = reactive({
   id: '',
   name: '',
+  category: '시설',
   type: '',
   area: 0,
+  quantity: 0,
   notes: '',
 })
+
+// 사진
+const formPhotos = ref([])
+const photoPreviews = ref([])
+const compressionReport = ref('')
+const lightboxPhoto = ref(null)
 
 function moved(arr, i, dir) {
   const j = i + dir
@@ -32,12 +44,104 @@ function moveAncillary(i, dir) {
   store.reorderAncillaries(moved(store.state.ancillaries, i, dir))
 }
 
+// 구분 변경 시 현재 유형이 새 옵션에 없으면 첫 항목으로 재설정
+watch(
+  () => form.category,
+  () => {
+    if (!typeOptions.value.includes(form.type)) {
+      form.type = typeOptions.value[0] ?? ''
+    }
+  },
+)
+
+// ── 사진 헬퍼 ────────────────────────────────────────────────────────────────
+async function filesToPreviews(files) {
+  let originalTotal = 0
+  let compressedTotal = 0
+
+  const previews = await Promise.all(
+    files.map(async (file) => {
+      const compressed = await compressImageFile(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.78,
+        outputType: 'image/jpeg',
+      })
+      originalTotal += compressed.originalSize
+      compressedTotal += compressed.compressedSize
+      return {
+        id: crypto.randomUUID(),
+        name: file.name,
+        dataUrl: compressed.dataUrl,
+        contentType: compressed.contentType,
+        size: compressed.compressedSize,
+        width: compressed.width,
+        height: compressed.height,
+        originalSize: compressed.originalSize,
+      }
+    }),
+  )
+
+  const report = previews.length
+    ? localeStore.t('ancillary.compressedReport', {
+        count: previews.length,
+        from: Math.round(originalTotal / 1024),
+        to: Math.round(compressedTotal / 1024),
+        ratio: originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100,
+      })
+    : ''
+
+  return { previews, report }
+}
+
+function previewToPhoto(photo) {
+  return {
+    id: photo.id,
+    name: photo.name,
+    contentType: photo.contentType,
+    size: photo.size,
+    width: photo.width,
+    height: photo.height,
+    originalSize: photo.originalSize,
+    createdAt: new Date().toISOString(),
+    dataUrl: photo.dataUrl,
+  }
+}
+
+async function handlePhotoChange(event) {
+  const files = Array.from(event.target.files || []).slice(0, 5)
+  const { previews, report } = await filesToPreviews(files)
+  photoPreviews.value = previews
+  compressionReport.value = report
+}
+
+function removePreviewPhoto(id) {
+  photoPreviews.value = photoPreviews.value.filter((p) => p.id !== id)
+}
+
+function removeExistingPhoto(id) {
+  formPhotos.value = formPhotos.value.filter((p) => p.id !== id)
+}
+
+function openLightbox(photo) {
+  lightboxPhoto.value = photo
+}
+
+function closeLightbox() {
+  lightboxPhoto.value = null
+}
+
 function clearForm() {
   form.id = ''
   form.name = ''
+  form.category = '시설'
   form.type = typeOptions.value[0] ?? ''
   form.area = 0
+  form.quantity = 0
   form.notes = ''
+  formPhotos.value = []
+  photoPreviews.value = []
+  compressionReport.value = ''
   editingId.value = ''
 }
 
@@ -49,9 +153,14 @@ function openAdd() {
 function editAncillary(item) {
   form.id = item.id
   form.name = item.name
+  form.category = item.category === '장비' ? '장비' : '시설'
   form.type = item.type
-  form.area = item.area
+  form.area = item.area || 0
+  form.quantity = item.quantity || 0
   form.notes = item.notes
+  formPhotos.value = [...(item.photos || [])]
+  photoPreviews.value = []
+  compressionReport.value = ''
   editingId.value = item.id
   showForm.value = true
 }
@@ -65,15 +174,22 @@ async function saveAncillary() {
   await store.upsertAncillary({
     id: form.id,
     name: form.name,
+    category: form.category,
     type: form.type,
-    area: Number(form.area),
+    area: form.category === '시설' ? Number(form.area) : 0,
+    quantity: form.category === '장비' ? Number(form.quantity) : 0,
     notes: form.notes,
+    photos: [...formPhotos.value, ...photoPreviews.value.map(previewToPhoto)],
   })
   clearForm()
 }
 </script>
 
 <template>
+  <div v-if="lightboxPhoto" class="lightbox-overlay" @click="closeLightbox">
+    <img :src="lightboxPhoto.dataUrl" :alt="localeStore.t('ancillary.itemPhoto')" />
+  </div>
+
   <section :class="['page-grid', showForm ? 'two-columns' : '']">
     <article class="card">
       <div class="row-actions align-start">
@@ -84,9 +200,24 @@ async function saveAncillary() {
       <ul class="list clean">
         <li v-for="(item, i) in store.state.ancillaries" :key="item.id" class="list-item card-like">
           <div>
-            <p class="item-title">{{ item.name }}</p>
-            <p class="item-meta">{{ item.type }} · {{ item.area }} m²</p>
+            <div class="task-card-top">
+              <p class="item-title">{{ item.name }}</p>
+              <span class="pill">{{ item.category === '장비' ? localeStore.t('ancillary.categoryEquipment') : localeStore.t('ancillary.categoryFacility') }}</span>
+            </div>
+            <p class="item-meta">
+              {{ item.type }}
+              <template v-if="item.category === '장비'"> · {{ localeStore.t('ancillary.quantity') }} {{ item.quantity || 0 }}</template>
+              <template v-else> · {{ item.area }} m²</template>
+            </p>
             <p class="muted">{{ item.notes }}</p>
+            <div v-if="item.photos?.length" class="photo-grid compact-grid">
+              <figure v-for="photo in item.photos" :key="photo.id" class="photo-card">
+                <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                  <img :src="photo.dataUrl" :alt="localeStore.t('ancillary.itemPhoto')" />
+                </button>
+                <figcaption>{{ photo.name }}</figcaption>
+              </figure>
+            </div>
           </div>
           <div v-if="showForm" class="row-actions">
             <button class="ghost" :disabled="i === 0" @click="moveAncillary(i, -1)">{{ localeStore.t('common.moveUp') }}</button>
@@ -102,6 +233,13 @@ async function saveAncillary() {
       <h2>{{ editingId ? localeStore.t('ancillary.editTitle') : localeStore.t('ancillary.addTitle') }}</h2>
       <form class="stack-form" @submit.prevent="saveAncillary">
         <label>
+          {{ localeStore.t('ancillary.category') }}
+          <select v-model="form.category">
+            <option value="시설">{{ localeStore.t('ancillary.categoryFacility') }}</option>
+            <option value="장비">{{ localeStore.t('ancillary.categoryEquipment') }}</option>
+          </select>
+        </label>
+        <label>
           {{ localeStore.t('ancillary.name') }}
           <input v-model="form.name" required type="text" :placeholder="localeStore.t('ancillary.name')" />
         </label>
@@ -111,14 +249,46 @@ async function saveAncillary() {
             <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
           </select>
         </label>
-        <label>
+        <label v-if="form.category === '시설'">
           {{ localeStore.t('ancillary.area') }}
           <input v-model="form.area" required min="0" type="number" />
+        </label>
+        <label v-else>
+          {{ localeStore.t('ancillary.quantity') }}
+          <input v-model="form.quantity" required min="0" type="number" />
         </label>
         <label>
           {{ localeStore.t('ancillary.notes') }}
           <textarea v-model="form.notes" rows="3" :placeholder="localeStore.t('ancillary.notesPlaceholder')" />
         </label>
+
+        <template v-if="formPhotos.length">
+          <p class="muted">{{ localeStore.t('ancillary.existingPhotos') }}</p>
+          <div class="photo-grid">
+            <figure v-for="photo in formPhotos" :key="photo.id" class="photo-card">
+              <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                <img :src="photo.dataUrl" :alt="localeStore.t('ancillary.itemPhoto')" />
+              </button>
+              <button type="button" class="danger photo-card-delete" @click="removeExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+            </figure>
+          </div>
+        </template>
+
+        <label>
+          {{ localeStore.t('ancillary.attachPhotos') }}
+          <input accept="image/*" multiple type="file" @change="handlePhotoChange" />
+        </label>
+        <p class="muted">{{ localeStore.t('ancillary.photoLimit') }}</p>
+        <p v-if="compressionReport" class="muted">{{ compressionReport }}</p>
+        <div v-if="photoPreviews.length" class="photo-grid">
+          <figure v-for="photo in photoPreviews" :key="photo.id" class="photo-card">
+            <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+              <img :src="photo.dataUrl" :alt="localeStore.t('ancillary.itemPhoto')" />
+            </button>
+            <button type="button" class="danger photo-card-delete" @click="removePreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+          </figure>
+        </div>
+
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
           <button class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.reset') }}</button>

@@ -1,12 +1,28 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
+import { format } from 'date-fns'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
+import { compressImageFile } from '../utils/imageProcessing'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const editingId = ref('')
 const showForm = ref(false)
+
+// ── 성장 기록 인라인 패널 ────────────────────────────────────────────────────
+const expandedId = ref('')
+const logNote = ref('')
+const logPhotoPreviews = ref([])
+const logCompressionReport = ref('')
+const lightboxPhoto = ref(null)
+
+// 성장 기록 편집
+const editingLogId = ref('')
+const editLogNote = ref('')
+const editLogPhotos = ref([])
+const editLogNewPreviews = ref([])
+const editLogCompressionReport = ref('')
 
 const varieties = computed(() => store.state.appSettings?.seedlingVarieties ?? ['한라봉', '카라향'])
 
@@ -106,10 +122,166 @@ async function saveSeedling() {
   clearForm()
 }
 
+// ── 성장 기록 ────────────────────────────────────────────────────────────────
+function logKey(log) {
+  return log.id || log.date
+}
+
+function formatLogDate(dateStr) {
+  try {
+    return format(new Date(dateStr), 'MM/dd HH:mm')
+  } catch {
+    return dateStr
+  }
+}
+
+async function filesToPreviews(files) {
+  let originalTotal = 0
+  let compressedTotal = 0
+
+  const previews = await Promise.all(
+    files.map(async (file) => {
+      const compressed = await compressImageFile(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.78,
+        outputType: 'image/jpeg',
+      })
+      originalTotal += compressed.originalSize
+      compressedTotal += compressed.compressedSize
+      return {
+        id: crypto.randomUUID(),
+        name: file.name,
+        dataUrl: compressed.dataUrl,
+        contentType: compressed.contentType,
+        size: compressed.compressedSize,
+        width: compressed.width,
+        height: compressed.height,
+        originalSize: compressed.originalSize,
+      }
+    }),
+  )
+
+  const report = previews.length
+    ? localeStore.t('seedlings.compressedReport', {
+        count: previews.length,
+        from: Math.round(originalTotal / 1024),
+        to: Math.round(compressedTotal / 1024),
+        ratio: originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100,
+      })
+    : ''
+
+  return { previews, report }
+}
+
+function previewToPhoto(photo) {
+  return {
+    id: photo.id,
+    name: photo.name,
+    contentType: photo.contentType,
+    size: photo.size,
+    width: photo.width,
+    height: photo.height,
+    originalSize: photo.originalSize,
+    createdAt: new Date().toISOString(),
+    dataUrl: photo.dataUrl,
+  }
+}
+
+function openLightbox(photo) {
+  lightboxPhoto.value = photo
+}
+
+function closeLightbox() {
+  lightboxPhoto.value = null
+}
+
+function toggleLogPanel(seedling) {
+  if (expandedId.value === seedling.id) {
+    expandedId.value = ''
+    return
+  }
+  expandedId.value = seedling.id
+  logNote.value = ''
+  logPhotoPreviews.value = []
+  logCompressionReport.value = ''
+  cancelEditLog()
+}
+
+async function handleLogPhotoChange(event) {
+  const files = Array.from(event.target.files || []).slice(0, 5)
+  const { previews, report } = await filesToPreviews(files)
+  logPhotoPreviews.value = previews
+  logCompressionReport.value = report
+}
+
+function removeLogPreviewPhoto(id) {
+  logPhotoPreviews.value = logPhotoPreviews.value.filter((p) => p.id !== id)
+}
+
+async function recordLog(seedling) {
+  if (!logNote.value.trim()) return
+  const photos = logPhotoPreviews.value.map(previewToPhoto)
+  await store.addSeedlingLog(seedling.id, logNote.value, photos)
+  logNote.value = ''
+  logPhotoPreviews.value = []
+  logCompressionReport.value = ''
+}
+
+function startEditLog(log) {
+  editingLogId.value = logKey(log)
+  editLogNote.value = log.note
+  editLogPhotos.value = [...(log.photos || [])]
+  editLogNewPreviews.value = []
+  editLogCompressionReport.value = ''
+}
+
+function cancelEditLog() {
+  editingLogId.value = ''
+  editLogNote.value = ''
+  editLogPhotos.value = []
+  editLogNewPreviews.value = []
+  editLogCompressionReport.value = ''
+}
+
+function removeEditExistingPhoto(id) {
+  editLogPhotos.value = editLogPhotos.value.filter((p) => p.id !== id)
+}
+
+async function handleEditLogPhotoChange(event) {
+  const files = Array.from(event.target.files || []).slice(0, 5)
+  const { previews, report } = await filesToPreviews(files)
+  editLogNewPreviews.value = previews
+  editLogCompressionReport.value = report
+}
+
+function removeEditNewPhoto(id) {
+  editLogNewPreviews.value = editLogNewPreviews.value.filter((p) => p.id !== id)
+}
+
+async function saveEditLog(seedling) {
+  if (!editingLogId.value || !editLogNote.value.trim()) return
+  const photos = [...editLogPhotos.value, ...editLogNewPreviews.value.map(previewToPhoto)]
+  await store.updateSeedlingLog(seedling.id, editingLogId.value, {
+    note: editLogNote.value,
+    photos,
+  })
+  cancelEditLog()
+}
+
+async function deleteLog(seedling, log) {
+  await store.removeSeedlingLog(seedling.id, logKey(log))
+  if (editingLogId.value === logKey(log)) cancelEditLog()
+}
+
 clearForm()
 </script>
 
 <template>
+  <div v-if="lightboxPhoto" class="lightbox-overlay" @click="closeLightbox">
+    <img :src="lightboxPhoto.dataUrl" :alt="localeStore.t('seedlings.growthPhoto')" />
+  </div>
+
   <section :class="['page-grid', showForm ? 'two-columns' : '']">
     <article class="card">
       <div class="row-actions align-start">
@@ -154,9 +326,100 @@ clearForm()
             <p class="muted">{{ localeStore.t('seedlings.rootstockLabel') }}: {{ seedling.rootstock || localeStore.t('seedlings.na') }}</p>
             <p class="muted">{{ seedling.notes }}</p>
           </div>
-          <div v-if="showForm" class="row-actions">
-            <button class="ghost" @click="editSeedling(seedling)">{{ localeStore.t('common.edit') }}</button>
-            <button class="danger" @click="store.removeSeedling(seedling.id)">{{ localeStore.t('common.delete') }}</button>
+          <div class="row-actions">
+            <button class="ghost" type="button" @click="toggleLogPanel(seedling)">{{ localeStore.t('seedlings.growthLog') }}</button>
+            <template v-if="showForm">
+              <button class="ghost" @click="editSeedling(seedling)">{{ localeStore.t('common.edit') }}</button>
+              <button class="danger" @click="store.removeSeedling(seedling.id)">{{ localeStore.t('common.delete') }}</button>
+            </template>
+          </div>
+
+          <!-- 성장 기록 인라인 패널 -->
+          <div v-if="expandedId === seedling.id" class="log-panel">
+            <form class="stack-form" style="margin-bottom: 1rem;" @submit.prevent="recordLog(seedling)">
+              <label>{{ localeStore.t('seedlings.growthNote') }}
+                <textarea v-model="logNote" required rows="3" />
+              </label>
+              <label class="step-photo-label">{{ localeStore.t('seedlings.attachPhotos') }}
+                <input accept="image/*" multiple type="file" @change="handleLogPhotoChange" />
+              </label>
+              <p class="muted" style="font-size: 0.78rem;">{{ localeStore.t('seedlings.photoLimit') }}</p>
+              <p v-if="logCompressionReport" class="muted" style="font-size: 0.78rem;">{{ logCompressionReport }}</p>
+              <div v-if="logPhotoPreviews.length" class="photo-grid">
+                <figure v-for="photo in logPhotoPreviews" :key="photo.id" class="photo-card">
+                  <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                    <img :src="photo.dataUrl" :alt="localeStore.t('seedlings.growthPhoto')" />
+                  </button>
+                  <button type="button" class="danger photo-card-delete" @click="removeLogPreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+                </figure>
+              </div>
+              <button type="submit">{{ localeStore.t('seedlings.addGrowthLog') }}</button>
+            </form>
+
+            <p class="muted log-history-label">{{ localeStore.t('seedlings.growthHistory') }}</p>
+            <ul class="list clean">
+              <li v-for="log in (seedling.growthLogs || [])" :key="logKey(log)" class="list-item">
+                <!-- 표시 모드 -->
+                <template v-if="editingLogId !== logKey(log)">
+                  <div class="log-entry">
+                    <span class="log-entry-info">
+                      <span class="item-meta">{{ formatLogDate(log.date) }}</span>
+                    </span>
+                    <span class="log-entry-actions">
+                      <button class="ghost icon-btn" type="button" :title="localeStore.t('common.edit')" :aria-label="localeStore.t('common.edit')" @click="startEditLog(log)">✎</button>
+                      <button class="danger icon-btn" type="button" :title="localeStore.t('common.delete')" :aria-label="localeStore.t('common.delete')" @click="deleteLog(seedling, log)">✕</button>
+                    </span>
+                  </div>
+                  <p style="font-size: 0.9rem; white-space: pre-wrap;">{{ log.note }}</p>
+                  <div v-if="log.photos?.length" class="photo-grid compact-grid">
+                    <figure v-for="photo in log.photos" :key="photo.id" class="photo-card">
+                      <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                        <img :src="photo.dataUrl" :alt="localeStore.t('seedlings.growthPhoto')" />
+                      </button>
+                      <figcaption>{{ photo.name }}</figcaption>
+                    </figure>
+                  </div>
+                </template>
+
+                <!-- 편집 모드 -->
+                <template v-else>
+                  <p class="item-meta">{{ formatLogDate(log.date) }}</p>
+                  <form class="stack-form" @submit.prevent="saveEditLog(seedling)">
+                    <label>{{ localeStore.t('seedlings.growthNote') }}
+                      <textarea v-model="editLogNote" required rows="3" />
+                    </label>
+                    <template v-if="editLogPhotos.length">
+                      <p class="muted" style="font-size: 0.78rem;">{{ localeStore.t('seedlings.existingPhotos') }}</p>
+                      <div class="photo-grid">
+                        <figure v-for="photo in editLogPhotos" :key="photo.id" class="photo-card">
+                          <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                            <img :src="photo.dataUrl" :alt="localeStore.t('seedlings.growthPhoto')" />
+                          </button>
+                          <button type="button" class="danger photo-card-delete" @click="removeEditExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+                        </figure>
+                      </div>
+                    </template>
+                    <label class="step-photo-label">{{ localeStore.t('seedlings.attachPhotos') }}
+                      <input accept="image/*" multiple type="file" @change="handleEditLogPhotoChange" />
+                    </label>
+                    <p v-if="editLogCompressionReport" class="muted" style="font-size: 0.78rem;">{{ editLogCompressionReport }}</p>
+                    <div v-if="editLogNewPreviews.length" class="photo-grid">
+                      <figure v-for="photo in editLogNewPreviews" :key="photo.id" class="photo-card">
+                        <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
+                          <img :src="photo.dataUrl" :alt="localeStore.t('seedlings.growthPhoto')" />
+                        </button>
+                        <button type="button" class="danger photo-card-delete" @click="removeEditNewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
+                      </figure>
+                    </div>
+                    <div class="row-actions">
+                      <button type="submit">{{ localeStore.t('common.change') }}</button>
+                      <button class="ghost" type="button" @click="cancelEditLog">{{ localeStore.t('common.cancel') }}</button>
+                    </div>
+                  </form>
+                </template>
+              </li>
+              <li v-if="!seedling.growthLogs?.length" class="muted" style="font-size: 0.85rem;">{{ localeStore.t('seedlings.noGrowthLogs') }}</li>
+            </ul>
           </div>
         </li>
         <li v-if="!displayedSeedlings.length" class="muted">{{ localeStore.t('common.noData') }}</li>

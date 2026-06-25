@@ -62,6 +62,8 @@ function normalizeData(data) {
       merged.taskCategories = [...new Set([...defaults.appSettings.taskCategories, ...storedCats])]
       const storedRootstocks = Array.isArray(stored.rootstockTypes) ? stored.rootstockTypes : []
       merged.rootstockTypes = [...new Set([...defaults.appSettings.rootstockTypes, ...storedRootstocks])]
+      const storedEquipment = Array.isArray(stored.equipmentTypes) ? stored.equipmentTypes : []
+      merged.equipmentTypes = [...new Set([...defaults.appSettings.equipmentTypes, ...storedEquipment])]
       return merged
     })(),
     seedlings: Array.isArray(data?.seedlings) ? data.seedlings : defaults.seedlings,
@@ -387,7 +389,11 @@ export const useFarmStore = defineStore('farm', () => {
     if (index >= 0) {
       state.value.seedlings[index] = { ...state.value.seedlings[index], ...payload }
     } else {
-      state.value.seedlings.push({ ...payload, id: payload.id || crypto.randomUUID() })
+      state.value.seedlings.push({
+        ...payload,
+        id: payload.id || crypto.randomUUID(),
+        growthLogs: Array.isArray(payload.growthLogs) ? payload.growthLogs : [],
+      })
     }
 
     await persistAll()
@@ -395,6 +401,54 @@ export const useFarmStore = defineStore('farm', () => {
 
   async function removeSeedling(id) {
     state.value.seedlings = state.value.seedlings.filter((item) => item.id !== id)
+    await persistAll()
+  }
+
+  async function addSeedlingLog(seedlingId, note, photos = []) {
+    const seedling = state.value.seedlings.find((item) => item.id === seedlingId)
+    if (!seedling) {
+      return
+    }
+
+    seedling.growthLogs = seedling.growthLogs || []
+    seedling.growthLogs.unshift({
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      note,
+      photos: Array.isArray(photos) ? photos : [],
+    })
+
+    await persistAll()
+  }
+
+  async function updateSeedlingLog(seedlingId, logId, patch) {
+    const seedling = state.value.seedlings.find((item) => item.id === seedlingId)
+    if (!seedling || !Array.isArray(seedling.growthLogs)) {
+      return
+    }
+
+    const log = seedling.growthLogs.find((item) => (item.id || item.date) === logId)
+    if (!log) {
+      return
+    }
+
+    if (patch.note !== undefined) {
+      log.note = patch.note
+    }
+    if (patch.photos !== undefined) {
+      log.photos = Array.isArray(patch.photos) ? patch.photos : []
+    }
+
+    await persistAll()
+  }
+
+  async function removeSeedlingLog(seedlingId, logId) {
+    const seedling = state.value.seedlings.find((item) => item.id === seedlingId)
+    if (!seedling || !Array.isArray(seedling.growthLogs)) {
+      return
+    }
+
+    seedling.growthLogs = seedling.growthLogs.filter((item) => (item.id || item.date) !== logId)
     await persistAll()
   }
 
@@ -967,6 +1021,9 @@ export const useFarmStore = defineStore('farm', () => {
     removeInventoryTxn,
     upsertSeedling,
     removeSeedling,
+    addSeedlingLog,
+    updateSeedlingLog,
+    removeSeedlingLog,
     upsertTask,
     removeTask,
     addTaskLog,

@@ -328,6 +328,7 @@ export const defaultAncillaries = [
 
 export const defaultAppSettings = {
   ancillaryTypes: ['창고', '숙소', '사무실', '기타'],
+  equipmentTypes: ['방제기', '트랙터', '관리기', '양수기', '선별기', '예초기', '기타'],
   seedlingVarieties: ['한라봉', '카라향'],
   rootstockTypes: ['탱자', '시트란지', '유자', '당귤', '기타'],
   taskCategories: ['방제', '시비', '관수', '전정', '적과', '봉지', '수확', '저장·출하', '생육관리', '측정', '환경', '시설', '토양', '기타'],
