@@ -1,10 +1,74 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
+
+// ── 백업 / 복원 ──────────────────────────────────────────────────────────────
+const backupMessage = ref('')
+const restoreError = ref('')
+const pendingRestore = ref(null) // { payload, summary }
+const restoreInput = ref(null)
+
+const datasetLabels = {
+  facilities: () => localeStore.t('nav.facilities'),
+  ancillaries: () => localeStore.t('nav.ancillary'),
+  seedlings: () => localeStore.t('nav.seedlings'),
+  tasks: () => localeStore.t('nav.tasks'),
+  scheduleRules: () => localeStore.t('settings.backupRules'),
+  issues: () => localeStore.t('nav.issues'),
+}
+
+const currentCounts = computed(() => store.backupSummary(store.exportBackup()))
+
+function exportBackup() {
+  const payload = store.exportBackup()
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `citrus-backup-${payload.exportedAt.slice(0, 10)}.json`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+  restoreError.value = ''
+  backupMessage.value = localeStore.t('settings.backupExported', { date: payload.exportedAt.slice(0, 10) })
+}
+
+async function handleRestoreFile(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+
+  backupMessage.value = ''
+  restoreError.value = ''
+  pendingRestore.value = null
+
+  try {
+    const payload = JSON.parse(await file.text())
+    if (!store.isValidBackup(payload)) {
+      restoreError.value = localeStore.t('settings.restoreInvalid')
+      return
+    }
+    pendingRestore.value = { payload, summary: store.backupSummary(payload) }
+  } catch {
+    restoreError.value = localeStore.t('settings.restoreInvalid')
+  }
+}
+
+function cancelRestore() {
+  pendingRestore.value = null
+}
+
+async function confirmRestore() {
+  if (!pendingRestore.value) return
+  await store.restoreBackup(pendingRestore.value.payload)
+  pendingRestore.value = null
+  backupMessage.value = localeStore.t('settings.restoreDone')
+}
 
 const inputs = ref({
   ancillaryTypes: '',
@@ -128,6 +192,44 @@ function onInput(key) {
             <button type="button" :disabled="!inputs[group.key].trim()" @click="addOption(group.key)">{{ localeStore.t('settings.add') }}</button>
           </div>
           <p v-if="errors[group.key]" class="settings-error">{{ errors[group.key] }}</p>
+        </div>
+      </div>
+
+      <div class="sub-card settings-backup">
+        <div class="settings-group-head">
+          <h3>{{ localeStore.t('settings.backupTitle') }}</h3>
+        </div>
+        <p class="muted settings-group-hint">{{ localeStore.t('settings.backupDesc') }}</p>
+
+        <div class="backup-counts">
+          <span v-for="(labelFn, key) in datasetLabels" :key="key" class="pill">
+            {{ localeStore.t('settings.backupCount', { label: labelFn(), count: currentCounts[key] }) }}
+          </span>
+          <span v-if="currentCounts.settings" class="pill">{{ localeStore.t('settings.backupSettingsIncluded') }}</span>
+        </div>
+
+        <div class="row-actions settings-backup-actions">
+          <button type="button" @click="exportBackup">{{ localeStore.t('settings.backupExport') }}</button>
+          <button class="ghost" type="button" @click="restoreInput?.click()">{{ localeStore.t('settings.backupImport') }}</button>
+          <input ref="restoreInput" accept="application/json,.json" type="file" hidden @change="handleRestoreFile" />
+        </div>
+
+        <p v-if="backupMessage" class="muted settings-backup-msg">{{ backupMessage }}</p>
+        <p v-if="restoreError" class="settings-error">{{ restoreError }}</p>
+
+        <div v-if="pendingRestore" class="restore-preview">
+          <p class="restore-preview-title">{{ localeStore.t('settings.restorePreviewTitle') }}</p>
+          <div class="backup-counts">
+            <span v-for="(labelFn, key) in datasetLabels" :key="key" class="pill">
+              {{ localeStore.t('settings.backupCount', { label: labelFn(), count: pendingRestore.summary[key] }) }}
+            </span>
+            <span v-if="pendingRestore.summary.settings" class="pill">{{ localeStore.t('settings.backupSettingsIncluded') }}</span>
+          </div>
+          <p class="settings-error">{{ localeStore.t('settings.restoreWarning') }}</p>
+          <div class="row-actions">
+            <button class="danger" type="button" @click="confirmRestore">{{ localeStore.t('settings.restoreRun') }}</button>
+            <button class="ghost" type="button" @click="cancelRestore">{{ localeStore.t('common.cancel') }}</button>
+          </div>
         </div>
       </div>
     </div>

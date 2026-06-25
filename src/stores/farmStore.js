@@ -747,6 +747,76 @@ export const useFarmStore = defineStore('farm', () => {
     await persistAll()
   }
 
+  // ── 백업 / 복원 ──────────────────────────────────────────────────────────────
+  // 사용자가 변경할 수 있는 모든 데이터를 백업한다.
+  // (annualTaskTemplates = 앱 고정 템플릿, notifications = 시스템 추적값이므로 제외)
+  const BACKUP_TYPE = 'citrus-farm-backup'
+  const BACKUP_ARRAY_KEYS = ['facilities', 'ancillaries', 'seedlings', 'tasks', 'scheduleRules', 'issues']
+  const BACKUP_OBJECT_KEYS = ['appSettings', 'scheduleSettings']
+  const BACKUP_KEYS = [...BACKUP_ARRAY_KEYS, ...BACKUP_OBJECT_KEYS]
+
+  function exportBackup() {
+    const data = {}
+    BACKUP_ARRAY_KEYS.forEach((key) => {
+      data[key] = Array.isArray(state.value[key]) ? state.value[key] : []
+    })
+    BACKUP_OBJECT_KEYS.forEach((key) => {
+      data[key] = state.value[key] && typeof state.value[key] === 'object' ? state.value[key] : {}
+    })
+
+    return {
+      type: BACKUP_TYPE,
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      data,
+    }
+  }
+
+  function isValidBackup(payload) {
+    return (
+      payload &&
+      payload.type === BACKUP_TYPE &&
+      payload.data &&
+      typeof payload.data === 'object' &&
+      BACKUP_KEYS.some((key) => payload.data[key] !== undefined)
+    )
+  }
+
+  function backupSummary(payload) {
+    const summary = {}
+    BACKUP_ARRAY_KEYS.forEach((key) => {
+      summary[key] = Array.isArray(payload?.data?.[key]) ? payload.data[key].length : 0
+    })
+    summary.settings = BACKUP_OBJECT_KEYS.some(
+      (key) => payload?.data?.[key] && typeof payload.data[key] === 'object',
+    )
+    return summary
+  }
+
+  async function restoreBackup(payload) {
+    if (!isValidBackup(payload)) {
+      throw new Error('invalid-backup')
+    }
+
+    // 백업에 포함된 키만 현재 상태 위에 덮어쓴 뒤 정규화한다.
+    // (백업에 없는 키는 현재 값 유지 → 구버전 백업도 안전하게 복원)
+    const merged = { ...state.value }
+    BACKUP_KEYS.forEach((key) => {
+      if (payload.data[key] !== undefined) {
+        merged[key] = payload.data[key]
+      }
+    })
+
+    const normalized = normalizeData(merged)
+    normalized.scheduleRules = normalized.scheduleRules.map((rule) => normalizeRule(rule))
+    normalized.scheduleSettings = normalizeScheduleSettings(normalized.scheduleSettings)
+    normalized.issues = normalized.issues.map((issue) => normalizeIssue(issue))
+    state.value = normalized
+
+    await persistAll()
+    return backupSummary(payload)
+  }
+
   return {
     firebaseEnabled,
     initialized,
@@ -787,5 +857,9 @@ export const useFarmStore = defineStore('farm', () => {
     deduplicateTasks,
     createTaskFromTemplate,
     listUpcomingDays,
+    exportBackup,
+    isValidBackup,
+    backupSummary,
+    restoreBackup,
   }
 })

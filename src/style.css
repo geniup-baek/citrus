@@ -745,6 +745,40 @@ button.pill:hover {
   font-size: 0.8rem;
 }
 
+.settings-backup {
+  margin-top: 1rem;
+}
+
+.backup-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.settings-backup-actions {
+  align-items: center;
+}
+
+.settings-backup-msg {
+  margin-top: 0.6rem;
+  font-size: 0.84rem;
+}
+
+.restore-preview {
+  margin-top: 0.85rem;
+  padding: 0.8rem;
+  border: 1px solid var(--danger);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
+}
+
+.restore-preview-title {
+  margin: 0 0 0.55rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
 .lineage-grid {
   margin-top: 0.8rem;
   display: grid;
