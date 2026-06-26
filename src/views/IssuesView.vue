@@ -2,6 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { compressImageFile } from '../utils/imageProcessing'
+import { finalizePreviewPhotos } from '../utils/photoStorage'
 import { useLocaleStore } from '../stores/localeStore'
 
 const store = useFarmStore()
@@ -169,17 +170,14 @@ function closeForm() {
 }
 
 async function saveIssue() {
-  const newPhotos = photoPreviews.value.map((photo) => ({
-    id: photo.id,
-    name: photo.name,
-    contentType: photo.contentType,
-    size: photo.size,
-    width: photo.width,
-    height: photo.height,
-    originalSize: photo.originalSize,
-    createdAt: new Date().toISOString(),
-    dataUrl: photo.dataUrl,
-  }))
+  let newPhotos
+  try {
+    newPhotos = await finalizePreviewPhotos(photoPreviews.value, 'issues')
+  } catch (e) {
+    console.error('[IssuesView] 사진 업로드 실패', e)
+    alert(localeStore.t('common.photoUploadFailed'))
+    return
+  }
 
   const existingPhotos = editingIssue.value?.photos || []
   const existingSteps = editingIssue.value?.resolutionSteps || []
@@ -238,20 +236,6 @@ async function filesToPreviews(files) {
   return { previews, report }
 }
 
-function previewToPhoto(photo) {
-  return {
-    id: photo.id,
-    name: photo.name,
-    contentType: photo.contentType,
-    size: photo.size,
-    width: photo.width,
-    height: photo.height,
-    originalSize: photo.originalSize,
-    createdAt: new Date().toISOString(),
-    dataUrl: photo.dataUrl,
-  }
-}
-
 function toggleLogPanel(issue) {
   if (expandedId.value === issue.id) {
     expandedId.value = ''
@@ -277,7 +261,14 @@ function removeStepPreviewPhoto(id) {
 
 async function recordStep(issue) {
   if (!stepNote.value.trim()) return
-  const photos = stepPhotoPreviews.value.map(previewToPhoto)
+  let photos
+  try {
+    photos = await finalizePreviewPhotos(stepPhotoPreviews.value, 'issues')
+  } catch (e) {
+    console.error('[IssuesView] 사진 업로드 실패', e)
+    alert(localeStore.t('common.photoUploadFailed'))
+    return
+  }
   await store.addIssueResolutionStep(issue.id, stepNote.value, photos)
   stepNote.value = ''
   stepPhotoPreviews.value = []
@@ -321,7 +312,15 @@ function removeEditStepNewPhoto(id) {
 
 async function saveEditStep(issue) {
   if (!editingStepId.value || !editStepNote.value.trim()) return
-  const photos = [...editStepPhotos.value, ...editStepNewPreviews.value.map(previewToPhoto)]
+  let uploaded
+  try {
+    uploaded = await finalizePreviewPhotos(editStepNewPreviews.value, 'issues')
+  } catch (e) {
+    console.error('[IssuesView] 사진 업로드 실패', e)
+    alert(localeStore.t('common.photoUploadFailed'))
+    return
+  }
+  const photos = [...editStepPhotos.value, ...uploaded]
   await store.updateIssueResolutionStep(issue.id, editingStepId.value, {
     note: editStepNote.value,
     photos,

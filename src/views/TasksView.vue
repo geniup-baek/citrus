@@ -20,6 +20,7 @@ import { useRoute } from 'vue-router'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
+import { finalizePreviewPhotos } from '../utils/photoStorage'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -425,21 +426,6 @@ async function filesToPreviews(files) {
   return { previews, report }
 }
 
-// 미리보기 → 저장용 사진 객체
-function previewToPhoto(photo) {
-  return {
-    id: photo.id,
-    name: photo.name,
-    contentType: photo.contentType,
-    size: photo.size,
-    width: photo.width,
-    height: photo.height,
-    originalSize: photo.originalSize,
-    createdAt: new Date().toISOString(),
-    dataUrl: photo.dataUrl,
-  }
-}
-
 async function handleLogPhotoChange(event) {
   const files = Array.from(event.target.files || []).slice(0, 5)
   const { previews, report } = await filesToPreviews(files)
@@ -461,7 +447,14 @@ function closeLightbox() {
 
 async function updateProgress() {
   if (!expandedTask.value || !logForm.note) return
-  const photos = logPhotoPreviews.value.map(previewToPhoto)
+  let photos
+  try {
+    photos = await finalizePreviewPhotos(logPhotoPreviews.value, 'tasks')
+  } catch (e) {
+    console.error('[TasksView] 사진 업로드 실패', e)
+    alert(localeStore.t('common.photoUploadFailed'))
+    return
+  }
   await store.addTaskLog(expandedTask.value.id, logForm.note, photos)
   logForm.note = ''
   logPhotoPreviews.value = []
@@ -502,7 +495,15 @@ function removeEditNewPhoto(id) {
 
 async function saveEditLog() {
   if (!expandedTask.value || !editingLogId.value || !editLogNote.value.trim()) return
-  const photos = [...editLogPhotos.value, ...editLogNewPreviews.value.map(previewToPhoto)]
+  let uploaded
+  try {
+    uploaded = await finalizePreviewPhotos(editLogNewPreviews.value, 'tasks')
+  } catch (e) {
+    console.error('[TasksView] 사진 업로드 실패', e)
+    alert(localeStore.t('common.photoUploadFailed'))
+    return
+  }
+  const photos = [...editLogPhotos.value, ...uploaded]
   await store.updateTaskLog(expandedTask.value.id, editingLogId.value, {
     note: editLogNote.value,
     photos,

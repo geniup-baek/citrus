@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
+import { finalizePreviewPhotos } from '../utils/photoStorage'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -92,20 +93,6 @@ async function filesToPreviews(files) {
   return { previews, report }
 }
 
-function previewToPhoto(photo) {
-  return {
-    id: photo.id,
-    name: photo.name,
-    contentType: photo.contentType,
-    size: photo.size,
-    width: photo.width,
-    height: photo.height,
-    originalSize: photo.originalSize,
-    createdAt: new Date().toISOString(),
-    dataUrl: photo.dataUrl,
-  }
-}
-
 async function handlePhotoChange(event) {
   const files = Array.from(event.target.files || []).slice(0, 5)
   const { previews, report } = await filesToPreviews(files)
@@ -165,13 +152,21 @@ function closeForm() {
 }
 
 async function saveAncillary() {
+  let uploaded
+  try {
+    uploaded = await finalizePreviewPhotos(photoPreviews.value, 'ancillary')
+  } catch (e) {
+    console.error('[AncillaryView] 사진 업로드 실패', e)
+    alert(localeStore.t('common.photoUploadFailed'))
+    return
+  }
   await store.upsertAncillary({
     id: form.id,
     name: form.name,
     category: form.category,
     type: form.type,
     notes: form.notes,
-    photos: [...formPhotos.value, ...photoPreviews.value.map(previewToPhoto)],
+    photos: [...formPhotos.value, ...uploaded],
   })
   clearForm()
 }

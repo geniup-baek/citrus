@@ -1,0 +1,10 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 감귤 공동 작업 앱의 팀 공유 사진 저장소.
+    // Firestore와 동일한 신뢰 모델(인증 없는 팀 공유)을 따른다.
+    match /photos/{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

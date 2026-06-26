@@ -17,6 +17,7 @@ export const messages = {
   common: {
     unknown: '미지정',
     reset: '초기화',
+    photoUploadFailed: '사진 업로드에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.',
     edit: '편집',
     delete: '삭제',
     noData: '데이터 없음',
