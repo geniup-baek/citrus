@@ -3,7 +3,6 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
-import { finalizePreviewPhotos } from '../utils/photoStorage'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -154,7 +153,7 @@ function closeForm() {
 async function saveAncillary() {
   let uploaded
   try {
-    uploaded = await finalizePreviewPhotos(photoPreviews.value, 'ancillary')
+    uploaded = await store.savePhotos(photoPreviews.value)
   } catch (e) {
     console.error('[AncillaryView] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
@@ -174,7 +173,7 @@ async function saveAncillary() {
 
 <template>
   <div v-if="lightboxPhoto" class="lightbox-overlay" @click="closeLightbox">
-    <img :src="lightboxPhoto.dataUrl" :alt="localeStore.t('ancillary.itemPhoto')" />
+    <img :src="store.photoSrc(lightboxPhoto)" :alt="localeStore.t('ancillary.itemPhoto')" />
   </div>
 
   <section :class="['page-grid', showForm ? 'two-columns' : '']">
@@ -196,7 +195,7 @@ async function saveAncillary() {
             <div v-if="item.photos?.length" class="photo-grid compact-grid">
               <figure v-for="photo in item.photos" :key="photo.id" class="photo-card">
                 <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                  <img :src="photo.dataUrl" :alt="localeStore.t('ancillary.itemPhoto')" />
+                  <img :src="store.photoSrc(photo)" :alt="localeStore.t('ancillary.itemPhoto')" />
                 </button>
                 <figcaption>{{ photo.name }}</figcaption>
               </figure>
@@ -242,7 +241,7 @@ async function saveAncillary() {
           <div class="photo-grid">
             <figure v-for="photo in formPhotos" :key="photo.id" class="photo-card">
               <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                <img :src="photo.dataUrl" :alt="localeStore.t('ancillary.itemPhoto')" />
+                <img :src="store.photoSrc(photo)" :alt="localeStore.t('ancillary.itemPhoto')" />
               </button>
               <button type="button" class="danger photo-card-delete" @click="removeExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
             </figure>
@@ -258,7 +257,7 @@ async function saveAncillary() {
         <div v-if="photoPreviews.length" class="photo-grid">
           <figure v-for="photo in photoPreviews" :key="photo.id" class="photo-card">
             <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-              <img :src="photo.dataUrl" :alt="localeStore.t('ancillary.itemPhoto')" />
+              <img :src="store.photoSrc(photo)" :alt="localeStore.t('ancillary.itemPhoto')" />
             </button>
             <button type="button" class="danger photo-card-delete" @click="removePreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
           </figure>

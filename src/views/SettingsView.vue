@@ -24,8 +24,8 @@ const datasetLabels = {
 
 const currentCounts = computed(() => store.backupSummary(store.exportBackup()))
 
-function exportBackup() {
-  const payload = store.exportBackup()
+async function exportBackup() {
+  const payload = await store.exportBackupWithPhotos()
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -227,6 +227,7 @@ function onInput(key) {
             <span v-for="(labelFn, key) in datasetLabels" :key="key" class="pill">
               {{ localeStore.t('settings.backupCount', { label: labelFn(), count: pendingRestore.summary[key] }) }}
             </span>
+            <span v-if="pendingRestore.summary.photos" class="pill">{{ localeStore.t('settings.backupPhotos', { count: pendingRestore.summary.photos }) }}</span>
             <span v-if="pendingRestore.summary.settings" class="pill">{{ localeStore.t('settings.backupSettingsIncluded') }}</span>
           </div>
           <p class="settings-error">{{ localeStore.t('settings.restoreWarning') }}</p>

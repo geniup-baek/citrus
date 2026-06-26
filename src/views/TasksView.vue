@@ -20,7 +20,6 @@ import { useRoute } from 'vue-router'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
-import { finalizePreviewPhotos } from '../utils/photoStorage'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -449,7 +448,7 @@ async function updateProgress() {
   if (!expandedTask.value || !logForm.note) return
   let photos
   try {
-    photos = await finalizePreviewPhotos(logPhotoPreviews.value, 'tasks')
+    photos = await store.savePhotos(logPhotoPreviews.value)
   } catch (e) {
     console.error('[TasksView] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
@@ -497,7 +496,7 @@ async function saveEditLog() {
   if (!expandedTask.value || !editingLogId.value || !editLogNote.value.trim()) return
   let uploaded
   try {
-    uploaded = await finalizePreviewPhotos(editLogNewPreviews.value, 'tasks')
+    uploaded = await store.savePhotos(editLogNewPreviews.value)
   } catch (e) {
     console.error('[TasksView] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
@@ -599,7 +598,7 @@ clearSchedulerForm()
 
 <template>
   <div v-if="lightboxPhoto" class="lightbox-overlay" @click="closeLightbox">
-    <img :src="lightboxPhoto.dataUrl" :alt="localeStore.t('tasks.logAttachment')" />
+    <img :src="store.photoSrc(lightboxPhoto)" :alt="localeStore.t('tasks.logAttachment')" />
   </div>
 
   <section :class="['page-grid', showForm ? 'two-columns' : '']">
@@ -707,7 +706,7 @@ clearSchedulerForm()
                 <div v-if="logPhotoPreviews.length" class="photo-grid">
                   <figure v-for="photo in logPhotoPreviews" :key="photo.id" class="photo-card">
                     <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                      <img :src="photo.dataUrl" :alt="localeStore.t('tasks.logAttachment')" />
+                      <img :src="store.photoSrc(photo)" :alt="localeStore.t('tasks.logAttachment')" />
                     </button>
                     <button type="button" class="danger photo-card-delete" @click="removeLogPreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                   </figure>
@@ -733,7 +732,7 @@ clearSchedulerForm()
                     <div v-if="log.photos?.length" class="photo-grid compact-grid">
                       <figure v-for="photo in log.photos" :key="photo.id" class="photo-card">
                         <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                          <img :src="photo.dataUrl" :alt="localeStore.t('tasks.logAttachment')" />
+                          <img :src="store.photoSrc(photo)" :alt="localeStore.t('tasks.logAttachment')" />
                         </button>
                         <figcaption>{{ photo.name }}</figcaption>
                       </figure>
@@ -752,7 +751,7 @@ clearSchedulerForm()
                         <div class="photo-grid">
                           <figure v-for="photo in editLogPhotos" :key="photo.id" class="photo-card">
                             <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                              <img :src="photo.dataUrl" :alt="localeStore.t('tasks.logAttachment')" />
+                              <img :src="store.photoSrc(photo)" :alt="localeStore.t('tasks.logAttachment')" />
                             </button>
                             <button type="button" class="danger photo-card-delete" @click="removeEditExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                           </figure>
@@ -765,7 +764,7 @@ clearSchedulerForm()
                       <div v-if="editLogNewPreviews.length" class="photo-grid">
                         <figure v-for="photo in editLogNewPreviews" :key="photo.id" class="photo-card">
                           <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                            <img :src="photo.dataUrl" :alt="localeStore.t('tasks.logAttachment')" />
+                            <img :src="store.photoSrc(photo)" :alt="localeStore.t('tasks.logAttachment')" />
                           </button>
                           <button type="button" class="danger photo-card-delete" @click="removeEditNewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                         </figure>

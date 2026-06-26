@@ -4,7 +4,6 @@ import { format } from 'date-fns'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
-import { finalizePreviewPhotos } from '../utils/photoStorage'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -296,7 +295,7 @@ async function recordLog(seedling) {
   if (!logNote.value.trim()) return
   let photos
   try {
-    photos = await finalizePreviewPhotos(logPhotoPreviews.value, 'seedlings')
+    photos = await store.savePhotos(logPhotoPreviews.value)
   } catch (e) {
     console.error('[SeedlingsView] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
@@ -343,7 +342,7 @@ async function saveEditLog(seedling) {
   if (!editingLogId.value || !editLogNote.value.trim()) return
   let uploaded
   try {
-    uploaded = await finalizePreviewPhotos(editLogNewPreviews.value, 'seedlings')
+    uploaded = await store.savePhotos(editLogNewPreviews.value)
   } catch (e) {
     console.error('[SeedlingsView] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
@@ -367,7 +366,7 @@ clearForm()
 
 <template>
   <div v-if="lightboxPhoto" class="lightbox-overlay" @click="closeLightbox">
-    <img :src="lightboxPhoto.dataUrl" :alt="localeStore.t('seedlings.growthPhoto')" />
+    <img :src="store.photoSrc(lightboxPhoto)" :alt="localeStore.t('seedlings.growthPhoto')" />
   </div>
 
   <section :class="['page-grid', showForm ? 'two-columns' : '']">
@@ -439,7 +438,7 @@ clearForm()
               <div v-if="logPhotoPreviews.length" class="photo-grid">
                 <figure v-for="photo in logPhotoPreviews" :key="photo.id" class="photo-card">
                   <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                    <img :src="photo.dataUrl" :alt="localeStore.t('seedlings.growthPhoto')" />
+                    <img :src="store.photoSrc(photo)" :alt="localeStore.t('seedlings.growthPhoto')" />
                   </button>
                   <button type="button" class="danger photo-card-delete" @click="removeLogPreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                 </figure>
@@ -465,7 +464,7 @@ clearForm()
                   <div v-if="log.photos?.length" class="photo-grid compact-grid">
                     <figure v-for="photo in log.photos" :key="photo.id" class="photo-card">
                       <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                        <img :src="photo.dataUrl" :alt="localeStore.t('seedlings.growthPhoto')" />
+                        <img :src="store.photoSrc(photo)" :alt="localeStore.t('seedlings.growthPhoto')" />
                       </button>
                       <figcaption>{{ photo.name }}</figcaption>
                     </figure>
@@ -484,7 +483,7 @@ clearForm()
                       <div class="photo-grid">
                         <figure v-for="photo in editLogPhotos" :key="photo.id" class="photo-card">
                           <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                            <img :src="photo.dataUrl" :alt="localeStore.t('seedlings.growthPhoto')" />
+                            <img :src="store.photoSrc(photo)" :alt="localeStore.t('seedlings.growthPhoto')" />
                           </button>
                           <button type="button" class="danger photo-card-delete" @click="removeEditExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                         </figure>
@@ -497,7 +496,7 @@ clearForm()
                     <div v-if="editLogNewPreviews.length" class="photo-grid">
                       <figure v-for="photo in editLogNewPreviews" :key="photo.id" class="photo-card">
                         <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                          <img :src="photo.dataUrl" :alt="localeStore.t('seedlings.growthPhoto')" />
+                          <img :src="store.photoSrc(photo)" :alt="localeStore.t('seedlings.growthPhoto')" />
                         </button>
                         <button type="button" class="danger photo-card-delete" @click="removeEditNewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                       </figure>

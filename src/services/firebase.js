@@ -1,6 +1,5 @@
 import { initializeApp } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
-import { getStorage } from 'firebase/storage'
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -15,6 +14,5 @@ export const firebaseEnabled = Object.values(config).every(Boolean)
 
 const app = firebaseEnabled ? initializeApp(config) : null
 const db = app ? getFirestore(app) : null
-const storage = app ? getStorage(app) : null
 
-export { db, storage }
+export { db }

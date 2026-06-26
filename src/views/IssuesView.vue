@@ -2,7 +2,6 @@
 import { computed, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { compressImageFile } from '../utils/imageProcessing'
-import { finalizePreviewPhotos } from '../utils/photoStorage'
 import { useLocaleStore } from '../stores/localeStore'
 
 const store = useFarmStore()
@@ -172,7 +171,7 @@ function closeForm() {
 async function saveIssue() {
   let newPhotos
   try {
-    newPhotos = await finalizePreviewPhotos(photoPreviews.value, 'issues')
+    newPhotos = await store.savePhotos(photoPreviews.value)
   } catch (e) {
     console.error('[IssuesView] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
@@ -263,7 +262,7 @@ async function recordStep(issue) {
   if (!stepNote.value.trim()) return
   let photos
   try {
-    photos = await finalizePreviewPhotos(stepPhotoPreviews.value, 'issues')
+    photos = await store.savePhotos(stepPhotoPreviews.value)
   } catch (e) {
     console.error('[IssuesView] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
@@ -314,7 +313,7 @@ async function saveEditStep(issue) {
   if (!editingStepId.value || !editStepNote.value.trim()) return
   let uploaded
   try {
-    uploaded = await finalizePreviewPhotos(editStepNewPreviews.value, 'issues')
+    uploaded = await store.savePhotos(editStepNewPreviews.value)
   } catch (e) {
     console.error('[IssuesView] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
@@ -346,7 +345,7 @@ clearForm()
 
 <template>
   <div v-if="lightboxPhoto" class="lightbox-overlay" @click="closeLightbox">
-    <img :src="lightboxPhoto.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+    <img :src="store.photoSrc(lightboxPhoto)" :alt="localeStore.t('issues.issueEvidence')" />
   </div>
 
   <section :class="['page-grid', showForm ? 'two-columns' : '']">
@@ -365,7 +364,7 @@ clearForm()
             <div v-if="issue.photos?.length" class="photo-grid compact-grid">
               <figure v-for="photo in issue.photos" :key="photo.id" class="photo-card">
                 <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                  <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                  <img :src="store.photoSrc(photo)" :alt="localeStore.t('issues.issueEvidence')" />
                 </button>
                 <figcaption>{{ photo.name }}</figcaption>
               </figure>
@@ -391,7 +390,7 @@ clearForm()
               <div v-if="stepPhotoPreviews.length" class="photo-grid">
                 <figure v-for="photo in stepPhotoPreviews" :key="photo.id" class="photo-card">
                   <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                    <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                    <img :src="store.photoSrc(photo)" :alt="localeStore.t('issues.issueEvidence')" />
                   </button>
                   <button type="button" class="danger photo-card-delete" @click="removeStepPreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                 </figure>
@@ -416,7 +415,7 @@ clearForm()
                   <div v-if="step.photos?.length" class="photo-grid compact-grid">
                     <figure v-for="photo in step.photos" :key="photo.id" class="photo-card">
                       <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                        <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                        <img :src="store.photoSrc(photo)" :alt="localeStore.t('issues.issueEvidence')" />
                       </button>
                       <figcaption>{{ photo.name }}</figcaption>
                     </figure>
@@ -432,7 +431,7 @@ clearForm()
                       <div class="photo-grid">
                         <figure v-for="photo in editStepPhotos" :key="photo.id" class="photo-card">
                           <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                            <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                            <img :src="store.photoSrc(photo)" :alt="localeStore.t('issues.issueEvidence')" />
                           </button>
                           <button type="button" class="danger photo-card-delete" @click="removeEditStepExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                         </figure>
@@ -446,7 +445,7 @@ clearForm()
                     <div v-if="editStepNewPreviews.length" class="photo-grid">
                       <figure v-for="photo in editStepNewPreviews" :key="photo.id" class="photo-card">
                         <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                          <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                          <img :src="store.photoSrc(photo)" :alt="localeStore.t('issues.issueEvidence')" />
                         </button>
                         <button type="button" class="danger photo-card-delete" @click="removeEditStepNewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                       </figure>
@@ -503,7 +502,7 @@ clearForm()
           <div class="photo-grid">
             <figure v-for="photo in editingIssue.photos" :key="photo.id" class="photo-card">
               <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+                <img :src="store.photoSrc(photo)" :alt="localeStore.t('issues.issueEvidence')" />
               </button>
               <button type="button" class="danger photo-card-delete" @click="removeExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
             </figure>
@@ -519,7 +518,7 @@ clearForm()
         <div v-if="photoPreviews.length" class="photo-grid">
           <figure v-for="photo in photoPreviews" :key="photo.id" class="photo-card">
             <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-              <img :src="photo.dataUrl" :alt="localeStore.t('issues.issueEvidence')" />
+              <img :src="store.photoSrc(photo)" :alt="localeStore.t('issues.issueEvidence')" />
             </button>
             <button type="button" class="danger photo-card-delete" @click="removePreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
           </figure>

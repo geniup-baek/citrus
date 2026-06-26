@@ -3,7 +3,6 @@ import { reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
-import { finalizePreviewPhotos } from '../utils/photoStorage'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -146,7 +145,7 @@ function closeForm() {
 async function saveFacility() {
   let uploaded
   try {
-    uploaded = await finalizePreviewPhotos(photoPreviews.value, 'facilities')
+    uploaded = await store.savePhotos(photoPreviews.value)
   } catch (e) {
     console.error('[FacilitiesView] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
@@ -164,7 +163,7 @@ async function saveFacility() {
 
 <template>
   <div v-if="lightboxPhoto" class="lightbox-overlay" @click="closeLightbox">
-    <img :src="lightboxPhoto.dataUrl" :alt="localeStore.t('facilities.facilityPhoto')" />
+    <img :src="store.photoSrc(lightboxPhoto)" :alt="localeStore.t('facilities.facilityPhoto')" />
   </div>
 
   <section :class="['page-grid', showForm ? 'two-columns' : '']">
@@ -186,7 +185,7 @@ async function saveFacility() {
             <div v-if="facility.photos?.length" class="photo-grid compact-grid">
               <figure v-for="photo in facility.photos" :key="photo.id" class="photo-card">
                 <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                  <img :src="photo.dataUrl" :alt="localeStore.t('facilities.facilityPhoto')" />
+                  <img :src="store.photoSrc(photo)" :alt="localeStore.t('facilities.facilityPhoto')" />
                 </button>
                 <figcaption>{{ photo.name }}</figcaption>
               </figure>
@@ -219,7 +218,7 @@ async function saveFacility() {
           <div class="photo-grid">
             <figure v-for="photo in formPhotos" :key="photo.id" class="photo-card">
               <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-                <img :src="photo.dataUrl" :alt="localeStore.t('facilities.facilityPhoto')" />
+                <img :src="store.photoSrc(photo)" :alt="localeStore.t('facilities.facilityPhoto')" />
               </button>
               <button type="button" class="danger photo-card-delete" @click="removeExistingPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
             </figure>
@@ -235,7 +234,7 @@ async function saveFacility() {
         <div v-if="photoPreviews.length" class="photo-grid">
           <figure v-for="photo in photoPreviews" :key="photo.id" class="photo-card">
             <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
-              <img :src="photo.dataUrl" :alt="localeStore.t('facilities.facilityPhoto')" />
+              <img :src="store.photoSrc(photo)" :alt="localeStore.t('facilities.facilityPhoto')" />
             </button>
             <button type="button" class="danger photo-card-delete" @click="removePreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
           </figure>

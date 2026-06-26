@@ -295,6 +295,7 @@ export const messages = {
     backupDesc: '재배동·부대시설·묘목·작업·반복규칙·문제·재고와 설정값을 파일로 저장하거나, 백업 파일에서 복원합니다.',
     backupRules: '반복규칙',
     backupSettingsIncluded: '설정값 포함',
+    backupPhotos: '사진 {count}장',
     backupExport: '백업 내보내기',
     backupImport: '백업 파일 선택',
     backupExported: '백업 파일을 내려받았습니다. ({date})',
