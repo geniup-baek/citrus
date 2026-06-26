@@ -184,25 +184,21 @@ export const defaultFacilities = [
   {
     id: 'house-1',
     name: '1동',
-    area: 320,
     notes: '한라봉·카라향 혼식 구역.',
   },
   {
     id: 'house-2',
     name: '2동',
-    area: 330,
     notes: '오전 습도 높음, 환기 상태 주의 관찰.',
   },
   {
     id: 'house-3',
     name: '3동',
-    area: 315,
     notes: '일조량 많음, 관수 관리 집중.',
   },
   {
     id: 'house-4',
     name: '4동',
-    area: 325,
     notes: '통풍 양호, 시범 재배 적합 구역.',
   },
 ]
@@ -212,7 +208,6 @@ export const defaultSeedlings = [
     id: 'seedling-1',
     greenhouseId: 'house-1',
     variety: '한라봉',
-    quantity: 60,
     plantedAt: '2025-03-20',
     rootstock: '탱자',
     notes: '개화 안정적, 착과율 고름.',
@@ -221,7 +216,6 @@ export const defaultSeedlings = [
     id: 'seedling-2',
     greenhouseId: 'house-1',
     variety: '카라향',
-    quantity: 40,
     plantedAt: '2025-03-20',
     rootstock: '시트란지',
     notes: '겨울철 온도 관리 철저히.',
@@ -230,7 +224,6 @@ export const defaultSeedlings = [
     id: 'seedling-3',
     greenhouseId: 'house-2',
     variety: '한라봉',
-    quantity: 55,
     plantedAt: '2025-03-23',
     rootstock: '탱자',
     notes: '건조기 응애 발생 주의.',
@@ -239,7 +232,6 @@ export const defaultSeedlings = [
     id: 'seedling-4',
     greenhouseId: 'house-2',
     variety: '카라향',
-    quantity: 45,
     plantedAt: '2025-03-23',
     rootstock: '시트란지',
     notes: '표준 관비 조건에서 생육 양호.',
@@ -250,7 +242,6 @@ export const defaultTasks = [
   {
     id: 'task-1',
     title: '점적관 수압 점검',
-    greenhouseId: 'house-1',
     dueDate: '2026-06-22',
     frequency: '매주',
     category: '관수',
@@ -263,7 +254,6 @@ export const defaultTasks = [
   {
     id: 'task-2',
     title: '굴나방 예찰',
-    greenhouseId: 'house-3',
     dueDate: '2026-06-24',
     frequency: '매주',
     category: '방제',
@@ -284,7 +274,6 @@ export const defaultScheduleRules = [
   {
     id: 'schedule-1',
     title: '주간 습도 점검',
-    greenhouseId: 'house-2',
     category: '환경',
     frequency: '매주',
     interval: 1,
@@ -297,7 +286,6 @@ export const defaultScheduleRules = [
   {
     id: 'schedule-2',
     title: '월간 양액 EC 교정',
-    greenhouseId: 'house-1',
     category: '관수',
     frequency: '매월',
     interval: 1,
@@ -314,14 +302,12 @@ export const defaultAncillaries = [
     id: 'ancillary-1',
     name: '자재 창고',
     type: '창고',
-    area: 60,
     notes: '농기구·자재·농약 보관.',
   },
   {
     id: 'ancillary-2',
     name: '작업자 숙소',
     type: '숙소',
-    area: 40,
     notes: '수확기 임시 거주 공간.',
   },
 ]

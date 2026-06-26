@@ -377,8 +377,6 @@ export const useFarmStore = defineStore('farm', () => {
   async function removeFacility(id) {
     state.value.facilities = state.value.facilities.filter((item) => item.id !== id)
     state.value.seedlings = state.value.seedlings.filter((item) => item.greenhouseId !== id)
-    state.value.tasks = state.value.tasks.filter((item) => item.greenhouseId !== id)
-    state.value.scheduleRules = state.value.scheduleRules.filter((item) => item.greenhouseId !== id)
     state.value.issues = state.value.issues.filter((item) => item.greenhouseId !== id)
     await persistAll()
   }
@@ -396,6 +394,17 @@ export const useFarmStore = defineStore('farm', () => {
       })
     }
 
+    await persistAll()
+  }
+
+  async function addSeedlingsBatch(payloads) {
+    for (const payload of payloads) {
+      state.value.seedlings.push({
+        ...payload,
+        id: payload.id || crypto.randomUUID(),
+        growthLogs: Array.isArray(payload.growthLogs) ? payload.growthLogs : [],
+      })
+    }
     await persistAll()
   }
 
@@ -461,9 +470,9 @@ export const useFarmStore = defineStore('farm', () => {
         ...payload,
       }
     } else {
-      const dupKey = `${payload.title}|${payload.dueDate}|${payload.greenhouseId}`
+      const dupKey = `${payload.title}|${payload.dueDate}`
       const alreadyExists = state.value.tasks.some(
-        (t) => `${t.title}|${t.dueDate}|${t.greenhouseId}` === dupKey,
+        (t) => `${t.title}|${t.dueDate}` === dupKey,
       )
       if (!alreadyExists) {
         state.value.tasks.push({
@@ -647,7 +656,7 @@ export const useFarmStore = defineStore('farm', () => {
       .slice(0, 3)
   }
 
-  async function createTaskFromTemplate(templateId, greenhouseId) {
+  async function createTaskFromTemplate(templateId) {
     const template = state.value.annualTaskTemplates.find((item) => item.id === templateId)
     if (!template) {
       return
@@ -658,7 +667,6 @@ export const useFarmStore = defineStore('farm', () => {
 
     await upsertTask({
       title: template.title,
-      greenhouseId,
       dueDate: formatISO(dueDate, { representation: 'date' }),
       frequency: '매년',
       category: template.category ?? '연간 정기 작업',
@@ -691,7 +699,7 @@ export const useFarmStore = defineStore('farm', () => {
     const seen = new Set()
     const before = state.value.tasks.length
     state.value.tasks = state.value.tasks.filter((task) => {
-      const key = `${task.title}|${task.dueDate}|${task.greenhouseId}`
+      const key = `${task.title}|${task.dueDate}`
       if (seen.has(key)) return false
       seen.add(key)
       return true
@@ -722,7 +730,6 @@ export const useFarmStore = defineStore('farm', () => {
       return state.value.tasks.some(
         (task) =>
           task.title === normalizedRule.title &&
-          task.greenhouseId === normalizedRule.greenhouseId &&
           task.dueDate === dueDate,
       )
     }
@@ -741,7 +748,7 @@ export const useFarmStore = defineStore('farm', () => {
 
     for (const rule of state.value.scheduleRules) {
       const normalizedRule = normalizeRule(rule)
-      if (!normalizedRule.enabled || !normalizedRule.greenhouseId || !normalizedRule.startDate) {
+      if (!normalizedRule.enabled || !normalizedRule.startDate) {
         continue
       }
 
@@ -760,7 +767,6 @@ export const useFarmStore = defineStore('farm', () => {
         generatedTasks.push({
           id: crypto.randomUUID(),
           title: normalizedRule.title,
-          greenhouseId: normalizedRule.greenhouseId,
           dueDate,
           frequency: normalizedRule.frequency,
           category: normalizedRule.category,
@@ -1020,6 +1026,7 @@ export const useFarmStore = defineStore('farm', () => {
     updateInventoryTxn,
     removeInventoryTxn,
     upsertSeedling,
+    addSeedlingsBatch,
     removeSeedling,
     addSeedlingLog,
     updateSeedlingLog,

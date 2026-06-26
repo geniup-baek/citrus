@@ -12,7 +12,6 @@ const showForm = ref(false)
 const form = reactive({
   id: '',
   name: '',
-  area: 0,
   notes: '',
 })
 
@@ -24,6 +23,15 @@ const lightboxPhoto = ref(null)
 
 function seedlingsByFacility(facilityId) {
   return store.state.seedlings.filter((s) => s.greenhouseId === facilityId)
+}
+
+function varietyTotalsByFacility(facilityId) {
+  const totals = new Map()
+  for (const s of seedlingsByFacility(facilityId)) {
+    const variety = s.variety || ''
+    totals.set(variety, (totals.get(variety) || 0) + 1)
+  }
+  return [...totals.entries()].map(([variety, count]) => ({ variety, count }))
 }
 
 function moved(arr, i, dir) {
@@ -120,7 +128,6 @@ function closeLightbox() {
 function clearForm() {
   form.id = ''
   form.name = ''
-  form.area = 0
   form.notes = ''
   formPhotos.value = []
   photoPreviews.value = []
@@ -136,7 +143,6 @@ function openAdd() {
 function editFacility(facility) {
   form.id = facility.id
   form.name = facility.name
-  form.area = facility.area
   form.notes = facility.notes
   formPhotos.value = [...(facility.photos || [])]
   photoPreviews.value = []
@@ -154,7 +160,6 @@ async function saveFacility() {
   await store.upsertFacility({
     id: form.id,
     name: form.name,
-    area: Number(form.area),
     notes: form.notes,
     photos: [...formPhotos.value, ...photoPreviews.value.map(previewToPhoto)],
   })
@@ -178,9 +183,8 @@ async function saveFacility() {
         <li v-for="(facility, i) in store.state.facilities" :key="facility.id" class="list-item card-like">
           <div>
             <p class="item-title">{{ facility.name }}</p>
-            <p class="item-meta">{{ facility.area }} m²</p>
-            <p v-for="s in seedlingsByFacility(facility.id)" :key="s.id" class="muted">
-              {{ s.variety }} {{ s.quantity }}{{ localeStore.t('facilities.treeUnit') }}
+            <p v-for="t in varietyTotalsByFacility(facility.id)" :key="t.variety" class="muted">
+              {{ t.variety }} {{ t.count }}{{ localeStore.t('facilities.treeUnit') }}
             </p>
             <p v-if="!seedlingsByFacility(facility.id).length" class="muted">묘목 없음</p>
             <p class="muted">{{ facility.notes }}</p>
@@ -209,10 +213,6 @@ async function saveFacility() {
         <label>
           {{ localeStore.t('facilities.name') }}
           <input v-model="form.name" required type="text" :placeholder="localeStore.t('facilities.name')" />
-        </label>
-        <label>
-          {{ localeStore.t('facilities.area') }}
-          <input v-model="form.area" required min="0" type="number" />
         </label>
         <label>
           {{ localeStore.t('facilities.notes') }}

@@ -10,9 +10,7 @@ const localeStore = useLocaleStore()
 const upcomingDays = 10
 
 const facilityCount = computed(() => store.state.facilities.length)
-const treeCount = computed(() =>
-  store.state.seedlings.reduce((total, s) => total + Number(s.quantity || 0), 0),
-)
+const treeCount = computed(() => store.state.seedlings.length)
 const dueToday = computed(() => store.tasksToday.filter((task) => task.status !== '완료'))
 const dueThisWeek = computed(() => store.tasksThisWeek.filter((task) => task.status !== '완료'))
 const unresolvedIssues = computed(() => store.openIssues)
@@ -95,7 +93,7 @@ function frequencyLabel(value) {
               <div>
                 <p class="item-title">{{ task.title }}</p>
                 <p class="item-meta">
-                  {{ greenhouseName(task.greenhouseId) }} · {{ localeStore.t('common.due') }} {{ prettyDate(task.dueDate) }}
+                  <template v-if="task.category">{{ task.category }} · </template>{{ localeStore.t('common.due') }} {{ prettyDate(task.dueDate) }}
                 </p>
               </div>
               <span class="pill">{{ taskStatusLabel(task.status) }}</span>
@@ -130,7 +128,7 @@ function frequencyLabel(value) {
             <div>
               <p class="item-title">{{ task.title }}</p>
               <p class="item-meta">
-                {{ greenhouseName(task.greenhouseId) }} · {{ localeStore.t('common.due') }} {{ prettyDate(task.dueDate) }}
+                <template v-if="task.category">{{ task.category }} · </template>{{ localeStore.t('common.due') }} {{ prettyDate(task.dueDate) }}
               </p>
             </div>
             <span class="pill">{{ frequencyLabel(task.frequency) }}</span>

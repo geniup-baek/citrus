@@ -41,32 +41,56 @@ const displayedSeedlings = computed(() => {
     list = list.filter((s) => s.variety === filterVariety.value)
   }
 
+  const dir = sortDir.value === 'asc' ? 1 : -1
+
   list.sort((a, b) => {
-    let va, vb
     if (sortBy.value === 'greenhouse') {
-      va = greenhouseName(a.greenhouseId)
-      vb = greenhouseName(b.greenhouseId)
-    } else if (sortBy.value === 'variety') {
-      va = a.variety
-      vb = b.variety
-    } else {
-      va = a.plantedAt
-      vb = b.plantedAt
+      // 재배동 → 열 → 구역(A/B/C) 순으로 정렬
+      const byHouse = greenhouseName(a.greenhouseId).localeCompare(greenhouseName(b.greenhouseId))
+      if (byHouse !== 0) return dir * byHouse
+      const byRow = (Number(a.positionRow) || 0) - (Number(b.positionRow) || 0)
+      if (byRow !== 0) return dir * byRow
+      return dir * String(a.positionCol || '').localeCompare(String(b.positionCol || ''))
     }
-    return sortDir.value === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+    if (sortBy.value === 'variety') {
+      return dir * a.variety.localeCompare(b.variety)
+    }
+    return dir * a.plantedAt.localeCompare(b.plantedAt)
   })
 
   return list
 })
 
+const rowOptions = Array.from({ length: 30 }, (_, i) => i + 1)
+const colOptions = ['A', 'B', 'C']
+
 const form = reactive({
   id: '',
   greenhouseId: '',
+  positionRow: '',
+  positionCol: '',
   variety: '',
-  quantity: 0,
   plantedAt: '',
   rootstock: '',
   notes: '',
+})
+
+// ── 일괄 추가 ────────────────────────────────────────────────────────────────
+const batchMode = ref(false)
+const batch = reactive({
+  greenhouseId: '',
+  rowFrom: 1,
+  rowTo: 27,
+  cols: ['A', 'B'],
+  variety: '',
+  plantedAt: '',
+  rootstock: '',
+  notes: '',
+})
+
+const batchCount = computed(() => {
+  const span = Number(batch.rowTo) - Number(batch.rowFrom) + 1
+  return span > 0 ? span * batch.cols.length : 0
 })
 
 function greenhouseName(greenhouseId) {
@@ -76,11 +100,20 @@ function greenhouseName(greenhouseId) {
   )
 }
 
+function positionText(seedling) {
+  if (!seedling.positionRow && !seedling.positionCol) return ''
+  const parts = []
+  if (seedling.positionRow) parts.push(`${seedling.positionRow}${localeStore.t('seedlings.positionUnit')}`)
+  if (seedling.positionCol) parts.push(seedling.positionCol)
+  return parts.join(' ')
+}
+
 function clearForm() {
   form.id = ''
   form.greenhouseId = store.state.facilities[0]?.id || ''
+  form.positionRow = ''
+  form.positionCol = ''
   form.variety = varieties.value[0] ?? ''
-  form.quantity = 0
   form.plantedAt = ''
   form.rootstock = ''
   form.notes = ''
@@ -89,14 +122,65 @@ function clearForm() {
 
 function openAdd() {
   clearForm()
+  batchMode.value = false
   showForm.value = true
 }
 
+function clearBatch() {
+  batch.greenhouseId = store.state.facilities[0]?.id || ''
+  batch.rowFrom = 1
+  batch.rowTo = 27
+  batch.cols = ['A', 'B']
+  batch.variety = varieties.value[0] ?? ''
+  batch.plantedAt = ''
+  batch.rootstock = ''
+  batch.notes = ''
+}
+
+function openBatch() {
+  clearForm()
+  clearBatch()
+  batchMode.value = true
+  showForm.value = true
+}
+
+function toggleBatchCol(col) {
+  const i = batch.cols.indexOf(col)
+  if (i >= 0) batch.cols.splice(i, 1)
+  else batch.cols.push(col)
+}
+
+async function saveBatch() {
+  const from = Number(batch.rowFrom)
+  const to = Number(batch.rowTo)
+  if (!batch.greenhouseId || from > to || !batch.cols.length) return
+
+  const payloads = []
+  for (let row = from; row <= to; row += 1) {
+    for (const col of colOptions.filter((c) => batch.cols.includes(c))) {
+      payloads.push({
+        greenhouseId: batch.greenhouseId,
+        positionRow: row,
+        positionCol: col,
+        variety: batch.variety,
+        plantedAt: batch.plantedAt,
+        rootstock: batch.rootstock,
+        notes: batch.notes,
+      })
+    }
+  }
+
+  await store.addSeedlingsBatch(payloads)
+  closeForm()
+}
+
 function editSeedling(seedling) {
+  batchMode.value = false
   form.id = seedling.id
   form.greenhouseId = seedling.greenhouseId
+  form.positionRow = seedling.positionRow || ''
+  form.positionCol = seedling.positionCol || ''
   form.variety = seedling.variety
-  form.quantity = seedling.quantity
   form.plantedAt = seedling.plantedAt
   form.rootstock = seedling.rootstock
   form.notes = seedling.notes
@@ -106,6 +190,7 @@ function editSeedling(seedling) {
 
 function closeForm() {
   clearForm()
+  batchMode.value = false
   showForm.value = false
 }
 
@@ -113,8 +198,9 @@ async function saveSeedling() {
   await store.upsertSeedling({
     id: form.id,
     greenhouseId: form.greenhouseId,
+    positionRow: form.positionRow,
+    positionCol: form.positionCol,
     variety: form.variety,
-    quantity: Number(form.quantity),
     plantedAt: form.plantedAt,
     rootstock: form.rootstock,
     notes: form.notes,
@@ -286,7 +372,10 @@ clearForm()
     <article class="card">
       <div class="row-actions align-start">
         <h2>{{ localeStore.t('seedlings.overview') }}</h2>
-        <button v-if="!showForm" class="ghost" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
+        <div v-if="!showForm" class="row-actions">
+          <button class="ghost" @click="openBatch">{{ localeStore.t('seedlings.batchAdd') }}</button>
+          <button class="ghost" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
+        </div>
         <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
       </div>
 
@@ -319,7 +408,7 @@ clearForm()
       <ul class="list clean">
         <li v-for="seedling in displayedSeedlings" :key="seedling.id" class="list-item card-like">
           <div>
-            <p class="item-title">{{ seedling.variety }} · {{ seedling.quantity }} {{ localeStore.t('seedlings.treeUnit') }}</p>
+            <p class="item-title">{{ seedling.variety }}<template v-if="positionText(seedling)"> · {{ positionText(seedling) }}</template></p>
             <p class="item-meta">
               {{ greenhouseName(seedling.greenhouseId) }} · {{ localeStore.t('seedlings.planted') }} {{ seedling.plantedAt }}
             </p>
@@ -426,7 +515,69 @@ clearForm()
       </ul>
     </article>
 
-    <article v-if="showForm" class="card">
+    <article v-if="showForm && batchMode" class="card">
+      <h2>{{ localeStore.t('seedlings.batchTitle') }}</h2>
+      <form class="stack-form" @submit.prevent="saveBatch">
+        <label>
+          {{ localeStore.t('seedlings.greenhouse') }}
+          <select v-model="batch.greenhouseId" required>
+            <option v-for="facility in store.state.facilities" :key="facility.id" :value="facility.id">
+              {{ facility.name }}
+            </option>
+          </select>
+        </label>
+        <label>{{ localeStore.t('seedlings.batchRowRange') }}</label>
+        <div class="row-actions">
+          <label style="flex: 1;">
+            {{ localeStore.t('seedlings.batchRowFrom') }}
+            <select v-model.number="batch.rowFrom">
+              <option v-for="r in rowOptions" :key="r" :value="r">{{ r }}{{ localeStore.t('seedlings.positionUnit') }}</option>
+            </select>
+          </label>
+          <label style="flex: 1;">
+            {{ localeStore.t('seedlings.batchRowTo') }}
+            <select v-model.number="batch.rowTo">
+              <option v-for="r in rowOptions" :key="r" :value="r">{{ r }}{{ localeStore.t('seedlings.positionUnit') }}</option>
+            </select>
+          </label>
+        </div>
+        <label>{{ localeStore.t('seedlings.batchCols') }}</label>
+        <div class="row-actions">
+          <label v-for="c in colOptions" :key="c" style="display: flex; flex-direction: row; align-items: center; gap: 0.3rem;">
+            <input type="checkbox" :checked="batch.cols.includes(c)" @change="toggleBatchCol(c)" />
+            {{ c }}
+          </label>
+        </div>
+        <label>
+          {{ localeStore.t('seedlings.variety') }}
+          <select v-model="batch.variety">
+            <option v-for="v in varieties" :key="v" :value="v">{{ v }}</option>
+          </select>
+        </label>
+        <label>
+          {{ localeStore.t('seedlings.plantingDate') }}
+          <input v-model="batch.plantedAt" required type="date" />
+        </label>
+        <label>
+          {{ localeStore.t('seedlings.rootstock') }}
+          <select v-model="batch.rootstock">
+            <option value="">{{ localeStore.t('seedlings.na') }}</option>
+            <option v-for="r in store.state.appSettings?.rootstockTypes ?? []" :key="r" :value="r">{{ r }}</option>
+          </select>
+        </label>
+        <label>
+          {{ localeStore.t('seedlings.notes') }}
+          <textarea v-model="batch.notes" rows="3" />
+        </label>
+        <p class="muted">{{ localeStore.t('seedlings.batchPreview', { count: batchCount }) }}</p>
+        <div class="row-actions">
+          <button type="submit" :disabled="batchCount === 0">{{ localeStore.t('seedlings.batchSubmit', { count: batchCount }) }}</button>
+          <button class="ghost" type="button" @click="clearBatch">{{ localeStore.t('common.reset') }}</button>
+        </div>
+      </form>
+    </article>
+
+    <article v-if="showForm && !batchMode" class="card">
       <h2>{{ editingId ? localeStore.t('seedlings.editTitle') : localeStore.t('seedlings.addTitle') }}</h2>
       <form class="stack-form" @submit.prevent="saveSeedling">
         <label>
@@ -437,15 +588,28 @@ clearForm()
             </option>
           </select>
         </label>
+        <label>{{ localeStore.t('seedlings.position') }}</label>
+        <div class="row-actions">
+          <label style="flex: 1;">
+            {{ localeStore.t('seedlings.positionRow') }}
+            <select v-model="form.positionRow">
+              <option value="">{{ localeStore.t('seedlings.na') }}</option>
+              <option v-for="r in rowOptions" :key="r" :value="r">{{ r }}{{ localeStore.t('seedlings.positionUnit') }}</option>
+            </select>
+          </label>
+          <label style="flex: 1;">
+            {{ localeStore.t('seedlings.positionCol') }}
+            <select v-model="form.positionCol">
+              <option value="">{{ localeStore.t('seedlings.na') }}</option>
+              <option v-for="c in colOptions" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </label>
+        </div>
         <label>
           {{ localeStore.t('seedlings.variety') }}
           <select v-model="form.variety">
             <option v-for="v in varieties" :key="v" :value="v">{{ v }}</option>
           </select>
-        </label>
-        <label>
-          {{ localeStore.t('seedlings.quantity') }}
-          <input v-model="form.quantity" min="0" required type="number" />
         </label>
         <label>
           {{ localeStore.t('seedlings.plantingDate') }}

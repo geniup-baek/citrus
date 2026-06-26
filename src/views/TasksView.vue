@@ -86,7 +86,6 @@ const SEASONS = [
 // ── 폼 ─────────────────────────────────────────────────────────────────────
 const form = reactive({
   title: '',
-  greenhouseId: '',
   dueDate: '',
   category: '',
   priority: '보통',
@@ -97,7 +96,6 @@ const form = reactive({
 // 상세 블럭에서 작업 편집용
 const detailForm = reactive({
   title: '',
-  greenhouseId: '',
   dueDate: '',
   category: '',
   priority: '보통',
@@ -111,7 +109,6 @@ const logForm = reactive({
 const schedulerForm = reactive({
   id: '',
   title: '',
-  greenhouseId: '',
   category: '',
   frequency: '매주',
   interval: 1,
@@ -274,10 +271,6 @@ const selectedDayTasks = computed(() => {
 })
 
 // ── 헬퍼 함수 ──────────────────────────────────────────────────────────────
-function greenhouseName(id) {
-  return store.state.facilities.find((f) => f.id === id)?.name || localeStore.t('common.unknown')
-}
-
 function weekdayLabel(value) {
   return weekdayOptions.value.find((d) => d.value === value)?.label || value
 }
@@ -322,7 +315,6 @@ function openDetail(taskId) {
   const task = store.state.tasks.find((t) => t.id === taskId)
   if (task) {
     detailForm.title = task.title
-    detailForm.greenhouseId = task.greenhouseId || ''
     detailForm.dueDate = task.dueDate || ''
     detailForm.category = task.category || ''
     detailForm.priority = task.priority || '보통'
@@ -360,7 +352,6 @@ async function addTask() {
   if (!form.title || !form.dueDate) return
   await store.upsertTask({
     title: form.title,
-    greenhouseId: form.greenhouseId,
     dueDate: form.dueDate,
     category: form.category,
     priority: form.priority,
@@ -382,7 +373,6 @@ async function saveTaskDetail() {
   await store.upsertTask({
     ...selectedTask.value,
     title: detailForm.title,
-    greenhouseId: detailForm.greenhouseId,
     dueDate: detailForm.dueDate,
     category: detailForm.category,
     priority: detailForm.priority,
@@ -530,7 +520,6 @@ async function deleteLog(log) {
 function clearSchedulerForm() {
   schedulerForm.id = ''
   schedulerForm.title = ''
-  schedulerForm.greenhouseId = store.state.facilities[0]?.id || ''
   schedulerForm.category = taskCategories.value[0] ?? ''
   schedulerForm.frequency = '매주'
   schedulerForm.interval = 1
@@ -545,7 +534,6 @@ function clearSchedulerForm() {
 function editSchedulerRule(rule) {
   schedulerForm.id = rule.id
   schedulerForm.title = rule.title
-  schedulerForm.greenhouseId = rule.greenhouseId
   schedulerForm.category = rule.category
   schedulerForm.frequency = rule.frequency
   schedulerForm.interval = rule.interval
@@ -561,7 +549,6 @@ async function saveScheduleRule() {
   await store.upsertScheduleRule({
     id: schedulerForm.id,
     title: schedulerForm.title,
-    greenhouseId: schedulerForm.greenhouseId,
     category: schedulerForm.category,
     frequency: schedulerForm.frequency,
     interval: Number(schedulerForm.interval),
@@ -598,13 +585,12 @@ async function runDeduplicate() {
 
 // ── 계절 작업 템플릿 ────────────────────────────────────────────────────────
 async function createFromTemplate(tpl) {
-  await store.createTaskFromTemplate(tpl.id, form.greenhouseId)
+  await store.createTaskFromTemplate(tpl.id)
   filter.value = 'annual'
   templateResult.value = `'${tpl.title}' 작업이 추가됐습니다. 왼쪽 보드의 '연간' 필터에서 확인하세요.`
 }
 
 // ── 초기값 ──────────────────────────────────────────────────────────────────
-form.greenhouseId = store.state.facilities[0]?.id || ''
 form.dueDate = format(new Date(), 'yyyy-MM-dd')
 form.category = taskCategories.value[0] ?? ''
 clearSchedulerForm()
@@ -692,9 +678,7 @@ clearSchedulerForm()
               <p class="item-title">{{ task.title }}</p>
             </div>
             <p class="item-meta">
-              {{ greenhouseName(task.greenhouseId) }}
-              <template v-if="task.category"> · {{ task.category }}</template>
-               · {{ localeStore.t('common.due') }} {{ task.dueDate }}
+              <template v-if="task.category">{{ task.category }} · </template>{{ localeStore.t('common.due') }} {{ task.dueDate }}
               <span v-if="isOverdue(task)" class="pill danger" style="font-size: 0.7rem; padding: 0.1rem 0.4rem; margin-left: 0.3rem; vertical-align: middle;">{{ localeStore.t('tasks.overdueLabel') }}</span>
             </p>
             <p v-if="task.notes" class="muted" style="font-size: 0.82rem; white-space: pre-wrap;">{{ task.notes }}</p>
@@ -845,7 +829,7 @@ clearSchedulerForm()
                 <span :class="priorityDotClass(task.priority || '보통')"></span>
                 <p class="item-title">{{ task.title }}</p>
               </div>
-              <p class="item-meta">{{ greenhouseName(task.greenhouseId) }} · {{ task.category }}</p>
+              <p class="item-meta">{{ task.category }}</p>
               <div class="row-actions">
                 <button :class="statusClass(task.status)" :title="localeStore.t('tasks.statusChange')" @click="cycleStatus(task)">{{ task.status }}</button>
                 <template v-if="showForm">
@@ -889,11 +873,6 @@ clearSchedulerForm()
             <label>{{ localeStore.t('tasks.taskName') }}
               <input v-model="form.title" required type="text" :placeholder="localeStore.t('tasks.taskNamePlaceholder')" />
             </label>
-            <label>{{ localeStore.t('tasks.greenhouse') }}
-              <select v-model="form.greenhouseId" required>
-                <option v-for="f in store.state.facilities" :key="f.id" :value="f.id">{{ f.name }}</option>
-              </select>
-            </label>
             <label>{{ localeStore.t('tasks.dueDate') }}
               <input v-model="form.dueDate" required type="date" />
             </label>
@@ -931,7 +910,7 @@ clearSchedulerForm()
                   {{ rule.title }}
                 </p>
                 <p class="item-meta" style="font-size: 0.82rem;">
-                  {{ greenhouseName(rule.greenhouseId) }} · {{ rule.category }} · {{ rule.frequency }}
+                  {{ rule.category }} · {{ rule.frequency }}
                   <template v-if="rule.frequency === '매주'">({{ weekdayLabel(rule.dayOfWeek) }}요일)</template>
                   <template v-if="rule.frequency === '매월'">(매월 {{ rule.dayOfMonth }}일)</template>
                 </p>
@@ -950,11 +929,6 @@ clearSchedulerForm()
           <form class="stack-form" @submit.prevent="saveScheduleRule">
             <label>{{ localeStore.t('tasks.ruleTitle') }}
               <input v-model="schedulerForm.title" required type="text" :placeholder="localeStore.t('tasks.ruleTitlePlaceholder')" />
-            </label>
-            <label>{{ localeStore.t('tasks.greenhouse') }}
-              <select v-model="schedulerForm.greenhouseId" required>
-                <option v-for="f in store.state.facilities" :key="f.id" :value="f.id">{{ f.name }}</option>
-              </select>
             </label>
             <label>{{ localeStore.t('tasks.category') }}
               <select v-model="schedulerForm.category">
@@ -1014,11 +988,6 @@ clearSchedulerForm()
           <label>{{ localeStore.t('tasks.taskName') }}
             <input v-model="detailForm.title" required type="text" />
           </label>
-          <label>{{ localeStore.t('tasks.greenhouse') }}
-            <select v-model="detailForm.greenhouseId">
-              <option v-for="f in store.state.facilities" :key="f.id" :value="f.id">{{ f.name }}</option>
-            </select>
-          </label>
           <label>{{ localeStore.t('tasks.dueDate') }}
             <input v-model="detailForm.dueDate" type="date" />
           </label>
@@ -1047,12 +1016,6 @@ clearSchedulerForm()
       <!-- ③ 계절 작업 템플릿 -->
       <template v-if="rightPanel === 'template'">
         <p class="muted" style="margin-bottom: 0.75rem; font-size: 0.84rem;">{{ localeStore.t('tasks.templateDesc') }}</p>
-
-        <label style="margin-bottom: 0.85rem; display: grid; gap: 0.25rem; font-size: 0.92rem;">{{ localeStore.t('tasks.greenhouse') }}
-          <select v-model="form.greenhouseId">
-            <option v-for="f in store.state.facilities" :key="f.id" :value="f.id">{{ f.name }}</option>
-          </select>
-        </label>
 
         <div v-for="season in templatesBySeason" :key="season.key" class="season-group">
           <p v-if="season.templates.length" class="season-label">{{ season.label }}</p>

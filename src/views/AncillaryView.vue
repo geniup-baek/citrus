@@ -19,8 +19,6 @@ const form = reactive({
   name: '',
   category: '시설',
   type: '',
-  area: 0,
-  quantity: 0,
   notes: '',
 })
 
@@ -136,8 +134,6 @@ function clearForm() {
   form.name = ''
   form.category = '시설'
   form.type = typeOptions.value[0] ?? ''
-  form.area = 0
-  form.quantity = 0
   form.notes = ''
   formPhotos.value = []
   photoPreviews.value = []
@@ -155,8 +151,6 @@ function editAncillary(item) {
   form.name = item.name
   form.category = item.category === '장비' ? '장비' : '시설'
   form.type = item.type
-  form.area = item.area || 0
-  form.quantity = item.quantity || 0
   form.notes = item.notes
   formPhotos.value = [...(item.photos || [])]
   photoPreviews.value = []
@@ -176,8 +170,6 @@ async function saveAncillary() {
     name: form.name,
     category: form.category,
     type: form.type,
-    area: form.category === '시설' ? Number(form.area) : 0,
-    quantity: form.category === '장비' ? Number(form.quantity) : 0,
     notes: form.notes,
     photos: [...formPhotos.value, ...photoPreviews.value.map(previewToPhoto)],
   })
@@ -204,11 +196,7 @@ async function saveAncillary() {
               <p class="item-title">{{ item.name }}</p>
               <span class="pill">{{ item.category === '장비' ? localeStore.t('ancillary.categoryEquipment') : localeStore.t('ancillary.categoryFacility') }}</span>
             </div>
-            <p class="item-meta">
-              {{ item.type }}
-              <template v-if="item.category === '장비'"> · {{ localeStore.t('ancillary.quantity') }} {{ item.quantity || 0 }}</template>
-              <template v-else> · {{ item.area }} m²</template>
-            </p>
+            <p class="item-meta">{{ item.type }}</p>
             <p class="muted">{{ item.notes }}</p>
             <div v-if="item.photos?.length" class="photo-grid compact-grid">
               <figure v-for="photo in item.photos" :key="photo.id" class="photo-card">
@@ -248,14 +236,6 @@ async function saveAncillary() {
           <select v-model="form.type">
             <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
           </select>
-        </label>
-        <label v-if="form.category === '시설'">
-          {{ localeStore.t('ancillary.area') }}
-          <input v-model="form.area" required min="0" type="number" />
-        </label>
-        <label v-else>
-          {{ localeStore.t('ancillary.quantity') }}
-          <input v-model="form.quantity" required min="0" type="number" />
         </label>
         <label>
           {{ localeStore.t('ancillary.notes') }}

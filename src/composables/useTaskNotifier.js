@@ -42,10 +42,8 @@ export function useTaskNotifier(store) {
         continue
       }
 
-      const facility = store.state.facilities.find((item) => item.id === task.greenhouseId)
-
       new Notification(localeStore.t('notifier.title'), {
-        body: `${task.title} - ${facility?.name || localeStore.t('notifier.noGreenhouse')}`,
+        body: task.category ? `${task.title} - ${task.category}` : task.title,
         tag: task.id,
       })
 
