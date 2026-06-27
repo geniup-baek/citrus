@@ -77,6 +77,7 @@ const inputs = ref({
   seedlingVarieties: '',
   rootstockTypes: '',
   taskCategories: '',
+  pesticideTypes: '',
 })
 
 const errors = ref({
@@ -85,6 +86,7 @@ const errors = ref({
   seedlingVarieties: '',
   rootstockTypes: '',
   taskCategories: '',
+  pesticideTypes: '',
 })
 
 const groups = [
@@ -92,6 +94,7 @@ const groups = [
   { key: 'equipmentTypes',    label: () => localeStore.t('settings.equipmentTypes'),    hint: () => localeStore.t('settings.equipmentHint') },
   { key: 'seedlingVarieties', label: () => localeStore.t('settings.seedlingVarieties'), hint: () => localeStore.t('settings.seedlingHint') },
   { key: 'rootstockTypes',    label: () => localeStore.t('settings.rootstockTypes'),    hint: () => localeStore.t('settings.rootstockHint') },
+  { key: 'pesticideTypes',    label: () => localeStore.t('settings.pesticideTypes'),    hint: () => localeStore.t('settings.pesticideHint') },
   { key: 'taskCategories',    label: () => localeStore.t('settings.taskCategories'),    hint: () => localeStore.t('settings.taskCategoryHint') },
 ]
 

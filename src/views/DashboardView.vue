@@ -11,6 +11,23 @@ const upcomingDays = 10
 
 const facilityCount = computed(() => store.state.facilities.length)
 const treeCount = computed(() => store.state.seedlings.length)
+
+const facilitiesHelper = computed(() =>
+  localeStore.t('dashboard.facilitiesHelper', { count: facilityCount.value }),
+)
+
+// 품종별 나무 수 (묘목 1건 = 1그루)
+const treesHelper = computed(() => {
+  const totals = new Map()
+  for (const s of store.state.seedlings) {
+    const variety = s.variety || localeStore.t('common.unknown')
+    totals.set(variety, (totals.get(variety) || 0) + 1)
+  }
+  if (!totals.size) return localeStore.t('dashboard.treesHelper')
+  return [...totals.entries()]
+    .map(([variety, count]) => `${variety} ${count}${localeStore.t('facilities.treeUnit')}`)
+    .join(' · ')
+})
 const dueToday = computed(() => store.tasksToday.filter((task) => task.status !== '완료'))
 const dueThisWeek = computed(() => store.tasksThisWeek.filter((task) => task.status !== '완료'))
 const unresolvedIssues = computed(() => store.openIssues)
@@ -61,13 +78,13 @@ function frequencyLabel(value) {
           to="/facilities"
           :title="localeStore.t('dashboard.facilities')"
           :value="facilityCount"
-          :helper="localeStore.t('dashboard.facilitiesHelper')"
+          :helper="facilitiesHelper"
         />
         <StatCard
           to="/seedlings"
           :title="localeStore.t('dashboard.trees')"
           :value="treeCount"
-          :helper="localeStore.t('dashboard.treesHelper')"
+          :helper="treesHelper"
         />
         <StatCard
           to="/tasks"

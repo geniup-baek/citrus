@@ -64,6 +64,8 @@ function normalizeData(data) {
       merged.rootstockTypes = [...new Set([...defaults.appSettings.rootstockTypes, ...storedRootstocks])]
       const storedEquipment = Array.isArray(stored.equipmentTypes) ? stored.equipmentTypes : []
       merged.equipmentTypes = [...new Set([...defaults.appSettings.equipmentTypes, ...storedEquipment])]
+      const storedPesticideTypes = Array.isArray(stored.pesticideTypes) ? stored.pesticideTypes : []
+      merged.pesticideTypes = [...new Set([...defaults.appSettings.pesticideTypes, ...storedPesticideTypes])]
       return merged
     })(),
     seedlings: Array.isArray(data?.seedlings) ? data.seedlings : defaults.seedlings,
@@ -95,13 +97,28 @@ function normalizeIssue(issue) {
 }
 
 function normalizeInventoryItem(item) {
+  // 로트(규격+유효기간) 기반: 현재 재고는 txns로부터 계산하므로 품목엔 메타 + txns만 보관한다.
+  // 구버전(품목당 단일 수량/단위) 데이터는 unit→규격, expiryDate→유효기간으로 이전한다.
+  const fallbackVolume = item?.unit || '기본'
+  const fallbackExpiry = item?.expiryDate || ''
+  const txns = (Array.isArray(item?.txns) ? item.txns : []).map((t) => ({
+    id: t.id || crypto.randomUUID(),
+    date: t.date || new Date().toISOString(),
+    type: t.type === '사용' ? '사용' : '입고',
+    volume: t.volume || fallbackVolume,
+    expiryDate: t.expiryDate || fallbackExpiry,
+    amount: Math.abs(Number(t.amount) || 0),
+    note: t.note || '',
+  }))
   return {
-    ...item,
+    id: item?.id,
+    name: item?.name || '',
     category: item?.category === '농약' ? '농약' : '비료',
-    quantity: Number(item?.quantity || 0),
-    minQuantity: Math.max(0, Number(item?.minQuantity || 0)),
-    expiryDate: item?.expiryDate || '',
-    txns: Array.isArray(item?.txns) ? item.txns : [],
+    pesticideType: item?.pesticideType || '',
+    actionGroup: item?.actionGroup || '',
+    productName: item?.productName || '',
+    notes: item?.notes || '',
+    txns,
   }
 }
 
@@ -987,35 +1004,25 @@ export const useFarmStore = defineStore('farm', () => {
     await persistAll()
   }
 
-  // ── 비료·농약 재고 ────────────────────────────────────────────────────────────
+  // ── 비료·농약 재고 (로트=규격+유효기간 기반) ─────────────────────────────────
+  // 품목은 메타데이터 + 입출고 이력(txns)만 보관한다.
+  // 현재 재고(로트별 수량)는 txns로부터 계산하므로 단일 출처라 편집/삭제가 단순하다.
   async function upsertInventoryItem(payload) {
     const index = state.value.inventory.findIndex((item) => item.id === payload.id)
 
     if (index >= 0) {
-      // 메타데이터만 갱신 (수량/이력은 입출고로만 변경)
-      const { quantity, txns, ...meta } = payload
+      // 메타데이터만 갱신 (재고/이력은 입출고로만 변경)
+      const { txns, ...meta } = payload
       state.value.inventory[index] = normalizeInventoryItem({
         ...state.value.inventory[index],
         ...meta,
       })
     } else {
-      const initialQty = Math.max(0, Number(payload.quantity || 0))
-      const txns = []
-      if (initialQty > 0) {
-        txns.push({
-          id: crypto.randomUUID(),
-          date: new Date().toISOString(),
-          type: '입고',
-          amount: initialQty,
-          note: '초기 재고 등록',
-        })
-      }
       state.value.inventory.push(
         normalizeInventoryItem({
           ...payload,
           id: payload.id || crypto.randomUUID(),
-          quantity: initialQty,
-          txns,
+          txns: [],
         }),
       )
     }
@@ -1028,23 +1035,24 @@ export const useFarmStore = defineStore('farm', () => {
     await persistAll()
   }
 
-  async function addInventoryTxn(itemId, type, amount, note) {
+  // 입출고 1건 기록. 로트는 (규격 volume + 유효기간 expiryDate)로 식별된다.
+  async function addInventoryTxn(itemId, { type, volume, expiryDate, amount, note }) {
     const item = state.value.inventory.find((entry) => entry.id === itemId)
     if (!item) return
 
     const qty = Math.abs(Number(amount) || 0)
     if (qty === 0) return
 
-    const delta = type === '사용' ? -qty : qty
     item.txns = item.txns || []
     item.txns.unshift({
       id: crypto.randomUUID(),
       date: new Date().toISOString(),
       type: type === '사용' ? '사용' : '입고',
+      volume: volume || '기본',
+      expiryDate: expiryDate || '',
       amount: qty,
       note: note || '',
     })
-    item.quantity = Math.max(0, Number(item.quantity || 0) + delta)
 
     await persistAll()
   }
@@ -1056,17 +1064,13 @@ export const useFarmStore = defineStore('farm', () => {
     const txn = item.txns.find((entry) => (entry.id || entry.date) === txnId)
     if (!txn) return
 
-    const newType = patch.type === '사용' ? '사용' : '입고'
-    const newAmount = Math.abs(Number(patch.amount) || 0)
-    if (newAmount === 0) return
-
-    // 기존 효과 되돌리고 새 효과 적용
-    const oldDelta = txn.type === '사용' ? -Number(txn.amount || 0) : Number(txn.amount || 0)
-    const newDelta = newType === '사용' ? -newAmount : newAmount
-    item.quantity = Math.max(0, Number(item.quantity || 0) - oldDelta + newDelta)
-
-    txn.type = newType
-    txn.amount = newAmount
+    if (patch.type !== undefined) txn.type = patch.type === '사용' ? '사용' : '입고'
+    if (patch.volume !== undefined) txn.volume = patch.volume || '기본'
+    if (patch.expiryDate !== undefined) txn.expiryDate = patch.expiryDate || ''
+    if (patch.amount !== undefined) {
+      const amt = Math.abs(Number(patch.amount) || 0)
+      if (amt > 0) txn.amount = amt
+    }
     if (patch.note !== undefined) txn.note = patch.note
 
     await persistAll()
@@ -1076,14 +1080,7 @@ export const useFarmStore = defineStore('farm', () => {
     const item = state.value.inventory.find((entry) => entry.id === itemId)
     if (!item || !Array.isArray(item.txns)) return
 
-    const txn = item.txns.find((entry) => (entry.id || entry.date) === txnId)
-    if (!txn) return
-
-    // 효과 되돌리기
-    const delta = txn.type === '사용' ? Number(txn.amount || 0) : -Number(txn.amount || 0)
-    item.quantity = Math.max(0, Number(item.quantity || 0) + delta)
     item.txns = item.txns.filter((entry) => (entry.id || entry.date) !== txnId)
-
     await persistAll()
   }
 

@@ -14,7 +14,7 @@ const varieties = {
     acidity: '1.0% 이하',
     weight: '300 ~ 600g',
     storageTemp: '5 ~ 7°C',
-    color: 'var(--accent)',
+    color: '#e8740a',
     traits: [
       { label: '외관', value: '과정부(꼭지 위) 돌출, 표면 요철이 뚜렷함' },
       { label: '과육', value: '과즙 풍부, 씨 없음, 중과피 약간 두꺼움' },

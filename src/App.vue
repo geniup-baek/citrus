@@ -1,6 +1,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted } from 'vue'
 import AppHeader from './components/AppHeader.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
 import { useFarmStore } from './stores/farmStore'
 import { useLocaleStore } from './stores/localeStore'
 import { useTaskNotifier } from './composables/useTaskNotifier'
@@ -30,5 +31,7 @@ useTaskNotifier(store)
     <main class="content">
       <RouterView />
     </main>
+
+    <ConfirmDialog />
   </div>
 </template>

@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
+import { confirm } from '../composables/useConfirm'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -46,6 +47,15 @@ function moved(arr, i, dir) {
 
 function moveFacility(i, dir) {
   store.reorderFacilities(moved(store.state.facilities, i, dir))
+}
+
+async function confirmDeleteFacility(facility) {
+  const seedlings = store.state.seedlings.filter((s) => s.greenhouseId === facility.id).length
+  const issues = store.state.issues.filter((i) => i.greenhouseId === facility.id).length
+  const ok = await confirm({
+    message: localeStore.t('confirm.facility', { name: facility.name, seedlings, issues }),
+  })
+  if (ok) await store.removeFacility(facility.id)
 }
 
 // ── 사진 헬퍼 ────────────────────────────────────────────────────────────────
@@ -195,7 +205,7 @@ async function saveFacility() {
             <button class="ghost" :disabled="i === 0" @click="moveFacility(i, -1)">{{ localeStore.t('common.moveUp') }}</button>
             <button class="ghost" :disabled="i === store.state.facilities.length - 1" @click="moveFacility(i, 1)">{{ localeStore.t('common.moveDown') }}</button>
             <button class="ghost" @click="editFacility(facility)">{{ localeStore.t('common.edit') }}</button>
-            <button class="danger" @click="store.removeFacility(facility.id)">{{ localeStore.t('common.delete') }}</button>
+            <button class="danger" @click="confirmDeleteFacility(facility)">{{ localeStore.t('common.delete') }}</button>
           </div>
         </li>
       </ul>

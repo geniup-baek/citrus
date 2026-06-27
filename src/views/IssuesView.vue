@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { useLocaleStore } from '../stores/localeStore'
+import { confirm } from '../composables/useConfirm'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -166,6 +167,12 @@ function editIssue(issue) {
 function closeForm() {
   clearForm()
   showForm.value = false
+}
+
+async function confirmDeleteIssue(issue) {
+  const steps = (issue.resolutionSteps || []).length
+  const ok = await confirm({ message: localeStore.t('confirm.issue', { title: issue.title, steps }) })
+  if (ok) await store.removeIssue(issue.id)
 }
 
 async function saveIssue() {
@@ -375,7 +382,7 @@ clearForm()
             <button class="ghost" type="button" @click="toggleLogPanel(issue)">{{ localeStore.t('issues.resolution') }}</button>
             <template v-if="showForm">
               <button class="ghost" @click="editIssue(issue)">{{ localeStore.t('common.edit') }}</button>
-              <button class="danger" @click="store.removeIssue(issue.id)">{{ localeStore.t('common.delete') }}</button>
+              <button class="danger" @click="confirmDeleteIssue(issue)">{{ localeStore.t('common.delete') }}</button>
             </template>
           </div>
 

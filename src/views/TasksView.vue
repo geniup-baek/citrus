@@ -20,6 +20,7 @@ import { useRoute } from 'vue-router'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
+import { confirm } from '../composables/useConfirm'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -307,6 +308,12 @@ function statusClass(status) {
   if (status === '완료') return 'pill pill-done'
   if (status === '진행중') return 'pill pill-ongoing'
   return 'pill pill-todo'
+}
+
+async function confirmDeleteTask(task) {
+  const logs = (task.logs || []).length
+  const ok = await confirm({ message: localeStore.t('confirm.task', { title: task.title, logs }) })
+  if (ok) await store.removeTask(task.id)
 }
 
 // ── 작업 상세 열기 ──────────────────────────────────────────────────────────
@@ -688,7 +695,7 @@ clearSchedulerForm()
               <button class="ghost" @click="toggleLogPanel(task)">{{ localeStore.t('tasks.recordProgress') }}</button>
               <template v-if="showForm">
                 <button class="ghost" @click="openDetail(task.id)">상세</button>
-                <button class="danger" @click="store.removeTask(task.id)">{{ localeStore.t('common.delete') }}</button>
+                <button class="danger" @click="confirmDeleteTask(task)">{{ localeStore.t('common.delete') }}</button>
               </template>
             </div>
 
@@ -834,7 +841,7 @@ clearSchedulerForm()
                 <button :class="statusClass(task.status)" :title="localeStore.t('tasks.statusChange')" @click="cycleStatus(task)">{{ task.status }}</button>
                 <template v-if="showForm">
                   <button class="ghost" @click="openDetail(task.id)">상세</button>
-                  <button class="danger" @click="store.removeTask(task.id)">{{ localeStore.t('common.delete') }}</button>
+                  <button class="danger" @click="confirmDeleteTask(task)">{{ localeStore.t('common.delete') }}</button>
                 </template>
               </div>
             </li>

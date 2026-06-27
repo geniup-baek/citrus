@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
+import { confirm } from '../composables/useConfirm'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -40,6 +41,11 @@ function moved(arr, i, dir) {
 
 function moveAncillary(i, dir) {
   store.reorderAncillaries(moved(store.state.ancillaries, i, dir))
+}
+
+async function confirmDeleteAncillary(item) {
+  const ok = await confirm({ message: localeStore.t('confirm.ancillary', { name: item.name }) })
+  if (ok) await store.removeAncillary(item.id)
 }
 
 // 구분 변경 시 현재 유형이 새 옵션에 없으면 첫 항목으로 재설정
@@ -205,7 +211,7 @@ async function saveAncillary() {
             <button class="ghost" :disabled="i === 0" @click="moveAncillary(i, -1)">{{ localeStore.t('common.moveUp') }}</button>
             <button class="ghost" :disabled="i === store.state.ancillaries.length - 1" @click="moveAncillary(i, 1)">{{ localeStore.t('common.moveDown') }}</button>
             <button class="ghost" @click="editAncillary(item)">{{ localeStore.t('common.edit') }}</button>
-            <button class="danger" @click="store.removeAncillary(item.id)">{{ localeStore.t('common.delete') }}</button>
+            <button class="danger" @click="confirmDeleteAncillary(item)">{{ localeStore.t('common.delete') }}</button>
           </div>
         </li>
       </ul>

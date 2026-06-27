@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
+import { confirm } from '../composables/useConfirm'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -98,6 +99,14 @@ function greenhouseName(greenhouseId) {
     store.state.facilities.find((f) => f.id === greenhouseId)?.name ||
     localeStore.t('common.unknown')
   )
+}
+
+async function confirmDeleteSeedling(seedling) {
+  const logs = (seedling.growthLogs || []).length
+  const ok = await confirm({
+    message: localeStore.t('confirm.seedling', { name: seedling.variety, logs }),
+  })
+  if (ok) await store.removeSeedling(seedling.id)
 }
 
 function positionText(seedling) {
@@ -420,7 +429,7 @@ clearForm()
             <button class="ghost" type="button" @click="toggleLogPanel(seedling)">{{ localeStore.t('seedlings.growthLog') }}</button>
             <template v-if="showForm">
               <button class="ghost" @click="editSeedling(seedling)">{{ localeStore.t('common.edit') }}</button>
-              <button class="danger" @click="store.removeSeedling(seedling.id)">{{ localeStore.t('common.delete') }}</button>
+              <button class="danger" @click="confirmDeleteSeedling(seedling)">{{ localeStore.t('common.delete') }}</button>
             </template>
           </div>
 
