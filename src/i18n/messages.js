@@ -272,9 +272,12 @@ export const messages = {
     lotLabel: '{volume} · {expiry} · {quantity}',
     summaryTotal: '전체 {count}',
     summaryExpiring: '기한 임박/만료 {count}',
-    downloadReport: '보고서 다운로드',
+    downloadReport: 'CSV 다운로드',
+    printReport: 'PDF / 인쇄',
     reportStatus: '상태',
     reportFileName: '재고현황',
+    reportTitle: '재고 현황 보고서',
+    reportGeneratedAt: '생성일: {date}',
   },
   settings: {
     title: '설정',
