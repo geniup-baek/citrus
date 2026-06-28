@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { useLocaleStore } from '../stores/localeStore'
@@ -176,12 +176,30 @@ function editIssue(issue) {
   photoPreviews.value = []
   compressionReport.value = ''
   cancelEditStep()
+  scrollToItem(`issue-form-slot-${issue.id}`)
+}
+
+// 모바일에서 편집 시 해당 항목(과 아래 폼)이 보이도록 스크롤
+function scrollToItem(slotId) {
+  if (!isMobile.value) return
+  nextTick(() => {
+    const el = document.getElementById(slotId)
+    ;(el?.closest('li') ?? el)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
 }
 
 function closeForm() {
   clearForm()
   showForm.value = false
   formOpen.value = false
+}
+
+// '+ 새 문제' — 새 입력 폼으로 전환 후, 모바일에서 폼이 보이도록 스크롤
+function newEntry() {
+  clearForm()
+  if (isMobile.value) {
+    nextTick(() => document.getElementById('issue-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 }
 
 async function confirmDeleteIssue(issue) {
@@ -553,7 +571,7 @@ clearForm()
 
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('issues.newEntry') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('issues.newEntry') }}</button>
         </div>
       </form>
 

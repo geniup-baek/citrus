@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
@@ -50,6 +50,14 @@ function moved(arr, i, dir) {
 
 function moveAncillary(i, dir) {
   store.reorderAncillaries(moved(store.state.ancillaries, i, dir))
+}
+
+// '+ 새 시설·장비' — 새 입력 폼으로 전환 후, 모바일에서 폼이 보이도록 스크롤
+function newEntry() {
+  clearForm()
+  if (isMobile.value) {
+    nextTick(() => document.getElementById('anc-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 }
 
 async function confirmDeleteAncillary(item) {
@@ -158,6 +166,16 @@ function editAncillary(item) {
   compressionReport.value = ''
   editingId.value = item.id
   showForm.value = true
+  scrollToItem(`anc-form-slot-${item.id}`)
+}
+
+// 모바일에서 편집 시 해당 항목(과 아래 폼)이 보이도록 스크롤
+function scrollToItem(slotId) {
+  if (!isMobile.value) return
+  nextTick(() => {
+    const el = document.getElementById(slotId)
+    ;(el?.closest('li') ?? el)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
 }
 
 function closeForm() {
@@ -283,7 +301,7 @@ async function saveAncillary() {
 
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('ancillary.newEntry') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('ancillary.newEntry') }}</button>
         </div>
       </form>
     </article>

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import {
   format,
   isBefore,
@@ -347,6 +347,13 @@ function openDetail(taskId) {
     detailForm.notes = task.notes || ''
   }
   rightPanel.value = 'detail'
+  // 모바일에서 상세를 열면 해당 작업(과 아래 패널)이 보이도록 스크롤
+  if (isMobile.value) {
+    nextTick(() => {
+      const el = document.getElementById(`task-form-slot-${taskId}`)
+      ;(el?.closest('li') ?? el)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
 }
 
 // ── 진행 기록 인라인 패널 ────────────────────────────────────────────────────
@@ -372,6 +379,14 @@ function backToAdd() {
   selectedTaskId.value = ''
   rightPanel.value = 'task'
   formOpen.value = true
+}
+
+// '+ 새 작업' — 새 작업 추가 폼으로 전환 후, 모바일에서 폼이 보이도록 스크롤
+function newEntry() {
+  backToAdd()
+  if (isMobile.value) {
+    nextTick(() => document.getElementById('task-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 }
 
 function exitEdit() {
@@ -1046,7 +1061,7 @@ clearSchedulerForm()
           </label>
           <div class="row-actions">
             <button type="submit">{{ localeStore.t('common.change') }}</button>
-            <button class="ghost" type="button" @click="backToAdd">{{ localeStore.t('tasks.newEntry') }}</button>
+            <button class="ghost" type="button" @click="newEntry">{{ localeStore.t('tasks.newEntry') }}</button>
           </div>
         </form>
 

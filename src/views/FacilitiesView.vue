@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
@@ -145,6 +145,14 @@ function openAdd() {
   showForm.value = true
 }
 
+// '+ 새 재배동' — 새 입력 폼으로 전환 후, 모바일에서 폼이 보이도록 스크롤
+function newEntry() {
+  clearForm()
+  if (isMobile.value) {
+    nextTick(() => document.getElementById('fac-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+}
+
 function editFacility(facility) {
   form.id = facility.id
   form.name = facility.name
@@ -154,6 +162,16 @@ function editFacility(facility) {
   compressionReport.value = ''
   editingId.value = facility.id
   showForm.value = true
+  scrollToItem(`fac-form-slot-${facility.id}`)
+}
+
+// 모바일에서 편집 시 해당 항목(과 아래 폼)이 보이도록 스크롤
+function scrollToItem(slotId) {
+  if (!isMobile.value) return
+  nextTick(() => {
+    const el = document.getElementById(slotId)
+    ;(el?.closest('li') ?? el)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
 }
 
 function closeForm() {
@@ -264,7 +282,7 @@ async function saveFacility() {
 
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('facilities.newEntry') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('facilities.newEntry') }}</button>
         </div>
       </form>
     </article>
