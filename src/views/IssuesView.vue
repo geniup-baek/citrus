@@ -4,12 +4,22 @@ import { useFarmStore } from '../stores/farmStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { useLocaleStore } from '../stores/localeStore'
 import { confirm } from '../composables/useConfirm'
+import { useIsMobile } from '../composables/useIsMobile'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const editingId = ref('')
 const showForm = ref(false)
 const lightboxPhoto = ref(null)
+
+const { isMobile } = useIsMobile()
+const formOpen = ref(false) // 폼(추가/편집) 표시 여부 — 토글로 닫으면 추가 폼도 숨긴다
+// 편집 대상이 목록에 있을 때만 그 항목 슬롯으로, 아니면 상단 호스트로(텔레포트 대상 null 방지)
+const formTarget = computed(() =>
+  editingId.value && store.state.issues.some((i) => i.id === editingId.value)
+    ? `#issue-form-slot-${editingId.value}`
+    : '#issue-form-top',
+)
 
 const issueForm = reactive({
   title: '',
@@ -152,6 +162,10 @@ function clearForm() {
 }
 
 function editIssue(issue) {
+  // 이미 이 문제 편집 중이면 그대로 둔다(재클릭해도 닫지 않음)
+  if (editingId.value === issue.id) return
+  expandedId.value = '' // 조치 패널과 상호 배타
+  formOpen.value = true
   editingId.value = issue.id
   issueForm.title = issue.title
   issueForm.greenhouseId = issue.greenhouseId
@@ -167,6 +181,7 @@ function editIssue(issue) {
 function closeForm() {
   clearForm()
   showForm.value = false
+  formOpen.value = false
 }
 
 async function confirmDeleteIssue(issue) {
@@ -246,6 +261,8 @@ function toggleLogPanel(issue) {
   if (expandedId.value === issue.id) {
     expandedId.value = ''
   } else {
+    if (editingId.value) clearForm() // 편집 폼과 상호 배타
+    formOpen.value = false
     expandedId.value = issue.id
     stepNote.value = ''
     stepPhotoPreviews.value = []
@@ -355,13 +372,14 @@ clearForm()
     <img :src="store.photoSrc(lightboxPhoto)" :alt="localeStore.t('issues.issueEvidence')" />
   </div>
 
-  <section :class="['page-grid', showForm ? 'two-columns' : '']">
+  <section :class="['page-grid', showForm && formOpen ? 'two-columns' : '']">
     <article class="card">
       <div class="row-actions align-start">
         <h2>{{ localeStore.t('issues.issueHistory') }}</h2>
-        <button v-if="!showForm" class="ghost" @click="showForm = true">{{ localeStore.t('common.edit') }}</button>
+        <button v-if="!showForm" class="ghost" @click="showForm = true; formOpen = true">{{ localeStore.t('common.edit') }}</button>
         <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
       </div>
+      <div id="issue-form-top" class="mobile-form-slot"></div>
       <ul class="list clean">
         <li v-for="issue in store.state.issues" :key="issue.id" class="list-item card-like">
           <div>
@@ -379,9 +397,9 @@ clearForm()
           </div>
           <div class="row-actions">
             <button class="pill" :class="{ danger: issue.status !== '해결' }" :title="localeStore.t('tasks.statusChange')" @click="cycleIssueStatus(issue)">{{ issueStatusLabel(issue.status) }}</button>
-            <button class="ghost" type="button" @click="toggleLogPanel(issue)">{{ localeStore.t('issues.resolution') }}</button>
+            <button :class="{ ghost: expandedId !== issue.id }" type="button" @click="toggleLogPanel(issue)">{{ localeStore.t('issues.resolution') }}</button>
             <template v-if="showForm">
-              <button class="ghost" @click="editIssue(issue)">{{ localeStore.t('common.edit') }}</button>
+              <button :class="{ ghost: editingId !== issue.id }" @click="editIssue(issue)">{{ localeStore.t('common.edit') }}</button>
               <button class="danger" @click="confirmDeleteIssue(issue)">{{ localeStore.t('common.delete') }}</button>
             </template>
           </div>
@@ -468,11 +486,13 @@ clearForm()
               <li v-if="!issue.resolutionSteps?.length" class="muted">{{ localeStore.t('issues.noSteps') }}</li>
             </ul>
           </div>
+          <div :id="`issue-form-slot-${issue.id}`" class="mobile-form-slot"></div>
         </li>
       </ul>
     </article>
 
-    <article v-if="showForm" class="card">
+    <Teleport v-if="showForm && formOpen" :to="formTarget" :disabled="!isMobile">
+    <article v-if="showForm && formOpen" class="card">
       <h2>{{ editingId ? localeStore.t('issues.editTitle') : localeStore.t('issues.recordIssue') }}</h2>
       <form class="stack-form" @submit.prevent="saveIssue">
         <label>
@@ -533,7 +553,7 @@ clearForm()
 
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.reset') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('issues.newEntry') }}</button>
         </div>
       </form>
 
@@ -553,5 +573,6 @@ clearForm()
         </li>
       </ul>
     </article>
+    </Teleport>
   </section>
 </template>

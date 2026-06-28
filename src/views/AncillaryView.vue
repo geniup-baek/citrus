@@ -4,11 +4,20 @@ import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
+import { useIsMobile } from '../composables/useIsMobile'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const editingId = ref('')
 const showForm = ref(false)
+
+const { isMobile } = useIsMobile()
+// 편집 대상이 목록에 있을 때만 그 항목 슬롯으로, 아니면 항상 존재하는 상단 호스트로(텔레포트 대상 null 방지)
+const formTarget = computed(() =>
+  editingId.value && store.state.ancillaries.some((a) => a.id === editingId.value)
+    ? `#anc-form-slot-${editingId.value}`
+    : '#anc-form-top',
+)
 
 const facilityTypeOptions = computed(() => store.state.appSettings?.ancillaryTypes ?? ['창고', '숙소', '사무실', '기타'])
 const equipmentTypeOptions = computed(() => store.state.appSettings?.equipmentTypes ?? ['방제기', '트랙터', '기타'])
@@ -189,6 +198,7 @@ async function saveAncillary() {
         <button v-if="!showForm" class="ghost" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
         <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
       </div>
+      <div id="anc-form-top" class="mobile-form-slot"></div>
       <ul class="list clean">
         <li v-for="(item, i) in store.state.ancillaries" :key="item.id" class="list-item card-like">
           <div>
@@ -213,10 +223,12 @@ async function saveAncillary() {
             <button class="ghost" @click="editAncillary(item)">{{ localeStore.t('common.edit') }}</button>
             <button class="danger" @click="confirmDeleteAncillary(item)">{{ localeStore.t('common.delete') }}</button>
           </div>
+          <div :id="`anc-form-slot-${item.id}`" class="mobile-form-slot"></div>
         </li>
       </ul>
     </article>
 
+    <Teleport v-if="showForm" :to="formTarget" :disabled="!isMobile">
     <article v-if="showForm" class="card">
       <h2>{{ editingId ? localeStore.t('ancillary.editTitle') : localeStore.t('ancillary.addTitle') }}</h2>
       <form class="stack-form" @submit.prevent="saveAncillary">
@@ -271,9 +283,10 @@ async function saveAncillary() {
 
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.reset') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('ancillary.newEntry') }}</button>
         </div>
       </form>
     </article>
+    </Teleport>
   </section>
 </template>

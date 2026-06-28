@@ -5,11 +5,21 @@ import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
+import { useIsMobile } from '../composables/useIsMobile'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const editingId = ref('')
 const showForm = ref(false)
+
+const { isMobile } = useIsMobile()
+const formOpen = ref(false) // 폼(추가/편집) 표시 여부 — 토글로 닫으면 추가 폼도 숨긴다
+// 편집 대상이 현재 목록에 보일 때만 그 항목 슬롯으로, 아니면 상단 호스트로(텔레포트 대상 null 방지)
+const formTarget = computed(() =>
+  editingId.value && displayedSeedlings.value.some((s) => s.id === editingId.value)
+    ? `#seed-form-slot-${editingId.value}`
+    : '#seed-form-top',
+)
 
 // ── 성장 기록 인라인 패널 ────────────────────────────────────────────────────
 const expandedId = ref('')
@@ -133,6 +143,7 @@ function openAdd() {
   clearForm()
   batchMode.value = false
   showForm.value = true
+  formOpen.value = true
 }
 
 function clearBatch() {
@@ -151,6 +162,7 @@ function openBatch() {
   clearBatch()
   batchMode.value = true
   showForm.value = true
+  formOpen.value = true
 }
 
 function toggleBatchCol(col) {
@@ -184,7 +196,11 @@ async function saveBatch() {
 }
 
 function editSeedling(seedling) {
+  // 이미 이 묘목 편집 중이면 그대로 둔다(재클릭해도 닫지 않음)
+  if (editingId.value === seedling.id) return
   batchMode.value = false
+  formOpen.value = true
+  expandedId.value = '' // 성장기록 패널과 상호 배타
   form.id = seedling.id
   form.greenhouseId = seedling.greenhouseId
   form.positionRow = seedling.positionRow || ''
@@ -201,6 +217,7 @@ function closeForm() {
   clearForm()
   batchMode.value = false
   showForm.value = false
+  formOpen.value = false
 }
 
 async function saveSeedling() {
@@ -282,6 +299,8 @@ function toggleLogPanel(seedling) {
     expandedId.value = ''
     return
   }
+  if (editingId.value) clearForm() // 편집 폼과 상호 배타
+  formOpen.value = false
   expandedId.value = seedling.id
   logNote.value = ''
   logPhotoPreviews.value = []
@@ -378,7 +397,7 @@ clearForm()
     <img :src="store.photoSrc(lightboxPhoto)" :alt="localeStore.t('seedlings.growthPhoto')" />
   </div>
 
-  <section :class="['page-grid', showForm ? 'two-columns' : '']">
+  <section :class="['page-grid', showForm && formOpen ? 'two-columns' : '']">
     <article class="card">
       <div class="row-actions align-start">
         <h2>{{ localeStore.t('seedlings.overview') }}</h2>
@@ -415,6 +434,8 @@ clearForm()
         </select>
       </div>
 
+      <div id="seed-form-top" class="mobile-form-slot"></div>
+
       <ul class="list clean">
         <li v-for="seedling in displayedSeedlings" :key="seedling.id" class="list-item card-like">
           <div>
@@ -426,9 +447,9 @@ clearForm()
             <p class="muted">{{ seedling.notes }}</p>
           </div>
           <div class="row-actions">
-            <button class="ghost" type="button" @click="toggleLogPanel(seedling)">{{ localeStore.t('seedlings.growthLog') }}</button>
+            <button :class="{ ghost: expandedId !== seedling.id }" type="button" @click="toggleLogPanel(seedling)">{{ localeStore.t('seedlings.growthLog') }}</button>
             <template v-if="showForm">
-              <button class="ghost" @click="editSeedling(seedling)">{{ localeStore.t('common.edit') }}</button>
+              <button :class="{ ghost: editingId !== seedling.id }" @click="editSeedling(seedling)">{{ localeStore.t('common.edit') }}</button>
               <button class="danger" @click="confirmDeleteSeedling(seedling)">{{ localeStore.t('common.delete') }}</button>
             </template>
           </div>
@@ -520,12 +541,14 @@ clearForm()
               <li v-if="!seedling.growthLogs?.length" class="muted" style="font-size: 0.85rem;">{{ localeStore.t('seedlings.noGrowthLogs') }}</li>
             </ul>
           </div>
+          <div :id="`seed-form-slot-${seedling.id}`" class="mobile-form-slot"></div>
         </li>
         <li v-if="!displayedSeedlings.length" class="muted">{{ localeStore.t('common.noData') }}</li>
       </ul>
     </article>
 
-    <article v-if="showForm && batchMode" class="card">
+    <Teleport v-if="showForm && formOpen" :to="formTarget" :disabled="!isMobile">
+    <article v-if="showForm && formOpen && batchMode" class="card">
       <h2>{{ localeStore.t('seedlings.batchTitle') }}</h2>
       <form class="stack-form" @submit.prevent="saveBatch">
         <label>
@@ -587,7 +610,7 @@ clearForm()
       </form>
     </article>
 
-    <article v-if="showForm && !batchMode" class="card">
+    <article v-if="showForm && formOpen && !batchMode" class="card">
       <h2>{{ editingId ? localeStore.t('seedlings.editTitle') : localeStore.t('seedlings.addTitle') }}</h2>
       <form class="stack-form" @submit.prevent="saveSeedling">
         <label>
@@ -638,9 +661,10 @@ clearForm()
         </label>
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.reset') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('seedlings.newEntry') }}</button>
         </div>
       </form>
     </article>
+    </Teleport>
   </section>
 </template>

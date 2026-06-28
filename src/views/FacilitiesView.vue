@@ -1,14 +1,23 @@
 <script setup>
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
+import { useIsMobile } from '../composables/useIsMobile'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const editingId = ref('')
 const showForm = ref(false)
+
+const { isMobile } = useIsMobile()
+// 편집 대상이 목록에 있을 때만 그 항목 슬롯으로, 아니면 항상 존재하는 상단 호스트로(텔레포트 대상 null 방지)
+const formTarget = computed(() =>
+  editingId.value && store.state.facilities.some((f) => f.id === editingId.value)
+    ? `#fac-form-slot-${editingId.value}`
+    : '#fac-form-top',
+)
 
 const form = reactive({
   id: '',
@@ -183,6 +192,7 @@ async function saveFacility() {
         <button v-if="!showForm" class="ghost" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
         <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
       </div>
+      <div id="fac-form-top" class="mobile-form-slot"></div>
       <ul class="list clean">
         <li v-for="(facility, i) in store.state.facilities" :key="facility.id" class="list-item card-like">
           <div>
@@ -207,10 +217,12 @@ async function saveFacility() {
             <button class="ghost" @click="editFacility(facility)">{{ localeStore.t('common.edit') }}</button>
             <button class="danger" @click="confirmDeleteFacility(facility)">{{ localeStore.t('common.delete') }}</button>
           </div>
+          <div :id="`fac-form-slot-${facility.id}`" class="mobile-form-slot"></div>
         </li>
       </ul>
     </article>
 
+    <Teleport v-if="showForm" :to="formTarget" :disabled="!isMobile">
     <article v-if="showForm" class="card">
       <h2>{{ editingId ? localeStore.t('facilities.editTitle') : localeStore.t('facilities.addTitle') }}</h2>
       <form class="stack-form" @submit.prevent="saveFacility">
@@ -252,9 +264,10 @@ async function saveFacility() {
 
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.reset') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('facilities.newEntry') }}</button>
         </div>
       </form>
     </article>
+    </Teleport>
   </section>
 </template>
