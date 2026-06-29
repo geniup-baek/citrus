@@ -14,7 +14,9 @@ const CROP_NAME = '감귤'
 const SIDO_CODE = '50' // 제주특별자치도
 
 function buildUrl(serviceCode, params = {}) {
-  const base = import.meta.env.DEV ? '/ncpms-api' : 'https://ncpms.rda.go.kr'
+  // 개발: Vite 프록시 (/ncpms-api → http://ncpms.rda.go.kr)
+  // 프로덕션: Netlify 리다이렉트 프록시 (/ncpms-api → http://ncpms.rda.go.kr)
+  const base = '/ncpms-api'
   const sp = new URLSearchParams()
   sp.set('apiKey', API_KEY)
   sp.set('serviceCode', serviceCode)
