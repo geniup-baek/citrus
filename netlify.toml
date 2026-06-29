@@ -9,7 +9,7 @@
 # 브라우저 → /ncpms-api/* → ncpms.rda.go.kr/* (CORS 우회)
 [[redirects]]
   from = "/ncpms-api/*"
-  to = "http://ncpms.rda.go.kr/:splat"
+  to = "/.netlify/functions/ncpms-proxy"
   status = 200
   force = true
 
