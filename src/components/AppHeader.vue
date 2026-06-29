@@ -15,6 +15,7 @@ const links = computed(() => [
   { to: '/issues', label: localeStore.t('nav.issues') },
   { to: '/inventory', label: localeStore.t('nav.inventory') },
   { to: '/knowledge', label: localeStore.t('nav.knowledge') },
+  { to: '/pest', label: localeStore.t('nav.pest') },
   { to: '/settings', label: localeStore.t('settings.title') },
 ])
 
