@@ -207,7 +207,6 @@ onMounted(load)
 </template>
 
 <style scoped>
-.pesticide-view { max-width: 860px; margin: 0 auto; }
 
 .view-header { margin-bottom: 1.25rem; }
 .subtitle {
