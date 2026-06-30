@@ -13,9 +13,10 @@
 const API_KEY = import.meta.env.VITE_AGRI_API_KEY
 const USE_MOCK = !API_KEY
 
-// 실제 엔드포인트: API 키 수령 후 pis.rda.go.kr 또는 ncpms.rda.go.kr 확인 필요
-// 프로덕션: netlify.toml에 /agri-api/* 프록시 규칙 추가 필요
-const BASE_PATH = '/agri-api/npmsAPI/service'
+// 엔드포인트: http://psis.rda.go.kr/openApi/service.do
+// 개발: vite.config.js /agri-api → http://psis.rda.go.kr 프록시
+// 프로덕션: netlify/functions/agri-proxy → http://psis.rda.go.kr
+const BASE_PATH = '/agri-api/openApi/service.do'
 
 function buildUrl(params = {}) {
   const sp = new URLSearchParams()
@@ -28,6 +29,9 @@ function buildUrl(params = {}) {
 
 // XML → { totalCount, list: [...] } 변환
 function parseXmlResponse(text) {
+  if (text.trimStart().startsWith('<html') || text.trimStart().startsWith('<!')) {
+    throw new Error('API 서버에 도달하지 못했습니다 (프록시 미연결 또는 잘못된 URL)')
+  }
   const doc = new DOMParser().parseFromString(text, 'text/xml')
   if (doc.querySelector('parsererror')) throw new Error('XML 파싱 오류')
 

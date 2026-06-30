@@ -13,6 +13,14 @@
   status = 200
   force = true
 
+# 농약안전정보시스템 API 서버 사이드 프록시
+# 브라우저 → /agri-api/* → psis.rda.go.kr/* (CORS 우회)
+[[redirects]]
+  from = "/agri-api/*"
+  to = "/.netlify/functions/agri-proxy"
+  status = 200
+  force = true
+
 # SPA 클라이언트 라우팅 (새로고침 404 방지)
 [[redirects]]
   from = "/*"
