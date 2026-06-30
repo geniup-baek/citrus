@@ -17,7 +17,6 @@ const PAGE_SIZE = 20
 const loading = ref(false)
 const error = ref('')
 
-// 상세 패널: expandedId = pestiCode, detailMap = { pestiCode: detailData }
 const expandedId = ref(null)
 const detailMap = ref({})
 const detailLoading = ref(false)
@@ -56,10 +55,9 @@ async function toggleDetail(item) {
     return
   }
   expandedId.value = item.pestiCode
-  if (detailMap.value[item.pestiCode]) return // 캐시 있으면 재사용
+  if (detailMap.value[item.pestiCode]) return
   detailLoading.value = true
   try {
-    // SVC02: pestiCode + diseaseUseSeq 둘 다 필수
     detailMap.value[item.pestiCode] = await getPesticideDetail({
       pestiCode: item.pestiCode,
       diseaseUseSeq: item.diseaseUseSeq,
@@ -71,9 +69,7 @@ async function toggleDetail(item) {
   }
 }
 
-// 유형 필터는 API 조회 시 서버 필터로 처리하므로 여기서는 그대로 반환
 const filteredItems = computed(() => items.value)
-
 const totalPages = computed(() => Math.ceil(total.value / PAGE_SIZE))
 
 function goPage(n) {
@@ -88,37 +84,36 @@ onMounted(load)
   <div class="pesticide-view">
     <div class="view-header">
       <h2>{{ t('pesticide.title') }}</h2>
-      <p class="subtitle">{{ t('pesticide.subtitle') }}<span v-if="isMock" class="mock-badge">샘플 데이터</span></p>
+      <p class="subtitle">
+        {{ t('pesticide.subtitle') }}
+        <span v-if="isMock" class="mock-badge">샘플 데이터</span>
+      </p>
     </div>
 
-    <!-- 검색 영역 -->
     <div class="search-bar">
       <input
         v-model="pestNameInput"
         type="text"
         :placeholder="t('pesticide.searchByName')"
-        class="search-input"
         @keyup.enter="search"
       />
       <input
         v-model="targetPestInput"
         type="text"
         :placeholder="t('pesticide.searchByPest')"
-        class="search-input"
         @keyup.enter="search"
       />
-      <button class="btn-primary" @click="search" :disabled="loading">
+      <button @click="search" :disabled="loading">
         {{ loading ? t('pest.loading') : t('pest.query') }}
       </button>
     </div>
 
-    <!-- 유형 필터 -->
     <div class="type-filter">
       <button
         v-for="opt in ['all', '살균', '살충']"
         :key="opt"
-        class="type-btn"
-        :class="{ active: typeFilter === opt }"
+        class="ghost type-btn"
+        :class="{ 'type-btn-active': typeFilter === opt }"
         @click="typeFilter = opt; search()"
       >
         {{ opt === 'all' ? t('pesticide.typeAll') : opt === '살균' ? t('pesticide.typeFungicide') : t('pesticide.typeInsecticide') }}
@@ -126,18 +121,14 @@ onMounted(load)
       <span v-if="total > 0" class="result-count">{{ t('pest.totalCount').replace('{count}', total) }}</span>
     </div>
 
-    <!-- 에러 -->
     <p v-if="error" class="error-msg">{{ t('pest.apiError') }} {{ error }}</p>
-
-    <!-- 결과 없음 -->
     <p v-else-if="!loading && filteredItems.length === 0" class="empty-msg">{{ t('pest.noResults') }}</p>
 
-    <!-- 목록 -->
     <div v-else class="pest-list">
       <div
         v-for="item in filteredItems"
         :key="item.pestiCode"
-        class="pest-card"
+        class="card pest-card"
       >
         <div class="pest-row" @click="toggleDetail(item)">
           <div class="pest-main">
@@ -146,63 +137,60 @@ onMounted(load)
             <span class="type-tag" :class="item.pesticideType">{{ item.pesticideType }}</span>
           </div>
           <div class="pest-meta">
-            <span class="meta-item">{{ item.ingredient }}</span>
+            <span>{{ item.ingredient }}</span>
             <span class="meta-sep">·</span>
-            <span class="meta-item target-pest">{{ item.targetPest }}</span>
+            <span class="target-pest">{{ item.targetPest }}</span>
           </div>
           <div class="pest-right">
             <span
               class="moa-badge"
               :style="{ background: modeOfActionColor(item.modeOfAction) }"
               :title="t('pesticide.modeOfAction')"
-            >
-              {{ item.modeOfAction }}
-            </span>
+            >{{ item.modeOfAction }}</span>
             <span class="toggle-arrow">{{ expandedId === item.pestiCode ? '▲' : '▼' }}</span>
           </div>
         </div>
 
-        <!-- 상세 패널 -->
         <div v-if="expandedId === item.pestiCode" class="detail-panel">
-          <p v-if="detailLoading && !detailMap[item.pestiCode]" class="detail-loading">조회 중...</p>
+          <p v-if="detailLoading && !detailMap[item.pestiCode]" class="item-meta">조회 중...</p>
           <template v-else-if="detailMap[item.pestiCode]">
             <div class="detail-grid">
               <div class="detail-row">
                 <span class="dlabel">{{ t('pesticide.ingredient') }}</span>
-                <span class="dval">{{ detailMap[item.pestiCode].ingredient }} {{ detailMap[item.pestiCode].ingredientContent }}</span>
+                <span>{{ detailMap[item.pestiCode].ingredient }} {{ detailMap[item.pestiCode].ingredientContent }}</span>
               </div>
               <div class="detail-row">
                 <span class="dlabel">{{ t('pesticide.targetPest') }}</span>
-                <span class="dval">{{ item.targetPest }}</span>
+                <span>{{ item.targetPest }}</span>
               </div>
               <div class="detail-row">
                 <span class="dlabel">{{ t('pesticide.dilution') }}</span>
-                <span class="dval">{{ item.dilution }}</span>
+                <span>{{ item.dilution }}</span>
               </div>
               <div class="detail-row">
                 <span class="dlabel">{{ t('pesticide.applicationMethod') }}</span>
-                <span class="dval">{{ item.applicationMethod }}</span>
+                <span>{{ item.applicationMethod }}</span>
               </div>
               <div class="detail-row">
                 <span class="dlabel">{{ t('pesticide.preHarvest') }}</span>
-                <span class="dval">수확 {{ item.preHarvestDays }}일 전까지 / {{ item.maxApplications }}회 이내</span>
+                <span>수확 {{ item.preHarvestDays }}일 전까지 / {{ item.maxApplications }}회 이내</span>
               </div>
               <div class="detail-row">
                 <span class="dlabel">{{ t('pesticide.modeOfAction') }}</span>
-                <span class="dval moa-detail">
+                <span class="moa-detail">
                   <span class="moa-badge" :style="{ background: modeOfActionColor(item.modeOfAction) }">{{ item.modeOfAction }}</span>
                 </span>
               </div>
               <div v-if="detailMap[item.pestiCode].toxicName" class="detail-row">
                 <span class="dlabel">{{ t('pesticide.toxic') }}</span>
-                <span class="dval">
+                <span>
                   {{ detailMap[item.pestiCode].toxicName }}
-                  <span v-if="detailMap[item.pestiCode].fishToxic" class="fish-toxic">· 어독성: {{ detailMap[item.pestiCode].fishToxic }}</span>
+                  <span v-if="detailMap[item.pestiCode].fishToxic" class="item-meta"> · 어독성: {{ detailMap[item.pestiCode].fishToxic }}</span>
                 </span>
               </div>
               <div v-if="item.manufacturer" class="detail-row">
                 <span class="dlabel">{{ t('pesticide.manufacturer') }}</span>
-                <span class="dval">{{ item.manufacturer }}</span>
+                <span>{{ item.manufacturer }}</span>
               </div>
             </div>
           </template>
@@ -210,38 +198,32 @@ onMounted(load)
       </div>
     </div>
 
-    <!-- 페이지네이션 -->
     <div v-if="totalPages > 1" class="pagination">
-      <button :disabled="page === 1" @click="goPage(page - 1)">‹</button>
+      <button class="ghost" :disabled="page === 1" @click="goPage(page - 1)">‹</button>
       <span>{{ page }} / {{ totalPages }}</span>
-      <button :disabled="page === totalPages" @click="goPage(page + 1)">›</button>
+      <button class="ghost" :disabled="page === totalPages" @click="goPage(page + 1)">›</button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.pesticide-view {
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 1.5rem 1rem;
-}
+.pesticide-view { max-width: 860px; margin: 0 auto; }
 
 .view-header { margin-bottom: 1.25rem; }
-.view-header h2 { margin: 0 0 0.25rem; font-size: 1.25rem; }
 .subtitle {
-  margin: 0;
+  margin: 0.2rem 0 0;
   font-size: 0.8rem;
-  color: var(--muted, #888);
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 .mock-badge {
   font-size: 0.7rem;
-  background: #f08a24;
-  color: #fff;
-  padding: 0.1rem 0.4rem;
-  border-radius: 3px;
+  background: var(--primary);
+  color: var(--primary-ink);
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
 }
 
 .search-bar {
@@ -250,27 +232,7 @@ onMounted(load)
   margin-bottom: 0.75rem;
   flex-wrap: wrap;
 }
-.search-input {
-  flex: 1;
-  min-width: 140px;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid var(--border, #ddd);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  background: var(--surface, #fff);
-  color: var(--text, #222);
-}
-.btn-primary {
-  padding: 0.45rem 1.1rem;
-  background: var(--accent, #f08a24);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.875rem;
-  white-space: nowrap;
-}
-.btn-primary:disabled { opacity: 0.6; cursor: default; }
+.search-bar input { flex: 1; min-width: 140px; }
 
 .type-filter {
   display: flex;
@@ -280,83 +242,63 @@ onMounted(load)
   flex-wrap: wrap;
 }
 .type-btn {
-  padding: 0.3rem 0.8rem;
-  border: 1px solid var(--border, #ddd);
-  border-radius: 20px;
-  background: var(--surface, #fff);
-  color: var(--text, #222);
-  cursor: pointer;
-  font-size: 0.8rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  padding: 0.28rem 0.72rem;
 }
-.type-btn.active {
-  background: var(--accent, #f08a24);
-  border-color: var(--accent, #f08a24);
-  color: #fff;
+.type-btn-active {
+  background: var(--primary);
+  color: var(--primary-ink);
+  border-color: transparent;
 }
-.result-count {
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--muted, #888);
-}
+.result-count { margin-left: auto; font-size: 0.8rem; color: var(--muted); }
 
-.error-msg { color: #e53935; font-size: 0.875rem; }
-.empty-msg { color: var(--muted, #888); font-size: 0.875rem; text-align: center; padding: 2rem; }
+.error-msg { color: var(--danger); font-size: 0.875rem; }
+.empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; }
 
-.pest-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.pest-list { display: flex; flex-direction: column; gap: 0.6rem; }
 
-.pest-card {
-  border: 1px solid var(--border, #ddd);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--surface, #fff);
-}
+.pest-card { padding: 0; overflow: hidden; }
 
 .pest-row {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.7rem 1rem;
+  padding: 0.8rem 1rem;
   cursor: pointer;
   flex-wrap: wrap;
+  border-radius: 1rem;
 }
-.pest-row:hover { background: var(--surface-hover, #f5f5f5); }
+.pest-row:hover { background: var(--surface-strong); border-radius: 1rem 1rem 0 0; }
 
-.pest-main {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-width: 160px;
-}
+.pest-main { display: flex; align-items: center; gap: 0.4rem; min-width: 160px; }
 .pest-name { font-weight: 600; font-size: 0.9rem; }
-.brand-name { font-size: 0.75rem; color: var(--muted, #888); }
+.brand-name { font-size: 0.75rem; color: var(--muted); }
+
 .type-tag {
   font-size: 0.68rem;
-  padding: 0.1rem 0.35rem;
-  border-radius: 3px;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
   font-weight: 600;
+  border: 1px solid;
 }
-.type-tag.살균 { background: #e8f5e9; color: #2e7d32; }
-.type-tag.살충 { background: #fff3e0; color: #e65100; }
+.type-tag.살균 { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+.type-tag.살충 { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
 
 .pest-meta {
   flex: 1;
   font-size: 0.8rem;
-  color: var(--muted, #888);
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 0.3rem;
   flex-wrap: wrap;
 }
-.meta-sep { opacity: 0.4; }
-.target-pest { color: var(--text, #444); }
+.meta-sep { opacity: 0.35; }
+.target-pest { color: var(--text); }
 
-.pest-right {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-left: auto;
-}
-.toggle-arrow { font-size: 0.7rem; color: var(--muted, #aaa); }
+.pest-right { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
+.toggle-arrow { font-size: 0.7rem; color: var(--muted); }
 
 .moa-badge {
   display: inline-block;
@@ -368,13 +310,10 @@ onMounted(load)
   letter-spacing: 0.02em;
 }
 
-.detail-loading { font-size: 0.8rem; color: var(--muted, #888); margin: 0.5rem 0; }
-.fish-toxic { color: var(--muted, #888); font-size: 0.85em; }
-
 .detail-panel {
-  border-top: 1px solid var(--border, #eee);
+  border-top: 1px solid var(--line);
   padding: 0.9rem 1rem;
-  background: var(--surface-alt, #fafafa);
+  background: var(--bg-soft);
 }
 .detail-grid { display: flex; flex-direction: column; gap: 0.45rem; }
 .detail-row {
@@ -383,8 +322,7 @@ onMounted(load)
   gap: 0.5rem;
   font-size: 0.83rem;
 }
-.dlabel { color: var(--muted, #888); }
-.dval { color: var(--text, #222); }
+.dlabel { color: var(--muted); }
 .moa-detail { display: flex; align-items: center; gap: 0.5rem; }
 
 .pagination {
@@ -395,12 +333,5 @@ onMounted(load)
   margin-top: 1.5rem;
   font-size: 0.875rem;
 }
-.pagination button {
-  padding: 0.3rem 0.8rem;
-  border: 1px solid var(--border, #ddd);
-  border-radius: 6px;
-  background: var(--surface, #fff);
-  cursor: pointer;
-}
-.pagination button:disabled { opacity: 0.4; cursor: default; }
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
