@@ -30,7 +30,15 @@ function buildUrl(params = {}) {
 async function apiFetch(params) {
   const res = await fetch(buildUrl(params))
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const data = await res.json()
+  const text = await res.text()
+  // XML 응답 감지 (resCd=02 미지원 시 XML 반환)
+  if (text.trimStart().startsWith('<')) {
+    const errMatch = /<errorCode>([^<]+)<\/errorCode>/.exec(text)
+    const msgMatch = /<errorMsg>([^<]+)<\/errorMsg>/.exec(text)
+    if (errMatch) throw new Error(`${errMatch[1]}: ${msgMatch?.[1] ?? 'API 오류'}`)
+    throw new Error('XML 응답 — API 키 확인 또는 serviceType 파라미터 조정 필요')
+  }
+  const data = JSON.parse(text)
   const svc = data?.service
   if (svc?.errorCode) throw new Error(`${svc.errorCode}: ${svc.errorMsg ?? '오류'}`)
   return data
