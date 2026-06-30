@@ -1,11 +1,11 @@
 // 농약안전정보시스템 OpenAPI (농촌진흥청)
 // 신청처: https://pis.rda.go.kr (농약안전정보시스템 API 포털)
 // 환경변수: VITE_AGRI_API_KEY
+// 응답 형식: XML (serviceType=AA001) — JSON 미지원
 //
 // SVC01: 농약등록정보 목록
-//   필수: apiKey, serviceCode=SVC01, serviceType=AA001(XML)/AA002(Ajax)
+//   필수: apiKey, serviceCode=SVC01, serviceType=AA001
 //   선택: cropName, diseaseWeedName, pestiKorName, pestiBrandName, useName, compName
-//   ※ serviceType에 JSON 옵션 없음 → resCd=02 병행 시도 (NCPMS와 동일 인프라 추정)
 //
 // SVC02: 농약등록정보 상세
 //   필수: apiKey, serviceCode=SVC02, pestiCode, diseaseUseSeq (SVC01 응답에서 획득)
@@ -20,28 +20,44 @@ const BASE_PATH = '/agri-api/npmsAPI/service'
 function buildUrl(params = {}) {
   const sp = new URLSearchParams()
   sp.set('apiKey', API_KEY)
-  sp.set('resCd', '02') // JSON 응답 시도 (미지원 시 XML 반환될 수 있음)
   for (const [k, v] of Object.entries(params)) {
     if (v !== null && v !== undefined && v !== '') sp.set(k, String(v))
   }
   return `${BASE_PATH}?${sp}`
 }
 
+// XML → { totalCount, list: [...] } 변환
+function parseXmlResponse(text) {
+  const doc = new DOMParser().parseFromString(text, 'text/xml')
+  if (doc.querySelector('parsererror')) throw new Error('XML 파싱 오류')
+
+  const service = doc.querySelector('service')
+  if (!service) throw new Error('응답 구조 오류 (service 요소 없음)')
+
+  const errorCode = service.querySelector('errorCode')?.textContent?.trim()
+  if (errorCode) {
+    const errorMsg = service.querySelector('errorMsg')?.textContent?.trim()
+    throw new Error(`${errorCode}: ${errorMsg ?? 'API 오류'}`)
+  }
+
+  const totalCount = Number(service.querySelector('totalCount')?.textContent ?? 0)
+  const listEls = service.querySelectorAll('list')
+  const list = Array.from(listEls).map(el => {
+    const obj = {}
+    for (const child of el.children) {
+      obj[child.tagName] = child.textContent?.trim() ?? ''
+    }
+    return obj
+  })
+
+  return { totalCount, list }
+}
+
 async function apiFetch(params) {
   const res = await fetch(buildUrl(params))
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const text = await res.text()
-  // XML 응답 감지 (resCd=02 미지원 시 XML 반환)
-  if (text.trimStart().startsWith('<')) {
-    const errMatch = /<errorCode>([^<]+)<\/errorCode>/.exec(text)
-    const msgMatch = /<errorMsg>([^<]+)<\/errorMsg>/.exec(text)
-    if (errMatch) throw new Error(`${errMatch[1]}: ${msgMatch?.[1] ?? 'API 오류'}`)
-    throw new Error('XML 응답 — API 키 확인 또는 serviceType 파라미터 조정 필요')
-  }
-  const data = JSON.parse(text)
-  const svc = data?.service
-  if (svc?.errorCode) throw new Error(`${svc.errorCode}: ${svc.errorMsg ?? '오류'}`)
-  return data
+  return parseXmlResponse(text)
 }
 
 // SVC01 응답 → 내부 구조 정규화
@@ -99,7 +115,7 @@ export async function searchPesticides({
 } = {}) {
   if (USE_MOCK) return mockSearch({ pestName, targetPest, pesticideType, page, pageSize })
 
-  const data = await apiFetch({
+  const { totalCount, list: raw } = await apiFetch({
     serviceCode: 'SVC01',
     serviceType: 'AA001',
     cropName: '감귤',
@@ -111,22 +127,19 @@ export async function searchPesticides({
     ...(pesticideType && { useName: pesticideType }),
   })
 
-  const raw = data?.service?.list ?? []
-  const list = (Array.isArray(raw) ? raw : [raw]).map(normalizeListItem)
-  return { total: Number(data?.service?.totalCount ?? list.length), list }
+  return { total: totalCount, list: raw.map(normalizeListItem) }
 }
 
 export async function getPesticideDetail({ pestiCode, diseaseUseSeq } = {}) {
   if (USE_MOCK) return mockDetail(pestiCode)
 
-  const data = await apiFetch({
+  const { list } = await apiFetch({
     serviceCode: 'SVC02',
     pestiCode,
     diseaseUseSeq,
   })
 
-  const item = data?.service?.list?.[0] ?? data?.service ?? {}
-  return normalizeDetail(item)
+  return normalizeDetail(list[0] ?? {})
 }
 
 export function modeOfActionColor(code) {
