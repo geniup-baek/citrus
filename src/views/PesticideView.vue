@@ -81,7 +81,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="pesticide-view">
+  <div class="card pesticide-view">
     <div class="view-header">
       <h2>{{ t('pesticide.title') }}</h2>
       <p class="subtitle">
@@ -128,7 +128,7 @@ onMounted(load)
       <div
         v-for="item in filteredItems"
         :key="item.pestiCode"
-        class="card pest-card"
+        class="pest-card"
       >
         <div class="pest-row" @click="toggleDetail(item)">
           <div class="pest-main">
@@ -258,7 +258,12 @@ onMounted(load)
 
 .pest-list { display: flex; flex-direction: column; gap: 0.6rem; }
 
-.pest-card { padding: 0; overflow: hidden; }
+.pest-card {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
 
 .pest-row {
   display: flex;
