@@ -358,8 +358,10 @@ export const messages = {
     period: '사용시기',
     preHarvest: '수확 전 안전사용',
     modeOfAction: '작용기작',
+    applicationMethod: '사용방법',
     manufacturer: '제조사',
     registNo: '등록번호',
+    toxic: '독성',
   },
   notifier: {
     title: '시트러스 작업 알림',

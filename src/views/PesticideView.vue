@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useLocaleStore } from '../stores/localeStore'
-import { searchPesticides, modeOfActionColor } from '../services/pesticide'
+import { searchPesticides, getPesticideDetail, modeOfActionColor } from '../services/pesticide'
 
 const localeStore = useLocaleStore()
 const t = (k) => localeStore.t(k)
@@ -16,7 +16,11 @@ const page = ref(1)
 const PAGE_SIZE = 20
 const loading = ref(false)
 const error = ref('')
+
+// 상세 패널: expandedId = pestiCode, detailMap = { pestiCode: detailData }
 const expandedId = ref(null)
+const detailMap = ref({})
+const detailLoading = ref(false)
 
 const isMock = !import.meta.env.VITE_AGRI_API_KEY
 
@@ -27,6 +31,7 @@ async function load() {
     const result = await searchPesticides({
       pestName: pestNameInput.value.trim(),
       targetPest: targetPestInput.value.trim(),
+      pesticideType: typeFilter.value === 'all' ? '' : typeFilter.value,
       page: page.value,
       pageSize: PAGE_SIZE,
     })
@@ -45,14 +50,29 @@ function search() {
   load()
 }
 
-function toggleDetail(id) {
-  expandedId.value = expandedId.value === id ? null : id
+async function toggleDetail(item) {
+  if (expandedId.value === item.pestiCode) {
+    expandedId.value = null
+    return
+  }
+  expandedId.value = item.pestiCode
+  if (detailMap.value[item.pestiCode]) return // 캐시 있으면 재사용
+  detailLoading.value = true
+  try {
+    // SVC02: pestiCode + diseaseUseSeq 둘 다 필수
+    detailMap.value[item.pestiCode] = await getPesticideDetail({
+      pestiCode: item.pestiCode,
+      diseaseUseSeq: item.diseaseUseSeq,
+    })
+  } catch {
+    detailMap.value[item.pestiCode] = null
+  } finally {
+    detailLoading.value = false
+  }
 }
 
-const filteredItems = computed(() => {
-  if (typeFilter.value === 'all') return items.value
-  return items.value.filter(p => p.pesticideType === typeFilter.value)
-})
+// 유형 필터는 API 조회 시 서버 필터로 처리하므로 여기서는 그대로 반환
+const filteredItems = computed(() => items.value)
 
 const totalPages = computed(() => Math.ceil(total.value / PAGE_SIZE))
 
@@ -99,7 +119,7 @@ onMounted(load)
         :key="opt"
         class="type-btn"
         :class="{ active: typeFilter === opt }"
-        @click="typeFilter = opt"
+        @click="typeFilter = opt; search()"
       >
         {{ opt === 'all' ? t('pesticide.typeAll') : opt === '살균' ? t('pesticide.typeFungicide') : t('pesticide.typeInsecticide') }}
       </button>
@@ -116,12 +136,13 @@ onMounted(load)
     <div v-else class="pest-list">
       <div
         v-for="item in filteredItems"
-        :key="item.id"
+        :key="item.pestiCode"
         class="pest-card"
       >
-        <div class="pest-row" @click="toggleDetail(item.id)">
+        <div class="pest-row" @click="toggleDetail(item)">
           <div class="pest-main">
             <span class="pest-name">{{ item.name }}</span>
+            <span v-if="item.brandName && item.brandName !== item.name" class="brand-name">{{ item.brandName }}</span>
             <span class="type-tag" :class="item.pesticideType">{{ item.pesticideType }}</span>
           </div>
           <div class="pest-meta">
@@ -132,57 +153,59 @@ onMounted(load)
           <div class="pest-right">
             <span
               class="moa-badge"
-              :style="{ background: modeOfActionColor(item.modeOfActionCode) }"
-              :title="item.modeOfActionType"
+              :style="{ background: modeOfActionColor(item.modeOfAction) }"
+              :title="t('pesticide.modeOfAction')"
             >
-              {{ item.modeOfActionCode }}
+              {{ item.modeOfAction }}
             </span>
-            <span class="toggle-arrow">{{ expandedId === item.id ? '▲' : '▼' }}</span>
+            <span class="toggle-arrow">{{ expandedId === item.pestiCode ? '▲' : '▼' }}</span>
           </div>
         </div>
 
         <!-- 상세 패널 -->
-        <div v-if="expandedId === item.id" class="detail-panel">
-          <div class="detail-grid">
-            <div class="detail-row">
-              <span class="dlabel">{{ t('pesticide.ingredient') }}</span>
-              <span class="dval">{{ item.ingredient }}</span>
+        <div v-if="expandedId === item.pestiCode" class="detail-panel">
+          <p v-if="detailLoading && !detailMap[item.pestiCode]" class="detail-loading">조회 중...</p>
+          <template v-else-if="detailMap[item.pestiCode]">
+            <div class="detail-grid">
+              <div class="detail-row">
+                <span class="dlabel">{{ t('pesticide.ingredient') }}</span>
+                <span class="dval">{{ detailMap[item.pestiCode].ingredient }} {{ detailMap[item.pestiCode].ingredientContent }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="dlabel">{{ t('pesticide.targetPest') }}</span>
+                <span class="dval">{{ item.targetPest }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="dlabel">{{ t('pesticide.dilution') }}</span>
+                <span class="dval">{{ item.dilution }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="dlabel">{{ t('pesticide.applicationMethod') }}</span>
+                <span class="dval">{{ item.applicationMethod }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="dlabel">{{ t('pesticide.preHarvest') }}</span>
+                <span class="dval">수확 {{ item.preHarvestDays }}일 전까지 / {{ item.maxApplications }}회 이내</span>
+              </div>
+              <div class="detail-row">
+                <span class="dlabel">{{ t('pesticide.modeOfAction') }}</span>
+                <span class="dval moa-detail">
+                  <span class="moa-badge" :style="{ background: modeOfActionColor(item.modeOfAction) }">{{ item.modeOfAction }}</span>
+                </span>
+              </div>
+              <div v-if="detailMap[item.pestiCode].toxicName" class="detail-row">
+                <span class="dlabel">{{ t('pesticide.toxic') }}</span>
+                <span class="dval">
+                  {{ detailMap[item.pestiCode].toxicName }}
+                  <span v-if="detailMap[item.pestiCode].fishToxic" class="fish-toxic">· 어독성: {{ detailMap[item.pestiCode].fishToxic }}</span>
+                </span>
+              </div>
+              <div v-if="item.manufacturer" class="detail-row">
+                <span class="dlabel">{{ t('pesticide.manufacturer') }}</span>
+                <span class="dval">{{ item.manufacturer }}</span>
+              </div>
             </div>
-            <div class="detail-row">
-              <span class="dlabel">{{ t('pesticide.targetPest') }}</span>
-              <span class="dval">{{ item.targetPest }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="dlabel">{{ t('pesticide.dilution') }}</span>
-              <span class="dval">{{ item.dilution }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="dlabel">{{ t('pesticide.period') }}</span>
-              <span class="dval">{{ item.period }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="dlabel">{{ t('pesticide.preHarvest') }}</span>
-              <span class="dval">{{ item.preHarvestDays }}일 전까지</span>
-            </div>
-            <div class="detail-row">
-              <span class="dlabel">{{ t('pesticide.modeOfAction') }}</span>
-              <span class="dval moa-detail">
-                <span
-                  class="moa-badge"
-                  :style="{ background: modeOfActionColor(item.modeOfActionCode) }"
-                >{{ item.modeOfActionCode }}</span>
-                {{ item.modeOfActionType }}
-              </span>
-            </div>
-            <div v-if="item.manufacturer" class="detail-row">
-              <span class="dlabel">{{ t('pesticide.manufacturer') }}</span>
-              <span class="dval">{{ item.manufacturer }}</span>
-            </div>
-            <div v-if="item.registNo" class="detail-row">
-              <span class="dlabel">{{ t('pesticide.registNo') }}</span>
-              <span class="dval">{{ item.registNo }}</span>
-            </div>
-          </div>
+          </template>
         </div>
       </div>
     </div>
@@ -305,6 +328,7 @@ onMounted(load)
   min-width: 160px;
 }
 .pest-name { font-weight: 600; font-size: 0.9rem; }
+.brand-name { font-size: 0.75rem; color: var(--muted, #888); }
 .type-tag {
   font-size: 0.68rem;
   padding: 0.1rem 0.35rem;
@@ -343,6 +367,9 @@ onMounted(load)
   border-radius: 4px;
   letter-spacing: 0.02em;
 }
+
+.detail-loading { font-size: 0.8rem; color: var(--muted, #888); margin: 0.5rem 0; }
+.fish-toxic { color: var(--muted, #888); font-size: 0.85em; }
 
 .detail-panel {
   border-top: 1px solid var(--border, #eee);
