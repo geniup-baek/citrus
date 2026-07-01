@@ -292,17 +292,26 @@ onMounted(() => {
 }
 
 .pest-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.8rem 1rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "main right"
+    "meta right";
+  column-gap: 0.75rem;
+  row-gap: 0.2rem;
+  padding: 0.75rem 1rem;
   cursor: pointer;
-  flex-wrap: wrap;
   border-radius: 1rem;
 }
 .pest-row:hover { background: var(--surface-strong); border-radius: 1rem 1rem 0 0; }
 
-.pest-main { display: flex; align-items: center; gap: 0.4rem; min-width: 160px; }
+.pest-main {
+  grid-area: main;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
 .pest-name { font-weight: 600; font-size: 0.9rem; }
 .brand-name { font-size: 0.75rem; color: var(--muted); }
 
@@ -317,7 +326,7 @@ onMounted(() => {
 .type-tag.살충 { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
 
 .pest-meta {
-  flex: 1;
+  grid-area: meta;
   font-size: 0.8rem;
   color: var(--muted);
   display: flex;
@@ -328,7 +337,13 @@ onMounted(() => {
 .meta-sep { opacity: 0.35; }
 .target-pest { color: var(--text); }
 
-.pest-right { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
+.pest-right {
+  grid-area: right;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: center;
+}
 .toggle-arrow { font-size: 0.7rem; color: var(--muted); }
 
 .moa-badge {
