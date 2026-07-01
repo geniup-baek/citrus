@@ -9,6 +9,7 @@ import InventoryView from '../views/InventoryView.vue'
 import KnowledgeView from '../views/KnowledgeView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import PestView from '../views/PestView.vue'
+import PesticideView from '../views/PesticideView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -22,6 +23,7 @@ const router = createRouter({
     { path: '/inventory', name: 'inventory', component: InventoryView },
     { path: '/knowledge', name: 'knowledge', component: KnowledgeView },
     { path: '/pest', name: 'pest', component: PestView },
+    { path: '/pesticide', name: 'pesticide', component: PesticideView },
     { path: '/settings', name: 'settings', component: SettingsView },
   ],
 })

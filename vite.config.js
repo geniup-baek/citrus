@@ -12,6 +12,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/ncpms-api/, ''),
       },
+      '/agri-api': {
+        target: 'http://psis.rda.go.kr',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/agri-api/, ''),
+      },
     },
   },
   plugins: [
