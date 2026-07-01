@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useLocaleStore } from '../stores/localeStore'
-import { searchPesticides, getPesticideDetail, modeOfActionColor } from '../services/pesticide'
+import { searchPesticides, getPesticideDetail, modeOfActionColor, getAvailableTypes } from '../services/pesticide'
 
 const localeStore = useLocaleStore()
 const t = (k) => localeStore.t(k)
@@ -16,6 +16,10 @@ const page = ref(1)
 const PAGE_SIZE = 20
 const loading = ref(false)
 const error = ref('')
+
+const nameMode = ref('brand') // 'brand' | 'product'
+
+const availableTypes = ref([])
 
 const expandedId = ref(null)
 const detailMap = ref({})
@@ -49,21 +53,26 @@ function search() {
   load()
 }
 
+function itemKey(item) {
+  return `${item.pestiCode}-${item.diseaseUseSeq}`
+}
+
 async function toggleDetail(item) {
-  if (expandedId.value === item.pestiCode) {
+  const key = itemKey(item)
+  if (expandedId.value === key) {
     expandedId.value = null
     return
   }
-  expandedId.value = item.pestiCode
-  if (detailMap.value[item.pestiCode]) return
+  expandedId.value = key
+  if (detailMap.value[key]) return
   detailLoading.value = true
   try {
-    detailMap.value[item.pestiCode] = await getPesticideDetail({
+    detailMap.value[key] = await getPesticideDetail({
       pestiCode: item.pestiCode,
       diseaseUseSeq: item.diseaseUseSeq,
     })
   } catch {
-    detailMap.value[item.pestiCode] = null
+    detailMap.value[key] = null
   } finally {
     detailLoading.value = false
   }
@@ -77,7 +86,10 @@ function goPage(n) {
   load()
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  getAvailableTypes().then(types => { availableTypes.value = types }).catch(() => {})
+})
 </script>
 
 <template>
@@ -110,15 +122,27 @@ onMounted(load)
 
     <div class="type-filter">
       <button
-        v-for="opt in ['all', '살균', '살충']"
+        v-for="opt in ['all', ...availableTypes]"
         :key="opt"
         class="ghost type-btn"
         :class="{ 'type-btn-active': typeFilter === opt }"
         @click="typeFilter = opt; search()"
       >
-        {{ opt === 'all' ? t('pesticide.typeAll') : opt === '살균' ? t('pesticide.typeFungicide') : t('pesticide.typeInsecticide') }}
+        {{ opt === 'all' ? t('pesticide.typeAll') : opt }}
       </button>
       <span v-if="total > 0" class="result-count">{{ t('pest.totalCount').replace('{count}', total) }}</span>
+      <div class="name-mode-toggle">
+        <button
+          class="ghost type-btn"
+          :class="{ 'type-btn-active': nameMode === 'brand' }"
+          @click="nameMode = 'brand'"
+        >상표명</button>
+        <button
+          class="ghost type-btn"
+          :class="{ 'type-btn-active': nameMode === 'product' }"
+          @click="nameMode = 'product'"
+        >품목명</button>
+      </div>
     </div>
 
     <p v-if="error" class="error-msg">{{ t('pest.apiError') }} {{ error }}</p>
@@ -127,13 +151,15 @@ onMounted(load)
     <div v-else class="pest-list">
       <div
         v-for="item in filteredItems"
-        :key="item.pestiCode"
+        :key="itemKey(item)"
         class="pest-card"
       >
         <div class="pest-row" @click="toggleDetail(item)">
           <div class="pest-main">
-            <span class="pest-name">{{ item.name }}</span>
-            <span v-if="item.brandName && item.brandName !== item.name" class="brand-name">{{ item.brandName }}</span>
+            <span class="pest-name">{{ nameMode === 'brand' ? (item.brandName || item.name) : item.name }}</span>
+            <span v-if="item.brandName && item.brandName !== item.name" class="brand-name">
+              {{ nameMode === 'brand' ? item.name : item.brandName }}
+            </span>
             <span class="type-tag" :class="item.pesticideType">{{ item.pesticideType }}</span>
           </div>
           <div class="pest-meta">
@@ -147,17 +173,17 @@ onMounted(load)
               :style="{ background: modeOfActionColor(item.modeOfAction) }"
               :title="t('pesticide.modeOfAction')"
             >{{ item.modeOfAction }}</span>
-            <span class="toggle-arrow">{{ expandedId === item.pestiCode ? '▲' : '▼' }}</span>
+            <span class="toggle-arrow">{{ expandedId === itemKey(item) ? '▲' : '▼' }}</span>
           </div>
         </div>
 
-        <div v-if="expandedId === item.pestiCode" class="detail-panel">
-          <p v-if="detailLoading && !detailMap[item.pestiCode]" class="item-meta">조회 중...</p>
-          <template v-else-if="detailMap[item.pestiCode]">
+        <div v-if="expandedId === itemKey(item)" class="detail-panel">
+          <p v-if="detailLoading && !detailMap[itemKey(item)]" class="item-meta">조회 중...</p>
+          <template v-else-if="detailMap[itemKey(item)]">
             <div class="detail-grid">
               <div class="detail-row">
                 <span class="dlabel">{{ t('pesticide.ingredient') }}</span>
-                <span>{{ detailMap[item.pestiCode].ingredient }} {{ detailMap[item.pestiCode].ingredientContent }}</span>
+                <span>{{ detailMap[itemKey(item)].ingredient }} {{ detailMap[itemKey(item)].ingredientContent }}</span>
               </div>
               <div class="detail-row">
                 <span class="dlabel">{{ t('pesticide.targetPest') }}</span>
@@ -181,11 +207,11 @@ onMounted(load)
                   <span class="moa-badge" :style="{ background: modeOfActionColor(item.modeOfAction) }">{{ item.modeOfAction }}</span>
                 </span>
               </div>
-              <div v-if="detailMap[item.pestiCode].toxicName" class="detail-row">
+              <div v-if="detailMap[itemKey(item)].toxicName" class="detail-row">
                 <span class="dlabel">{{ t('pesticide.toxic') }}</span>
                 <span>
-                  {{ detailMap[item.pestiCode].toxicName }}
-                  <span v-if="detailMap[item.pestiCode].fishToxic" class="item-meta"> · 어독성: {{ detailMap[item.pestiCode].fishToxic }}</span>
+                  {{ detailMap[itemKey(item)].toxicName }}
+                  <span v-if="detailMap[itemKey(item)].fishToxic" class="item-meta"> · 어독성: {{ detailMap[itemKey(item)].fishToxic }}</span>
                 </span>
               </div>
               <div v-if="item.manufacturer" class="detail-row">
@@ -250,7 +276,8 @@ onMounted(load)
   color: var(--primary-ink);
   border-color: transparent;
 }
-.result-count { margin-left: auto; font-size: 0.8rem; color: var(--muted); }
+.result-count { font-size: 0.8rem; color: var(--muted); }
+.name-mode-toggle { display: flex; gap: 0.25rem; margin-left: auto; }
 
 .error-msg { color: var(--danger); font-size: 0.875rem; }
 .empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; }

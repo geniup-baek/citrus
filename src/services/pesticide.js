@@ -45,7 +45,7 @@ function parseXmlResponse(text) {
   }
 
   const totalCount = Number(service.querySelector('totalCount')?.textContent ?? 0)
-  const listEls = service.querySelectorAll('list')
+  const listEls = service.querySelectorAll('list > item')
   const list = Array.from(listEls).map(el => {
     const obj = {}
     for (const child of el.children) {
@@ -119,19 +119,58 @@ export async function searchPesticides({
 } = {}) {
   if (USE_MOCK) return mockSearch({ pestName, targetPest, pesticideType, page, pageSize })
 
-  const { totalCount, list: raw } = await apiFetch({
+  const baseParams = {
     serviceCode: 'SVC01',
     serviceType: 'AA001',
     cropName: '감귤',
     cropCheck: 'Y',
     displayCount: pageSize,
     startPoint: (page - 1) * pageSize,
-    ...(pestName && { pestiKorName: pestName }),
     ...(targetPest && { diseaseWeedName: targetPest, similarFlag: 'Y' }),
     ...(pesticideType && { useName: pesticideType }),
-  })
+  }
 
-  return { total: totalCount, list: raw.map(normalizeListItem) }
+  if (!pestName) {
+    const { totalCount, list: raw } = await apiFetch(baseParams)
+    return { total: totalCount, list: raw.map(normalizeListItem) }
+  }
+
+  // 품목명 + 상표명 동시 검색 후 중복 제거 병합
+  const [byProduct, byBrand] = await Promise.all([
+    apiFetch({ ...baseParams, pestiKorName: pestName }),
+    apiFetch({ ...baseParams, pestiBrandName: pestName }),
+  ])
+  const seen = new Set()
+  const merged = []
+  for (const item of [...byProduct.list, ...byBrand.list]) {
+    const key = `${item.pestiCode}-${item.diseaseUseSeq}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      merged.push(item)
+    }
+  }
+  return { total: merged.length, list: merged.map(normalizeListItem) }
+}
+
+export async function getAvailableTypes() {
+  if (USE_MOCK) return ['살균', '살충']
+  const { totalCount } = await apiFetch({
+    serviceCode: 'SVC01',
+    serviceType: 'AA001',
+    cropName: '감귤',
+    cropCheck: 'Y',
+    displayCount: 1,
+    startPoint: 0,
+  })
+  const { list } = await apiFetch({
+    serviceCode: 'SVC01',
+    serviceType: 'AA001',
+    cropName: '감귤',
+    cropCheck: 'Y',
+    displayCount: totalCount,
+    startPoint: 0,
+  })
+  return [...new Set(list.map(i => i.useName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'))
 }
 
 export async function getPesticideDetail({ pestiCode, diseaseUseSeq } = {}) {
