@@ -10,6 +10,7 @@ import KnowledgeView from '../views/KnowledgeView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import PestView from '../views/PestView.vue'
 import PesticideView from '../views/PesticideView.vue'
+import PesticideRecommendView from '../views/PesticideRecommendView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: '/knowledge', name: 'knowledge', component: KnowledgeView },
     { path: '/pest', name: 'pest', component: PestView },
     { path: '/pesticide', name: 'pesticide', component: PesticideView },
+    { path: '/pesticide-recommend', name: 'pesticide-recommend', component: PesticideRecommendView },
     { path: '/settings', name: 'settings', component: SettingsView },
   ],
 })

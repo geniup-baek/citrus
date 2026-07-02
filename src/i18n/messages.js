@@ -14,6 +14,7 @@ export const messages = {
     knowledge: '지식',
     pest: '병해충',
     pesticide: '농약',
+    pesticideRecommend: '방제 추천',
     mainNavigation: '주요 메뉴',
   },
   common: {
