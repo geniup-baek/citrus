@@ -21,16 +21,19 @@ const links = computed(() => [
 ])
 
 const activePath = computed(() => route.path)
+
+/* global __APP_VERSION__ */
+const appVersion = __APP_VERSION__
 </script>
 
 <template>
   <header class="app-header">
+    <span class="app-version">v{{ appVersion }}</span>
     <div class="header-top-row">
       <div>
         <p class="eyebrow">{{ localeStore.t('header.eyebrow') }}</p>
         <h1>{{ localeStore.t('header.title') }}</h1>
       </div>
-
     </div>
 
     <nav class="main-nav" :aria-label="localeStore.t('nav.mainNavigation')">
