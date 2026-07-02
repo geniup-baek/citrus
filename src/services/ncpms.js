@@ -9,9 +9,17 @@
 //   SVC03 - 해충 검색 (requires cropName)
 //   SVC17~SVC25 - 예측·예찰 (ERR_104: 추가 권한 신청 필요)
 
+import { saveCache, loadCache } from './cache.js'
+
 const API_KEY = import.meta.env.VITE_NCPMS_API_KEY
 const CROP_NAME = '감귤'
 const SIDO_CODE = '50' // 제주특별자치도
+
+const FULL_KEYS = {
+  disease: 'pest:diseases:all',
+  pathogen: 'pest:pathogens:all',
+  insect: 'pest:insects:all',
+}
 
 function buildUrl(serviceCode, params = {}) {
   // 개발: Vite 프록시 (/ncpms-api → http://ncpms.rda.go.kr)
@@ -112,6 +120,76 @@ export async function getInsectDetail({ insectKey } = {}) {
   return ncpmsFetch('SVC07', { insectKey })
 }
 
+
+// ─── 전건 로컬 캐시 ──────────────────────────────────────────
+// 병·병원체·해충 전체를 localStorage에 저장 (최초 1회)
+// API 실패 시 getFromFullPestCache()로 페이지 슬라이싱
+
+async function warmOne(key, fetchFn) {
+  if (loadCache(key)) return
+  try {
+    const data = await fetchFn()
+    saveCache(key, normalizeList(data))
+  } catch {}
+}
+
+// 각 항목 상세를 순차 저장 (이미 캐시된 항목은 스킵)
+// type에 따른 key 필드: disease→sickKey, pathogen→virusKey, insect→insectKey
+async function warmDetails(type, items) {
+  const keyField = { disease: 'sickKey', pathogen: 'virusKey', insect: 'insectKey' }[type]
+  const detailFn = {
+    disease: id => getDiseaseDetail({ sickKey: id }),
+    pathogen: id => getPathogenDetail({ virusKey: id }),
+    insect: id => getInsectDetail({ insectKey: id }),
+  }[type]
+  for (const item of items) {
+    const id = item[keyField]
+    if (!id) continue
+    const cacheKey = `pest:detail:${type}:${id}`
+    if (loadCache(cacheKey)) continue
+    try {
+      const data = await detailFn(id)
+      saveCache(cacheKey, data)
+    } catch {}
+  }
+}
+
+export async function warmFullPestCache() {
+  await Promise.all([
+    warmOne(FULL_KEYS.disease, () => searchDiseases({ page: 1, pageSize: 999 })),
+    warmOne(FULL_KEYS.pathogen, () => searchPathogens({ page: 1, pageSize: 999 })),
+    warmOne(FULL_KEYS.insect, () => searchInsects({ page: 1, pageSize: 999 })),
+  ])
+  // 전건 목록 저장 후 상세도 순차 저장 (이미 캐시된 항목 스킵)
+  for (const type of ['disease', 'pathogen', 'insect']) {
+    const cached = loadCache(FULL_KEYS[type])
+    if (cached?.data) await warmDetails(type, cached.data)
+  }
+}
+
+export async function warmSurvDetails(year, items) {
+  for (const item of items) {
+    const id = item.insectKey
+    if (!id) continue
+    const cacheKey = `pest:surv:detail:${year}:${id}`
+    if (loadCache(cacheKey)) continue
+    try {
+      const data = await getSurveillanceDetailByGungu({ insectKey: id })
+      saveCache(cacheKey, data)
+    } catch {}
+  }
+}
+
+export function getFromFullPestCache(type, page, pageSize) {
+  const cached = loadCache(FULL_KEYS[type])
+  if (!cached) return null
+  const start = (page - 1) * pageSize
+  return {
+    list: cached.data.slice(start, start + pageSize),
+    total: cached.data.length,
+    fetchedAt: cached.fetchedAt,
+  }
+}
 
 // ─── 병해충예측 ──────────────────────────────────────────────
 // SVC31: 병해충예측지도 — 감귤(FT060614) 예측 모델 목록 + 현재 위험 단계(validAlarmRiskIdex)

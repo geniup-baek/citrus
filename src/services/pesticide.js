@@ -10,8 +10,12 @@
 // SVC02: 농약등록정보 상세
 //   필수: apiKey, serviceCode=SVC02, pestiCode, diseaseUseSeq (SVC01 응답에서 획득)
 
+import { saveCache, loadCache } from './cache.js'
+
 const API_KEY = import.meta.env.VITE_AGRI_API_KEY
 const USE_MOCK = !API_KEY
+
+const FULL_CACHE_KEY = 'pesticide:all'
 
 // 엔드포인트: http://psis.rda.go.kr/openApi/service.do
 // 개발: vite.config.js /agri-api → http://psis.rda.go.kr 프록시
@@ -150,6 +154,49 @@ export async function searchPesticides({
     }
   }
   return { total: merged.length, list: merged.map(normalizeListItem) }
+}
+
+// 전건을 백그라운드에서 로컬 저장 (최초 1회, 이미 있으면 스킵)
+export async function warmFullCache() {
+  if (USE_MOCK) return
+  if (loadCache(FULL_CACHE_KEY)) return
+  try {
+    const { totalCount } = await apiFetch({
+      serviceCode: 'SVC01', serviceType: 'AA001',
+      cropName: '감귤', cropCheck: 'Y',
+      displayCount: 1, startPoint: 0,
+    })
+    const { list } = await apiFetch({
+      serviceCode: 'SVC01', serviceType: 'AA001',
+      cropName: '감귤', cropCheck: 'Y',
+      displayCount: totalCount, startPoint: 0,
+    })
+    saveCache(FULL_CACHE_KEY, list.map(normalizeListItem))
+  } catch {}
+}
+
+// 전건 캐시에서 클라이언트 필터링
+export function searchFromFullCache({ pestName = '', targetPest = '', pesticideType = '', page = 1, pageSize = 20 } = {}) {
+  const cached = loadCache(FULL_CACHE_KEY)
+  if (!cached) return null
+  let list = cached.data
+  if (pestName) {
+    const q = pestName.toLowerCase()
+    list = list.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.brandName.toLowerCase().includes(q) ||
+      p.ingredient.toLowerCase().includes(q),
+    )
+  }
+  if (targetPest) {
+    const q = targetPest.toLowerCase()
+    list = list.filter(p => p.targetPest.toLowerCase().includes(q))
+  }
+  if (pesticideType) {
+    list = list.filter(p => p.pesticideType === pesticideType)
+  }
+  const start = (page - 1) * pageSize
+  return { total: list.length, list: list.slice(start, start + pageSize), fetchedAt: cached.fetchedAt }
 }
 
 export async function getAvailableTypes() {

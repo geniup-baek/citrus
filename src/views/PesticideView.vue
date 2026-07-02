@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useLocaleStore } from '../stores/localeStore'
-import { searchPesticides, getPesticideDetail, modeOfActionColor, getAvailableTypes } from '../services/pesticide'
+import { searchPesticides, getPesticideDetail, modeOfActionColor, getAvailableTypes, warmFullCache, searchFromFullCache } from '../services/pesticide'
+import { withCache, formatFetchedAt } from '../services/cache.js'
 
 const localeStore = useLocaleStore()
 const t = (k) => localeStore.t(k)
@@ -20,6 +21,7 @@ const error = ref('')
 const nameMode = ref('brand') // 'brand' | 'product'
 
 const availableTypes = ref([])
+const cacheInfo = ref(null) // { error, fetchedAt } | null
 
 const expandedId = ref(null)
 const detailMap = ref({})
@@ -30,18 +32,34 @@ const isMock = !import.meta.env.VITE_AGRI_API_KEY
 async function load() {
   loading.value = true
   error.value = ''
+  cacheInfo.value = null
+  const params = {
+    pestName: pestNameInput.value.trim(),
+    targetPest: targetPestInput.value.trim(),
+    pesticideType: typeFilter.value === 'all' ? '' : typeFilter.value,
+    page: page.value,
+    pageSize: PAGE_SIZE,
+  }
   try {
-    const result = await searchPesticides({
-      pestName: pestNameInput.value.trim(),
-      targetPest: targetPestInput.value.trim(),
-      pesticideType: typeFilter.value === 'all' ? '' : typeFilter.value,
-      page: page.value,
-      pageSize: PAGE_SIZE,
-    })
+    const { result, fromCache, fetchedAt, cacheError } = await withCache(
+      `pesticide:search:${JSON.stringify(params)}`,
+      () => searchPesticides(params),
+    )
     items.value = result.list
     total.value = result.total
+    if (fromCache) cacheInfo.value = { error: cacheError, fetchedAt }
   } catch (e) {
-    error.value = e.message
+    // API 실패 + 쿼리 캐시 없음 → 전건 캐시에서 클라이언트 필터링 시도
+    const local = searchFromFullCache(params)
+    if (local) {
+      items.value = local.list
+      total.value = local.total
+      cacheInfo.value = { error: e.message, fetchedAt: local.fetchedAt }
+    } else {
+      error.value = e.message
+      items.value = []
+      total.value = 0
+    }
   } finally {
     loading.value = false
   }
@@ -67,10 +85,11 @@ async function toggleDetail(item) {
   if (detailMap.value[key]) return
   detailLoading.value = true
   try {
-    detailMap.value[key] = await getPesticideDetail({
-      pestiCode: item.pestiCode,
-      diseaseUseSeq: item.diseaseUseSeq,
-    })
+    const { result } = await withCache(
+      `pesticide:detail:${key}`,
+      () => getPesticideDetail({ pestiCode: item.pestiCode, diseaseUseSeq: item.diseaseUseSeq }),
+    )
+    detailMap.value[key] = result
   } catch {
     detailMap.value[key] = null
   } finally {
@@ -87,7 +106,7 @@ function goPage(n) {
 }
 
 onMounted(() => {
-  load()
+  load().then(() => { warmFullCache() })
   getAvailableTypes().then(types => { availableTypes.value = types }).catch(() => {})
 })
 </script>
@@ -146,9 +165,14 @@ onMounted(() => {
     </div>
 
     <p v-if="error" class="error-msg">{{ t('pest.apiError') }} {{ error }}</p>
-    <p v-else-if="!loading && filteredItems.length === 0" class="empty-msg">{{ t('pest.noResults') }}</p>
+    <div v-if="cacheInfo" class="cache-banner">
+      <span class="cache-banner-icon">⚠</span>
+      <span class="cache-banner-msg">API 오류: {{ cacheInfo.error }}</span>
+      <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 저장 데이터</span>
+    </div>
+    <p v-if="!loading && !error && filteredItems.length === 0" class="empty-msg">{{ t('pest.noResults') }}</p>
 
-    <div v-else class="pest-list">
+    <div v-if="filteredItems.length > 0" class="pest-list">
       <div
         v-for="item in filteredItems"
         :key="itemKey(item)"
@@ -179,6 +203,7 @@ onMounted(() => {
 
         <div v-if="expandedId === itemKey(item)" class="detail-panel">
           <p v-if="detailLoading && !detailMap[itemKey(item)]" class="item-meta">조회 중...</p>
+          <p v-else-if="detailMap[itemKey(item)] === null" class="detail-no-cache">저장된 상세 데이터가 없습니다</p>
           <template v-else-if="detailMap[itemKey(item)]">
             <div class="detail-grid">
               <div class="detail-row">
@@ -282,6 +307,23 @@ onMounted(() => {
 .error-msg { color: var(--danger); font-size: 0.875rem; }
 .empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; }
 
+.cache-banner {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  background: #fffbe6;
+  border: 1px solid #f5d76e;
+  color: #7a5c00;
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.85rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.83rem;
+}
+.cache-banner-icon { font-size: 0.9rem; }
+.cache-banner-msg { flex: 1; min-width: 0; }
+.cache-banner-time { font-size: 0.78rem; opacity: 0.75; white-space: nowrap; }
+
 .pest-list { display: flex; flex-direction: column; gap: 0.6rem; }
 
 .pest-card {
@@ -369,6 +411,7 @@ onMounted(() => {
   font-size: 0.83rem;
 }
 .dlabel { color: var(--muted); }
+.detail-no-cache { font-size: 0.82rem; color: var(--muted); padding: 0.25rem 0; }
 .moa-detail { display: flex; align-items: center; gap: 0.5rem; }
 
 .pagination {

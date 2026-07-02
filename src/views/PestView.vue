@@ -13,14 +13,19 @@ import {
   getSurveillanceDetailByGungu,
   normalizeList,
   totalCount,
+  warmFullPestCache,
+  getFromFullPestCache,
+  warmSurvDetails,
 } from '../services/ncpms.js'
 import { useLocaleStore } from '../stores/localeStore'
+import { withCache, formatFetchedAt } from '../services/cache.js'
 
 const localeStore = useLocaleStore()
 
 const activeTab = ref('search')
 const loading = ref(false)
 const error = ref('')
+const cacheInfo = ref(null) // { error, fetchedAt } | null
 
 // ─── 병해충검색 ───────────────────────────────────────────────────
 const searchMode = ref('disease') // 'disease' | 'pathogen' | 'insect' (곤충 제외)
@@ -62,6 +67,7 @@ const YEARS = Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear(
 async function run(fn) {
   loading.value = true
   error.value = ''
+  cacheInfo.value = null
   try {
     await fn()
   } catch (e) {
@@ -77,39 +83,64 @@ function switchTab(tab) {
 }
 
 // ─── 병해충검색 ───────────────────────────────────────────────────
-async function loadDiseases(page = 1) {
-  diseasePage.value = page
+async function loadPestList({ type, page, apiFn, setItems, setTotal, setLoaded, pageRef }) {
+  pageRef.value = page
   searchExpandedId.value = null
   searchDetailData.value = null
-  await run(async () => {
-    const data = await searchDiseases({ page, pageSize: PAGE_SIZE })
-    diseaseItems.value = normalizeList(data)
-    diseaseTotal.value = totalCount(data)
-    diseaseLoaded.value = true
+  loading.value = true
+  error.value = ''
+  cacheInfo.value = null
+  try {
+    const { result, fromCache, fetchedAt, cacheError } = await withCache(
+      `pest:${type}:${page}`,
+      () => apiFn({ page, pageSize: PAGE_SIZE }),
+    )
+    setItems(normalizeList(result))
+    setTotal(totalCount(result))
+    setLoaded(true)
+    if (fromCache) cacheInfo.value = { error: cacheError, fetchedAt }
+  } catch (e) {
+    const local = getFromFullPestCache(type, page, PAGE_SIZE)
+    if (local) {
+      setItems(local.list)
+      setTotal(local.total)
+      setLoaded(true)
+      cacheInfo.value = { error: e.message, fetchedAt: local.fetchedAt }
+    } else {
+      error.value = e.message
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadDiseases(page = 1) {
+  await loadPestList({
+    type: 'disease', page, apiFn: searchDiseases,
+    setItems: v => { diseaseItems.value = v },
+    setTotal: v => { diseaseTotal.value = v },
+    setLoaded: v => { diseaseLoaded.value = v },
+    pageRef: diseasePage,
   })
 }
 
 async function loadPathogens(page = 1) {
-  pathogenPage.value = page
-  searchExpandedId.value = null
-  searchDetailData.value = null
-  await run(async () => {
-    const data = await searchPathogens({ page, pageSize: PAGE_SIZE })
-    pathogenItems.value = normalizeList(data)
-    pathogenTotal.value = totalCount(data)
-    pathogenLoaded.value = true
+  await loadPestList({
+    type: 'pathogen', page, apiFn: searchPathogens,
+    setItems: v => { pathogenItems.value = v },
+    setTotal: v => { pathogenTotal.value = v },
+    setLoaded: v => { pathogenLoaded.value = v },
+    pageRef: pathogenPage,
   })
 }
 
 async function loadInsects(page = 1) {
-  insectPage.value = page
-  searchExpandedId.value = null
-  searchDetailData.value = null
-  await run(async () => {
-    const data = await searchInsects({ page, pageSize: PAGE_SIZE })
-    insectItems.value = normalizeList(data)
-    insectTotal.value = totalCount(data)
-    insectLoaded.value = true
+  await loadPestList({
+    type: 'insect', page, apiFn: searchInsects,
+    setItems: v => { insectItems.value = v },
+    setTotal: v => { insectTotal.value = v },
+    setLoaded: v => { insectLoaded.value = v },
+    pageRef: insectPage,
   })
 }
 
@@ -118,16 +149,16 @@ function switchSearchMode(mode) {
   error.value = ''
   searchExpandedId.value = null
   searchDetailData.value = null
-  if (mode === 'disease' && !diseaseLoaded.value) loadDiseases(1)
-  if (mode === 'pathogen' && !pathogenLoaded.value) loadPathogens(1)
-  if (mode === 'insect' && !insectLoaded.value) loadInsects(1)
+  if (mode === 'disease' && !diseaseLoaded.value) loadDiseases(1).then(() => warmFullPestCache())
+  if (mode === 'pathogen' && !pathogenLoaded.value) loadPathogens(1).then(() => warmFullPestCache())
+  if (mode === 'insect' && !insectLoaded.value) loadInsects(1).then(() => warmFullPestCache())
 }
 
 function loadSearchTab() {
   const m = searchMode.value
-  if (m === 'disease' && !diseaseLoaded.value) loadDiseases(1)
-  else if (m === 'pathogen' && !pathogenLoaded.value) loadPathogens(1)
-  else if (m === 'insect' && !insectLoaded.value) loadInsects(1)
+  if (m === 'disease' && !diseaseLoaded.value) loadDiseases(1).then(() => warmFullPestCache())
+  else if (m === 'pathogen' && !pathogenLoaded.value) loadPathogens(1).then(() => warmFullPestCache())
+  else if (m === 'insect' && !insectLoaded.value) loadInsects(1).then(() => warmFullPestCache())
 }
 
 async function toggleSearchDetail(id, type) {
@@ -141,11 +172,12 @@ async function toggleSearchDetail(id, type) {
   searchDetailError.value = ''
   searchDetailLoading.value = true
   try {
-    let data
-    if (type === 'disease') data = await getDiseaseDetail({ sickKey: id })
-    else if (type === 'pathogen') data = await getPathogenDetail({ virusKey: id })
-    else if (type === 'insect') data = await getInsectDetail({ insectKey: id })
-    searchDetailData.value = data?.service ?? null
+    let fetchFn
+    if (type === 'disease') fetchFn = () => getDiseaseDetail({ sickKey: id })
+    else if (type === 'pathogen') fetchFn = () => getPathogenDetail({ virusKey: id })
+    else fetchFn = () => getInsectDetail({ insectKey: id })
+    const { result } = await withCache(`pest:detail:${type}:${id}`, fetchFn)
+    searchDetailData.value = result?.service ?? null
   } catch (e) {
     searchDetailError.value = e.message
   } finally {
@@ -165,8 +197,12 @@ function stripHtml(str) {
 // ─── 병해충예측 ───────────────────────────────────────────────────
 async function fetchPrediction() {
   await run(async () => {
-    const data = await getPrediction()
-    predItems.value = normalizePrediction(data)
+    const { result, fromCache, fetchedAt, cacheError } = await withCache(
+      'pest:prediction',
+      () => getPrediction(),
+    )
+    predItems.value = normalizePrediction(result)
+    if (fromCache) cacheInfo.value = { error: cacheError, fetchedAt }
   })
 }
 
@@ -182,10 +218,18 @@ function riskColor(riskIdx, stageCount) {
 async function fetchSurveillance() {
   survExpandedKey.value = ''
   survDetailItems.value = []
+  survItems.value = []
   await run(async () => {
-    const data = await getSurveillance({ year: survYear.value })
-    survItems.value = normalizeList(data)
+    const { result, fromCache, fetchedAt, cacheError } = await withCache(
+      `pest:surveillance:${survYear.value}`,
+      () => getSurveillance({ year: survYear.value }),
+    )
+    survItems.value = normalizeList(result)
+    if (fromCache) cacheInfo.value = { error: cacheError, fetchedAt }
   })
+  if (!error.value && survItems.value.length > 0) {
+    warmSurvDetails(survYear.value, survItems.value)
+  }
 }
 
 async function toggleSurvDetail(item) {
@@ -200,8 +244,11 @@ async function toggleSurvDetail(item) {
   survDetailError.value = ''
   survDetailLoading.value = true
   try {
-    const data = await getSurveillanceDetailByGungu({ insectKey: key })
-    survDetailItems.value = normalizeList(data)
+    const { result } = await withCache(
+      `pest:surv:detail:${survYear.value}:${key}`,
+      () => getSurveillanceDetailByGungu({ insectKey: key }),
+    )
+    survDetailItems.value = normalizeList(result)
   } catch (e) {
     survDetailError.value = e.message
   } finally {
@@ -265,6 +312,13 @@ function imgUrl(url) {
       <div v-if="error" class="pest-error">
         <strong>{{ localeStore.t('pest.apiError') }}</strong>
         <span style="white-space: pre-line;">{{ error }}</span>
+      </div>
+
+      <!-- 캐시 폴백 배너 -->
+      <div v-if="cacheInfo" class="cache-banner">
+        <span class="cache-banner-icon">⚠</span>
+        <span class="cache-banner-msg">API 오류: {{ cacheInfo.error }}</span>
+        <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 저장 데이터</span>
       </div>
 
       <!-- ═══════════ 병해충검색 ═══════════ -->
@@ -533,6 +587,27 @@ function imgUrl(url) {
 </template>
 
 <style scoped>
+.cache-banner {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  background: #fffbe6;
+  border: 1px solid #f5d76e;
+  color: #7a5c00;
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.85rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.83rem;
+}
+.cache-banner-icon { font-size: 0.9rem; }
+.cache-banner-msg { flex: 1; min-width: 0; }
+.cache-banner-time {
+  font-size: 0.78rem;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
 .pest-error {
   background: #fde2dd;
   border: 1px solid #efb3a9;
