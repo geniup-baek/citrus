@@ -9,5 +9,9 @@ service cloud.firestore {
       // 사진(base64)을 사진별 개별 문서로 분산 저장한다.
       allow read, write: if true;
     }
+    match /treatments/{treatmentId} {
+      // 농약 방제 이력
+      allow read, write: if true;
+    }
   }
 }

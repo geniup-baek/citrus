@@ -2,9 +2,13 @@
 import { computed, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
+import { useTreatmentStore } from '../stores/treatmentStore'
+import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
+const treatStore = useTreatmentStore()
+const recSettingsStore = useRecommendSettingsStore()
 
 // ── 백업 / 복원 ──────────────────────────────────────────────────────────────
 const backupMessage = ref('')
@@ -20,12 +24,25 @@ const datasetLabels = {
   scheduleRules: () => localeStore.t('settings.backupRules'),
   issues: () => localeStore.t('nav.issues'),
   inventory: () => localeStore.t('nav.inventory'),
+  treatments: () => '방제기록',
 }
 
-const currentCounts = computed(() => store.backupSummary(store.exportBackup()))
+function extendedSummary(payload) {
+  const base = store.backupSummary(payload)
+  base.treatments = Array.isArray(payload?.data?.treatments) ? payload.data.treatments.length : 0
+  return base
+}
+
+const currentCounts = computed(() => {
+  const base = store.backupSummary(store.exportBackup())
+  base.treatments = treatStore.treatments.length
+  return base
+})
 
 async function exportBackup() {
   const payload = await store.exportBackupWithPhotos()
+  payload.data.treatments = treatStore.treatments
+  payload.data.recommendSettings = { ...recSettingsStore.settings }
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -54,7 +71,7 @@ async function handleRestoreFile(event) {
       restoreError.value = localeStore.t('settings.restoreInvalid')
       return
     }
-    pendingRestore.value = { payload, summary: store.backupSummary(payload) }
+    pendingRestore.value = { payload, summary: extendedSummary(payload) }
   } catch {
     restoreError.value = localeStore.t('settings.restoreInvalid')
   }
@@ -66,7 +83,14 @@ function cancelRestore() {
 
 async function confirmRestore() {
   if (!pendingRestore.value) return
-  await store.restoreBackup(pendingRestore.value.payload)
+  const { payload } = pendingRestore.value
+  await store.restoreBackup(payload)
+  if (Array.isArray(payload.data?.treatments)) {
+    await treatStore.replaceAllTreatments(payload.data.treatments)
+  }
+  if (payload.data?.recommendSettings) {
+    recSettingsStore.restoreSettings(payload.data.recommendSettings)
+  }
   pendingRestore.value = null
   backupMessage.value = localeStore.t('settings.restoreDone')
 }
