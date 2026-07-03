@@ -1,12 +1,17 @@
-<script setup>
+﻿<script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useTreatmentStore } from '../stores/treatmentStore.js'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore.js'
+import { useFarmStore } from '../stores/farmStore.js'
+import { useAvailablePesticideStore, parsePurchaseText } from '../stores/availablePesticideStore.js'
 import { LOCAL_PESTICIDES, findByBrandName, getUniquePests } from '../data/localPesticides.js'
-import { getRecommendations, moaColor, getMoaGroups } from '../services/recommend.js'
+import { getRecommendations, moaColor } from '../services/recommend.js'
+import { searchFromFullCache } from '../services/pesticide.js'
 
-const treatStore = useTreatmentStore()
+const treatStore    = useTreatmentStore()
 const settingsStore = useRecommendSettingsStore()
+const farmStore     = useFarmStore()
+const apStore       = useAvailablePesticideStore()
 
 const activeTab = ref('history')
 
@@ -114,6 +119,16 @@ const recPest   = ref('')
 const recResult = ref(null)
 const uniquePests = getUniquePests()
 
+const recPests = computed(() => {
+  const set = new Set()
+  for (const p of apStore.availableList) {
+    for (const pest of p.targetPests) {
+      set.add(pest.replace(/\(.*?\)/g, '').trim())
+    }
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'ko'))
+})
+
 function runRecommend() {
   if (!recPest.value.trim()) { recResult.value = null; return }
   recResult.value = getRecommendations({
@@ -121,6 +136,7 @@ function runRecommend() {
     treatments: treatStore.treatments,
     settings:   settingsStore.settings,
     today:      today(),
+    pesticides: apStore.availableList,
   })
 }
 
@@ -129,6 +145,22 @@ watch(() => treatStore.treatments.length, () => {
   if (recResult.value) runRecommend()
 })
 
+function hasStock(brandName) {
+  return (inventoryStockMap.value[brandName]?.length ?? 0) > 0
+}
+
+const sortedRecommended = computed(() =>
+  recResult.value
+    ? [...recResult.value.recommended].sort((a, b) => hasStock(b.brandName) - hasStock(a.brandName))
+    : [],
+)
+
+const sortedExcluded = computed(() =>
+  recResult.value
+    ? [...recResult.value.excluded].sort((a, b) => hasStock(b.brandName) - hasStock(a.brandName))
+    : [],
+)
+
 // ── computed helpers ───────────────────────────────────────────────────────
 const categoryClass = (cat) => ({
   '살균제': 'cat-fungicide',
@@ -136,7 +168,127 @@ const categoryClass = (cat) => ({
   '살충제': 'cat-insecticide',
 }[cat] ?? '')
 
-onMounted(() => treatStore.init())
+// 살균→살균제 등 접미사 통일
+function normCat(cat) {
+  if (!cat) return ''
+  return cat.endsWith('제') ? cat : cat + '제'
+}
+const categoryClassFor = (cat) => categoryClass(normCat(cat))
+
+// ── 가용농약 Tab ───────────────────────────────────────────────────────────
+const apInputText    = ref('')
+const apFilter        = ref('')
+const apSourceFilter  = ref('all')   // 'all' | 'purchase' | 'inventory'
+const apUnmatchedOnly = ref(false)
+const matchingItemId = ref(null)   // 수동 연결 패널이 열린 아이템 id
+const matchQuery     = ref('')
+const matchResults   = ref([])
+const apBuilding     = ref(false)
+
+const inventoryPesticides = computed(() =>
+  (farmStore.state?.inventory ?? []).filter(i => i.category === '농약'),
+)
+
+function fmtExpiry(date) {
+  if (!date) return ''
+  const d = new Date(date)
+  if (Number.isNaN(d.getTime())) return date
+  return `~${String(d.getFullYear()).slice(2)}.${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function stockLotLabel(lot) {
+  return [lot.vol === '기본' ? '' : lot.vol, lot.expiry ? fmtExpiry(lot.expiry) : '', `${lot.qty}개`]
+    .filter(Boolean).join(' ')
+}
+
+// 재고 수량 맵: item.name → [{vol, expiry, qty}] (lot별 재고 > 0인 것만)
+const inventoryStockMap = computed(() => {
+  const map = {}
+  for (const item of inventoryPesticides.value) {
+    const byLot = {}
+    for (const t of item.txns ?? []) {
+      const key = `${t.volume || '기본'}__${t.expiryDate || ''}`
+      byLot[key] = (byLot[key] ?? 0) + (t.type === '입고' ? t.amount : -t.amount)
+    }
+    const lots = Object.entries(byLot)
+      .filter(([, qty]) => qty > 0)
+      .map(([key, qty]) => { const [vol, expiry] = key.split('__'); return { vol, expiry, qty } })
+    if (lots.length) map[item.name] = lots
+  }
+  return map
+})
+
+const parsedCount = computed(() => parsePurchaseText(apInputText.value).length)
+
+const apStats = computed(() => {
+  const total   = apStore.availableList.length
+  const matched = apStore.availableList.filter(p => p.matchSource).length
+  return { total, matched, unmatched: total - matched }
+})
+
+const apSourceCounts = computed(() => ({
+  purchase: apStore.availableList.filter(p => p.source === 'purchase').length,
+  inventory: apStore.availableList.filter(p => p.source === 'inventory').length,
+}))
+
+const filteredApList = computed(() => {
+  let list = apStore.availableList
+  if (apSourceFilter.value !== 'all') list = list.filter(p => p.source === apSourceFilter.value)
+  if (apUnmatchedOnly.value) list = list.filter(p => !p.matchSource)
+  const q = apFilter.value.trim().toLowerCase()
+  if (q) list = list.filter(p =>
+    p.brandName.toLowerCase().includes(q) ||
+    normCat(p.category).includes(q) ||
+    p.moa.toLowerCase().includes(q) ||
+    p.targetPests.some(t => t.toLowerCase().includes(q)),
+  )
+  return [...list].sort((a, b) => a.brandName.localeCompare(b.brandName, 'ko'))
+})
+
+function matchLabel(src) {
+  if (src === 'api')       return '자동'
+  if (src === 'manual')    return '수동'
+  if (src === 'inventory') return '재고'
+  return '미연결'
+}
+
+async function buildApList() {
+  apStore.savePurchaseInput(apInputText.value)
+  apBuilding.value = true
+  try { apStore.buildList(inventoryPesticides.value) }
+  finally { apBuilding.value = false }
+}
+
+function openManualMatch(itemId) {
+  if (matchingItemId.value === itemId) {
+    matchingItemId.value = null
+    matchQuery.value = ''
+    matchResults.value = []
+    return
+  }
+  matchingItemId.value = itemId
+  matchQuery.value = ''
+  matchResults.value = []
+}
+
+function searchApiCandidates(query) {
+  if (!query.trim()) { matchResults.value = []; return }
+  const result = searchFromFullCache({ pestName: query.trim(), page: 1, pageSize: 12 })
+  matchResults.value = result?.list ?? []
+}
+
+function applyMatch(itemId, apiItem) {
+  apStore.applyManualMatch(itemId, apiItem)
+  matchingItemId.value = null
+  matchQuery.value = ''
+  matchResults.value = []
+}
+
+onMounted(() => {
+  treatStore.init()
+  apStore.init()
+  apInputText.value = apStore.purchaseInput
+})
 </script>
 
 <template>
@@ -149,6 +301,7 @@ onMounted(() => treatStore.init())
     <!-- Tabs -->
     <div class="tab-bar">
       <button class="tab-btn" :class="{ active: activeTab === 'history' }"   @click="activeTab = 'history'">방제 이력</button>
+      <button class="tab-btn" :class="{ active: activeTab === 'avail' }"     @click="activeTab = 'avail'">가용농약</button>
       <button class="tab-btn" :class="{ active: activeTab === 'recommend' }" @click="activeTab = 'recommend'">농약 추천</button>
       <button class="tab-btn" :class="{ active: activeTab === 'settings' }"  @click="activeTab = 'settings'">추천 설정</button>
     </div>
@@ -161,12 +314,13 @@ onMounted(() => treatStore.init())
           <button v-if="editingId" class="cancel-btn" @click="resetForm">취소</button>
         </div>
         <div class="form-row">
-          <label>날짜</label>
-          <input type="date" v-model="fDate" />
+          <label for="f-date">날짜</label>
+          <input id="f-date" type="date" v-model="fDate" />
         </div>
         <div class="form-row">
-          <label>농약</label>
+          <label for="f-brand">농약</label>
           <input
+            id="f-brand"
             v-model="fBrand"
             list="brand-list"
             placeholder="상표명 입력 또는 선택"
@@ -177,22 +331,22 @@ onMounted(() => treatStore.init())
           </datalist>
         </div>
         <div v-if="fMoa" class="form-row form-info">
-          <label>작용기작</label>
+          <span class="form-row-label">작용기작</span>
           <span>
             <span class="moa-badge" :style="{ background: moaColor(fMoa) }">{{ fMoa }}</span>
             <span class="cat-badge" :class="categoryClass(fCategory)">{{ fCategory }}</span>
           </span>
         </div>
         <div class="form-row">
-          <label>방제 대상</label>
-          <input v-model="fPest" list="pest-list" placeholder="예: 귤굴나방" autocomplete="off" />
+          <label for="f-pest">방제 대상</label>
+          <input id="f-pest" v-model="fPest" list="pest-list" placeholder="예: 귤굴나방" autocomplete="off" />
           <datalist id="pest-list">
             <option v-for="p in uniquePests" :key="p" :value="p" />
           </datalist>
         </div>
         <div class="form-row">
-          <label>메모</label>
-          <input v-model="fMemo" placeholder="희석배수, 날씨, 구역 등 (선택)" />
+          <label for="f-memo">메모</label>
+          <input id="f-memo" v-model="fMemo" placeholder="희석배수, 날씨, 구역 등 (선택)" />
         </div>
         <p v-if="formError" class="form-error">{{ formError }}</p>
         <button class="primary-btn" :disabled="saving" @click="submitTreatment">
@@ -250,12 +404,16 @@ onMounted(() => treatStore.init())
           autocomplete="off"
         />
         <datalist id="rec-pest-list">
-          <option v-for="p in uniquePests" :key="p" :value="p" />
+          <option v-for="p in recPests" :key="p" :value="p" />
         </datalist>
         <button class="primary-btn" @click="runRecommend">추천 조회</button>
       </div>
 
-      <div v-if="!recResult" class="empty-msg">
+      <div v-if="apStore.availableList.length === 0" class="empty-msg">
+        가용농약 목록이 없습니다.<br>
+        <span class="hint">'가용농약' 탭에서 구입가능농약을 입력하고 목록을 작성해주세요.</span>
+      </div>
+      <div v-else-if="!recResult" class="empty-msg">
         방제 대상을 입력하고 추천 조회를 눌러주세요.<br>
         <span class="hint">설정의 제약사항이 반영됩니다 (현재 {{ settingsStore.settings.moaConflictDays }}일 이내 작용기작 중복 제외).</span>
       </div>
@@ -275,7 +433,7 @@ onMounted(() => treatStore.init())
               현재 제약사항을 모두 만족하는 농약이 없습니다.
             </div>
             <div v-else class="rec-list">
-              <div v-for="p in recResult.recommended" :key="p.brandName" class="rec-card rec-ok">
+              <div v-for="p in sortedRecommended" :key="p.brandName" class="rec-card rec-ok">
                 <div class="rec-top">
                   <span class="rec-brand">{{ p.brandName }}</span>
                   <span class="moa-badge" :style="{ background: moaColor(p.moa) }">{{ p.moa }}</span>
@@ -283,6 +441,10 @@ onMounted(() => treatStore.init())
                 </div>
                 <div class="rec-pests">{{ p.targetPests.join(', ') }}</div>
                 <div v-if="p.useCount > 0" class="rec-usecount">올해 {{ p.useCount }}회 사용</div>
+                <div v-if="inventoryStockMap[p.brandName]?.length" class="ap-stock-row">
+                  재고
+                  <span v-for="lot in inventoryStockMap[p.brandName]" :key="`${lot.vol}-${lot.expiry}`" class="ap-stock-lot">{{ stockLotLabel(lot) }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -294,7 +456,7 @@ onMounted(() => treatStore.init())
               <span class="rec-count">{{ recResult.excluded.length }}건</span>
             </h3>
             <div class="rec-list">
-              <div v-for="p in recResult.excluded" :key="p.brandName" class="rec-card rec-ng">
+              <div v-for="p in sortedExcluded" :key="p.brandName" class="rec-card rec-ng">
                 <div class="rec-top">
                   <span class="rec-brand">{{ p.brandName }}</span>
                   <span class="moa-badge moa-faded" :style="{ background: moaColor(p.moa) }">{{ p.moa }}</span>
@@ -303,11 +465,173 @@ onMounted(() => treatStore.init())
                 <ul class="rec-reasons">
                   <li v-for="(r, i) in p.reasons" :key="i">{{ r }}</li>
                 </ul>
+                <div v-if="inventoryStockMap[p.brandName]?.length" class="ap-stock-row">
+                  재고
+                  <span v-for="lot in inventoryStockMap[p.brandName]" :key="`${lot.vol}-${lot.expiry}`" class="ap-stock-lot">{{ stockLotLabel(lot) }}</span>
+                </div>
               </div>
             </div>
           </div>
         </template>
       </template>
+    </section>
+
+    <!-- ═══ 가용농약 ════════════════════════════════════════════════════════ -->
+    <section v-if="activeTab === 'avail'">
+
+      <!-- 구입가능농약 입력 -->
+      <div class="form-card">
+        <div class="form-card-header">
+          <span class="form-card-title">구입가능농약 입력</span>
+        </div>
+        <p class="ap-hint">
+          <code>상표명(형태)-용량</code> 형식, 줄바꿈으로 구분. 유사 농약은 <code>/</code>로 연결.<br>
+          예) <code>만수무강(액상)-500ml</code> &nbsp;|&nbsp; <code>겔럭시(유)-200ml/올스타/오쏘도</code>
+        </p>
+        <textarea
+          v-model="apInputText"
+          class="ap-textarea"
+          placeholder="여기에 붙여넣기..."
+          rows="6"
+        ></textarea>
+        <div class="ap-input-footer">
+          <span v-if="parsedCount > 0" class="ap-parse-count">{{ parsedCount }}개 항목 인식됨</span>
+          <span v-else class="ap-parse-count muted">입력 없음</span>
+        </div>
+      </div>
+
+      <!-- 재고농약 표시 -->
+      <div class="ap-inv-row">
+        <span class="ap-inv-label">재고농약</span>
+        <span v-if="inventoryPesticides.length > 0" class="pill ap-inv-pill">{{ inventoryPesticides.length }}종</span>
+        <span v-else class="muted" style="font-size:0.8rem;">없음 (재고 메뉴에서 농약 카테고리 항목 추가)</span>
+        <span v-if="inventoryPesticides.length > 0" class="ap-inv-names">
+          {{ inventoryPesticides.map(i => i.name).slice(0, 5).join(' · ') }}{{ inventoryPesticides.length > 5 ? ' 외 ' + (inventoryPesticides.length - 5) + '종' : '' }}
+        </span>
+      </div>
+
+      <!-- 목록 작성 버튼 -->
+      <div class="ap-build-row">
+        <button class="primary-btn" :disabled="apBuilding" @click="buildApList">
+          {{ apBuilding ? '작성 중...' : '목록 작성' }}
+        </button>
+        <span v-if="apStats.total > 0" class="ap-stats">
+          {{ apStats.total }}개 &nbsp;·&nbsp; 연결 {{ apStats.matched }} &nbsp;·&nbsp; 미연결 {{ apStats.unmatched }}
+        </span>
+      </div>
+
+      <!-- 가용농약 목록 -->
+      <template v-if="apStore.availableList.length > 0">
+        <div class="ap-list-header">
+          <span class="ap-list-title">가용농약 목록</span>
+          <div class="ap-src-filter">
+            <button class="ap-src-btn" :class="{ active: apSourceFilter === 'all' }"       @click="apSourceFilter = 'all'">전체 ({{ apStats.total }})</button>
+            <button class="ap-src-btn" :class="{ active: apSourceFilter === 'purchase' }"  @click="apSourceFilter = 'purchase'">구입가능 ({{ apSourceCounts.purchase }})</button>
+            <button class="ap-src-btn" :class="{ active: apSourceFilter === 'inventory' }" @click="apSourceFilter = 'inventory'">재고 ({{ apSourceCounts.inventory }})</button>
+          </div>
+          <button
+            class="ghost ap-unmatched-btn"
+            :class="{ 'ap-unmatched-active': apUnmatchedOnly }"
+            @click="apUnmatchedOnly = !apUnmatchedOnly"
+          >미연결만 ({{ apStats.unmatched }})</button>
+          <input
+            v-model="apFilter"
+            type="text"
+            class="ap-filter-input"
+            placeholder="필터 (농약명, 분류, 작용기작, 병해충)"
+          />
+        </div>
+
+        <div class="ap-list">
+          <div v-for="item in filteredApList" :key="item.id" class="ap-card">
+            <!-- 카드 메인 -->
+            <div class="ap-card-body">
+              <div class="ap-card-name-row">
+                <span class="ap-brand">{{ item.brandName }}</span>
+                <span v-if="item.form"   class="ap-form">({{ item.form }})</span>
+                <span v-if="item.volume" class="ap-vol">{{ item.volume }}</span>
+              </div>
+              <div class="ap-card-badges">
+                <span class="source-badge" :class="item.source === 'purchase' ? 'src-purchase' : 'src-inv'">
+                  {{ item.source === 'purchase' ? '구입가능' : '재고' }}
+                </span>
+                <span v-if="item.category" class="cat-badge" :class="categoryClassFor(item.category)">
+                  {{ normCat(item.category) }}
+                </span>
+                <span v-if="item.moa" class="moa-badge" :style="{ background: moaColor(item.moa) }">
+                  {{ item.moa }}
+                </span>
+                <span class="match-badge" :class="item.matchSource ? 'match-ok' : 'match-none'">
+                  {{ matchLabel(item.matchSource) }}
+                </span>
+              </div>
+              <div v-if="item.targetPests.length" class="ap-pests">
+                {{ item.targetPests.join(' · ') }}
+              </div>
+              <div v-if="item.preHarvestDays" class="ap-safety">
+                수확 {{ item.preHarvestDays }}일 전까지 · {{ item.maxApplications }}회 이내
+              </div>
+              <div v-if="item.ingredient" class="ap-ingredient">{{ item.ingredient }}</div>
+              <div v-if="inventoryStockMap[item.brandName]?.length" class="ap-stock-row">
+                재고
+                <span
+                  v-for="lot in inventoryStockMap[item.brandName]"
+                  :key="`${lot.vol}-${lot.expiry}`"
+                  class="ap-stock-lot"
+                >{{ stockLotLabel(lot) }}</span>
+              </div>
+            </div>
+
+            <!-- 카드 액션 -->
+            <div class="ap-card-actions">
+              <button
+                class="action-btn"
+                :class="{ 'action-btn-active': matchingItemId === item.id }"
+                @click="openManualMatch(item.id)"
+              >{{ item.matchSource === 'manual' ? '연결 변경' : (item.matchSource ? '수동 재연결' : '수동 연결') }}</button>
+              <button
+                v-if="item.matchSource === 'manual'"
+                class="cancel-btn"
+                @click="apStore.clearManualMatch(item.id)"
+              >연결 해제</button>
+              <button class="del-btn" @click="apStore.removeFromList(item.id)">삭제</button>
+            </div>
+
+            <!-- 수동 연결 패널 -->
+            <div v-if="matchingItemId === item.id" class="match-panel">
+              <input
+                type="text"
+                v-model="matchQuery"
+                placeholder="농약명 검색 (OpenAPI 데이터)"
+                class="match-search-input"
+                @input="searchApiCandidates(matchQuery)"
+              />
+              <div v-if="matchResults.length" class="match-results">
+                <div
+                  v-for="r in matchResults"
+                  :key="`${r.pestiCode}-${r.diseaseUseSeq}`"
+                  class="match-result-item"
+                  @click="applyMatch(item.id, r)"
+                >
+                  <span class="match-result-brand">{{ r.brandName }}</span>
+                  <span class="cat-badge" :class="categoryClassFor(r.pesticideType)">{{ normCat(r.pesticideType) }}</span>
+                  <span class="moa-badge" :style="{ background: moaColor(r.modeOfAction) }">{{ r.modeOfAction }}</span>
+                  <span class="match-result-pest">{{ r.targetPest }}</span>
+                </div>
+              </div>
+              <p v-else-if="matchQuery.trim().length > 1" class="muted" style="font-size:0.82rem; padding:0.5rem 0;">
+                검색 결과 없음 — OpenAPI 데이터가 없거나 농약정보를 먼저 가져와야 합니다.
+              </p>
+            </div>
+          </div>
+
+          <p v-if="filteredApList.length === 0" class="empty-msg small">필터 결과 없음</p>
+        </div>
+      </template>
+      <div v-else class="empty-msg">
+        구입가능농약을 입력하거나 재고를 추가한 후 '목록 작성'을 눌러주세요.
+      </div>
+
     </section>
 
     <!-- ═══ 추천 설정 ═══════════════════════════════════════════════════════ -->
@@ -330,7 +654,7 @@ onMounted(() => treatStore.init())
             <span>연간 최대 사용 횟수 제한</span>
             <span class="setting-hint">동일 농약이 설정 횟수 이상 사용된 경우 제외</span>
           </div>
-          <label class="toggle">
+          <label class="toggle" aria-label="연간 최대 사용 횟수 제한">
             <input type="checkbox" v-model="settingsStore.settings.enforceMaxApplications" />
             <span class="toggle-slider"></span>
           </label>
@@ -402,7 +726,7 @@ onMounted(() => treatStore.init())
   align-items: center;
   gap: 0.5rem;
 }
-.form-row label { font-size: 0.82rem; color: var(--muted); }
+.form-row label, .form-row-label { font-size: 0.82rem; color: var(--muted); }
 .form-info { font-size: 0.82rem; }
 .form-info span { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
 .form-error { font-size: 0.82rem; color: var(--danger, #dc2626); }
@@ -486,7 +810,7 @@ onMounted(() => treatStore.init())
   padding: 0.15rem 0.5rem;
   cursor: pointer;
 }
-.del-btn-confirm { color: #dc2626; border-color: #fca5a5; background: #fff1f2; }
+.del-btn-confirm { color: #b91c1c; border-color: #fca5a5; background: #fff1f2; }
 
 /* ── MOA / category badges ── */
 .moa-badge {
@@ -601,6 +925,225 @@ onMounted(() => treatStore.init())
   border-left: 2px solid var(--line);
 }
 .settings-note p { margin: 0; }
+
+/* ── 가용농약 ── */
+.ap-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 0 0 0.5rem;
+}
+.ap-hint code {
+  background: var(--surface-strong);
+  border-radius: 3px;
+  padding: 0.05rem 0.3rem;
+  font-size: 0.76rem;
+  color: var(--text);
+}
+.ap-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-size: 0.85rem;
+  font-family: inherit;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+.ap-textarea:focus { outline: none; border-color: var(--primary); }
+.ap-input-footer { display: flex; justify-content: flex-end; margin-top: 0.3rem; }
+.ap-parse-count { font-size: 0.78rem; color: var(--muted); }
+
+.ap-inv-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.6rem 0;
+  font-size: 0.83rem;
+}
+.ap-inv-label { font-weight: 600; font-size: 0.82rem; color: var(--muted); }
+.ap-inv-pill { font-size: 0.75rem; }
+.ap-inv-names { font-size: 0.78rem; color: var(--muted); }
+
+.ap-build-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+  flex-wrap: wrap;
+}
+.ap-stats { font-size: 0.8rem; color: var(--muted); }
+
+.ap-list-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+  flex-wrap: wrap;
+}
+.ap-list-title { font-size: 0.9rem; font-weight: 700; }
+.ap-unmatched-btn {
+  font-size: 0.78rem;
+  border-radius: 999px;
+  padding: 0.22rem 0.7rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ap-unmatched-active {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+.ap-src-filter {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.ap-src-btn {
+  background: none;
+  border: none;
+  border-right: 1px solid var(--line);
+  padding: 0.22rem 0.6rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: var(--muted);
+  white-space: nowrap;
+  font-family: inherit;
+}
+.ap-src-btn:last-child { border-right: none; }
+.ap-src-btn.active { background: var(--primary); color: var(--primary-ink); font-weight: 600; }
+.ap-src-btn:not(.active):hover { background: var(--surface-strong); color: var(--text); }
+
+.ap-filter-input {
+  flex: 1;
+  min-width: 160px;
+  font-size: 0.83rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.ap-list { display: flex; flex-direction: column; gap: 0.55rem; }
+
+.ap-card {
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.9rem;
+}
+.ap-card-body { margin-bottom: 0.45rem; }
+.ap-card-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.3rem;
+}
+.ap-brand { font-weight: 600; font-size: 0.9rem; }
+.ap-form  { font-size: 0.78rem; color: var(--muted); }
+.ap-vol   { font-size: 0.78rem; color: var(--muted); }
+.ap-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.25rem;
+}
+.ap-pests     { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.15rem; }
+.ap-safety    { font-size: 0.78rem; color: var(--muted); }
+.ap-ingredient { font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; font-style: italic; }
+.ap-stock-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.ap-stock-lot {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  padding: 0.08rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.ap-card-actions {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.source-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.src-purchase { background: #f0fdf4; color: #15803d; border-color: #86efac; }
+.src-inv      { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }
+
+.match-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.match-ok   { background: #fefce8; color: #854d0e; border-color: #fde68a; }
+.match-none { background: #f9fafb; color: var(--muted); border-color: var(--line); }
+
+.match-panel {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--line);
+}
+.match-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--primary);
+  border-radius: 0.45rem;
+  background: var(--bg);
+  color: var(--text);
+  margin-bottom: 0.4rem;
+}
+.match-search-input:focus { outline: none; }
+.match-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.match-result-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+.match-result-item:hover { background: var(--surface-strong); border-color: var(--primary); }
+.match-result-brand { font-weight: 600; }
+.match-result-pest  { font-size: 0.76rem; color: var(--muted); margin-left: auto; }
 
 /* ── Shared ── */
 .empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; line-height: 1.6; }
