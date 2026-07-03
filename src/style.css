@@ -754,6 +754,34 @@ button.pill:hover {
   min-width: 0;
 }
 
+.settings-item-editing {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.settings-edit-input {
+  flex: 1;
+  min-width: 6rem;
+}
+
+.settings-add-pair {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.settings-abbr-input {
+  flex: 0 0 6rem;
+  min-width: 0;
+}
+
+.settings-item-abbr {
+  margin-left: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .settings-error {
   margin: 0.4rem 0 0;
   color: var(--danger);

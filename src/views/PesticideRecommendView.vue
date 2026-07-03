@@ -7,6 +7,8 @@ import { useAvailablePesticideStore, parsePurchaseText } from '../stores/availab
 import { LOCAL_PESTICIDES, findByBrandName, getUniquePests } from '../data/localPesticides.js'
 import { getRecommendations, moaColor } from '../services/recommend.js'
 import { searchFromFullCache } from '../services/pesticide.js'
+import PesticideInventoryPanel from '../components/PesticideInventoryPanel.vue'
+import { usePesticideTypes } from '../composables/usePesticideTypes.js'
 
 const treatStore    = useTreatmentStore()
 const settingsStore = useRecommendSettingsStore()
@@ -162,17 +164,14 @@ const sortedExcluded = computed(() =>
 )
 
 // ── computed helpers ───────────────────────────────────────────────────────
+const { resolveType: normCat } = usePesticideTypes()
+
 const categoryClass = (cat) => ({
   '살균제': 'cat-fungicide',
   '살비제': 'cat-miticide',
   '살충제': 'cat-insecticide',
 }[cat] ?? '')
 
-// 살균→살균제 등 접미사 통일
-function normCat(cat) {
-  if (!cat) return ''
-  return cat.endsWith('제') ? cat : cat + '제'
-}
 const categoryClassFor = (cat) => categoryClass(normCat(cat))
 
 // ── 가용농약 Tab ───────────────────────────────────────────────────────────
@@ -301,6 +300,7 @@ onMounted(() => {
     <!-- Tabs -->
     <div class="tab-bar">
       <button class="tab-btn" :class="{ active: activeTab === 'history' }"   @click="activeTab = 'history'">방제 이력</button>
+      <button class="tab-btn" :class="{ active: activeTab === 'peststock' }" @click="activeTab = 'peststock'">농약재고</button>
       <button class="tab-btn" :class="{ active: activeTab === 'avail' }"     @click="activeTab = 'avail'">가용농약</button>
       <button class="tab-btn" :class="{ active: activeTab === 'recommend' }" @click="activeTab = 'recommend'">농약 추천</button>
       <button class="tab-btn" :class="{ active: activeTab === 'settings' }"  @click="activeTab = 'settings'">추천 설정</button>
@@ -391,6 +391,11 @@ onMounted(() => {
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- ═══ 농약재고 ════════════════════════════════════════════════════════ -->
+    <section v-if="activeTab === 'peststock'">
+      <PesticideInventoryPanel />
     </section>
 
     <!-- ═══ 농약 추천 ═══════════════════════════════════════════════════════ -->

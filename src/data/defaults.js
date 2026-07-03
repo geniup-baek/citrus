@@ -318,7 +318,15 @@ export const defaultAppSettings = {
   seedlingVarieties: ['한라봉', '카라향'],
   rootstockTypes: ['탱자', '시트란지', '유자', '당귤', '기타'],
   taskCategories: ['방제', '시비', '관수', '전정', '적과', '봉지', '수확', '저장·출하', '생육관리', '측정', '환경', '시설', '토양', '기타'],
-  pesticideTypes: ['살충제', '살균제', '제초제', '기타제'],
+  pesticideTypes: [
+    { name: '살충제',    abbr: '살충' },
+    { name: '살균제',    abbr: '살균' },
+    { name: '살비제',    abbr: '' },
+    { name: '제초제',    abbr: '제초' },
+    { name: '살균살충제', abbr: '균충' },
+    { name: '생장조정제', abbr: '생조' },
+    { name: '기타제',    abbr: '기타' },
+  ],
 }
 
 export const defaultScheduleSettings = {

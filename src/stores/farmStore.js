@@ -64,8 +64,21 @@ function normalizeData(data) {
       merged.rootstockTypes = [...new Set([...defaults.appSettings.rootstockTypes, ...storedRootstocks])]
       const storedEquipment = Array.isArray(stored.equipmentTypes) ? stored.equipmentTypes : []
       merged.equipmentTypes = [...new Set([...defaults.appSettings.equipmentTypes, ...storedEquipment])]
-      const storedPesticideTypes = Array.isArray(stored.pesticideTypes) ? stored.pesticideTypes : []
-      merged.pesticideTypes = [...new Set([...defaults.appSettings.pesticideTypes, ...storedPesticideTypes])]
+      // pesticideTypes: migrate old string[] → {name, abbr}[] and merge with defaults
+      const defPesti = defaults.appSettings.pesticideTypes
+      const normPesti = v => typeof v === 'string' ? { name: v, abbr: '' } : v
+      const storedPestiRaw = Array.isArray(stored.pesticideTypes) ? stored.pesticideTypes : []
+      const storedPesti = storedPestiRaw.map(normPesti)
+      if (storedPesti.length === 0) {
+        merged.pesticideTypes = defPesti
+      } else {
+        const defAbbrMap = new Map(defPesti.map(p => [p.name, p.abbr]))
+        const storedNames = new Set(storedPesti.map(p => p.name))
+        merged.pesticideTypes = [
+          ...storedPesti.map(p => ({ ...p, abbr: p.abbr || defAbbrMap.get(p.name) || '' })),
+          ...defPesti.filter(p => !storedNames.has(p.name)),
+        ]
+      }
       return merged
     })(),
     seedlings: Array.isArray(data?.seedlings) ? data.seedlings : defaults.seedlings,
