@@ -1,21 +1,19 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import {
-  searchDiseases,
   getDiseaseDetail,
-  searchPathogens,
   getPathogenDetail,
-  searchInsects,
   getInsectDetail,
   getPrediction,
   normalizePrediction,
   getSurveillance,
   getSurveillanceDetailByGungu,
   normalizeList,
-  totalCount,
   warmFullPestCache,
   getFromFullPestCache,
   warmSurvDetails,
+  getPredictionFromCache,
+  getSurveillanceFromCache,
 } from '../services/ncpms.js'
 import { useLocaleStore } from '../stores/localeStore'
 import { withCache, formatFetchedAt } from '../services/cache.js'
@@ -28,7 +26,7 @@ const error = ref('')
 const cacheInfo = ref(null) // { error, fetchedAt } | null
 
 // ─── 병해충검색 ───────────────────────────────────────────────────
-const searchMode = ref('disease') // 'disease' | 'pathogen' | 'insect' (곤충 제외)
+const searchMode = ref('disease')
 const PAGE_SIZE = 10
 
 const diseaseItems = ref([])
@@ -46,8 +44,8 @@ const insectTotal = ref(0)
 const insectPage = ref(1)
 const insectLoaded = ref(false)
 
-const searchExpandedId = ref(null)  // sickKey 또는 virusKey
-const searchDetailData = ref(null)  // SVC05/SVC06 service 객체
+const searchExpandedId = ref(null)
+const searchDetailData = ref(null)
 const searchDetailLoading = ref(false)
 const searchDetailError = ref('')
 
@@ -57,8 +55,8 @@ const predItems = ref([])
 // ─── 병해충예찰 ───────────────────────────────────────────────────
 const survYear = ref(String(new Date().getFullYear()))
 const survItems = ref([])
-const survExpandedKey = ref('')          // 펼쳐진 항목의 insectKey
-const survDetailItems = ref([])          // SVC53 시군구별 상세 목록
+const survExpandedKey = ref('')
+const survDetailItems = ref([])
 const survDetailLoading = ref(false)
 const survDetailError = ref('')
 
@@ -77,46 +75,29 @@ async function run(fn) {
   }
 }
 
-function switchTab(tab) {
-  activeTab.value = tab
-  error.value = ''
-}
-
 // ─── 병해충검색 ───────────────────────────────────────────────────
-async function loadPestList({ type, page, apiFn, setItems, setTotal, setLoaded, pageRef }) {
+function loadPestList({ type, page, setItems, setTotal, setLoaded, pageRef }) {
   pageRef.value = page
   searchExpandedId.value = null
   searchDetailData.value = null
-  loading.value = true
   error.value = ''
   cacheInfo.value = null
-  try {
-    const { result, fromCache, fetchedAt, cacheError } = await withCache(
-      `pest:${type}:${page}`,
-      () => apiFn({ page, pageSize: PAGE_SIZE }),
-    )
-    setItems(normalizeList(result))
-    setTotal(totalCount(result))
+  const local = getFromFullPestCache(type, page, PAGE_SIZE)
+  if (local) {
+    setItems(local.list)
+    setTotal(local.total)
     setLoaded(true)
-    if (fromCache) cacheInfo.value = { error: cacheError, fetchedAt }
-  } catch (e) {
-    const local = getFromFullPestCache(type, page, PAGE_SIZE)
-    if (local) {
-      setItems(local.list)
-      setTotal(local.total)
-      setLoaded(true)
-      cacheInfo.value = { error: e.message, fetchedAt: local.fetchedAt }
-    } else {
-      error.value = e.message
-    }
-  } finally {
-    loading.value = false
+    cacheInfo.value = { error: null, fetchedAt: local.fetchedAt }
+  } else {
+    setItems([])
+    setTotal(0)
+    setLoaded(false)
   }
 }
 
-async function loadDiseases(page = 1) {
-  await loadPestList({
-    type: 'disease', page, apiFn: searchDiseases,
+function loadDiseases(page = 1) {
+  loadPestList({
+    type: 'disease', page,
     setItems: v => { diseaseItems.value = v },
     setTotal: v => { diseaseTotal.value = v },
     setLoaded: v => { diseaseLoaded.value = v },
@@ -124,9 +105,9 @@ async function loadDiseases(page = 1) {
   })
 }
 
-async function loadPathogens(page = 1) {
-  await loadPestList({
-    type: 'pathogen', page, apiFn: searchPathogens,
+function loadPathogens(page = 1) {
+  loadPestList({
+    type: 'pathogen', page,
     setItems: v => { pathogenItems.value = v },
     setTotal: v => { pathogenTotal.value = v },
     setLoaded: v => { pathogenLoaded.value = v },
@@ -134,9 +115,9 @@ async function loadPathogens(page = 1) {
   })
 }
 
-async function loadInsects(page = 1) {
-  await loadPestList({
-    type: 'insect', page, apiFn: searchInsects,
+function loadInsects(page = 1) {
+  loadPestList({
+    type: 'insect', page,
     setItems: v => { insectItems.value = v },
     setTotal: v => { insectTotal.value = v },
     setLoaded: v => { insectLoaded.value = v },
@@ -149,17 +130,75 @@ function switchSearchMode(mode) {
   error.value = ''
   searchExpandedId.value = null
   searchDetailData.value = null
-  if (mode === 'disease' && !diseaseLoaded.value) loadDiseases(1).then(() => warmFullPestCache())
-  if (mode === 'pathogen' && !pathogenLoaded.value) loadPathogens(1).then(() => warmFullPestCache())
-  if (mode === 'insect' && !insectLoaded.value) loadInsects(1).then(() => warmFullPestCache())
+  if (mode === 'disease') loadDiseases(diseasePage.value || 1)
+  else if (mode === 'pathogen') loadPathogens(pathogenPage.value || 1)
+  else if (mode === 'insect') loadInsects(insectPage.value || 1)
 }
 
 function loadSearchTab() {
   const m = searchMode.value
-  if (m === 'disease' && !diseaseLoaded.value) loadDiseases(1).then(() => warmFullPestCache())
-  else if (m === 'pathogen' && !pathogenLoaded.value) loadPathogens(1).then(() => warmFullPestCache())
-  else if (m === 'insect' && !insectLoaded.value) loadInsects(1).then(() => warmFullPestCache())
+  if (m === 'disease') loadDiseases(diseasePage.value || 1)
+  else if (m === 'pathogen') loadPathogens(pathogenPage.value || 1)
+  else if (m === 'insect') loadInsects(insectPage.value || 1)
 }
+
+async function fetchLatestSearch() {
+  loading.value = true
+  error.value = ''
+  cacheInfo.value = null
+  try {
+    await warmFullPestCache(true)
+    diseaseLoaded.value = false
+    pathogenLoaded.value = false
+    insectLoaded.value = false
+    loadSearchTab()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
+}
+
+// ─── 병해충예측 ───────────────────────────────────────────────────
+function loadCachedPrediction() {
+  cacheInfo.value = null
+  const cached = getPredictionFromCache()
+  if (cached) {
+    predItems.value = normalizePrediction(cached.result)
+    cacheInfo.value = { error: null, fetchedAt: cached.fetchedAt }
+  } else {
+    predItems.value = []
+  }
+}
+
+// ─── 병해충예찰 ───────────────────────────────────────────────────
+function loadCachedSurveillance() {
+  survExpandedKey.value = ''
+  survDetailItems.value = []
+  cacheInfo.value = null
+  const cached = getSurveillanceFromCache(survYear.value)
+  if (cached) {
+    survItems.value = normalizeList(cached.result)
+    cacheInfo.value = { error: null, fetchedAt: cached.fetchedAt }
+  } else {
+    survItems.value = []
+  }
+}
+
+function switchTab(tab) {
+  activeTab.value = tab
+  error.value = ''
+  cacheInfo.value = null
+  if (tab === 'prediction') loadCachedPrediction()
+  else if (tab === 'surveillance') loadCachedSurveillance()
+  else loadSearchTab()
+}
+
+const currentFetchLatest = computed(() => {
+  if (activeTab.value === 'prediction') return fetchPrediction
+  if (activeTab.value === 'surveillance') return fetchSurveillance
+  return fetchLatestSearch
+})
 
 async function toggleSearchDetail(id, type) {
   if (searchExpandedId.value === id) {
@@ -202,7 +241,7 @@ async function fetchPrediction() {
       () => getPrediction(),
     )
     predItems.value = normalizePrediction(result)
-    if (fromCache) cacheInfo.value = { error: cacheError, fetchedAt }
+    cacheInfo.value = { error: fromCache ? cacheError : null, fetchedAt }
   })
 }
 
@@ -225,7 +264,7 @@ async function fetchSurveillance() {
       () => getSurveillance({ year: survYear.value }),
     )
     survItems.value = normalizeList(result)
-    if (fromCache) cacheInfo.value = { error: cacheError, fetchedAt }
+    cacheInfo.value = { error: fromCache ? cacheError : null, fetchedAt }
   })
   if (!error.value && survItems.value.length > 0) {
     warmSurvDetails(survYear.value, survItems.value)
@@ -276,6 +315,14 @@ function imgUrl(url) {
   if (!url) return ''
   return url.replace(/^http:\/\/ncpms\.rda\.go\.kr/, 'https://ncpms.rda.go.kr')
 }
+
+watch(survYear, () => {
+  if (activeTab.value === 'surveillance') loadCachedSurveillance()
+})
+
+onMounted(() => {
+  loadSearchTab()
+})
 </script>
 
 <template>
@@ -301,7 +348,7 @@ function imgUrl(url) {
             ]"
             :key="tab.key"
             :class="['category-chip', { active: activeTab === tab.key }]"
-            @click="switchTab(tab.key); tab.key === 'search' && loadSearchTab()"
+            @click="switchTab(tab.key)"
           >
             {{ tab.label }}
           </button>
@@ -314,11 +361,14 @@ function imgUrl(url) {
         <span style="white-space: pre-line;">{{ error }}</span>
       </div>
 
-      <!-- 캐시 폴백 배너 -->
-      <div v-if="cacheInfo" class="cache-banner">
-        <span class="cache-banner-icon">⚠</span>
-        <span class="cache-banner-msg">API 오류: {{ cacheInfo.error }}</span>
-        <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 저장 데이터</span>
+      <!-- 캐시 배너 -->
+      <div v-if="cacheInfo" class="cache-banner" :class="{ 'cache-warn': cacheInfo.error }">
+        <span class="cache-banner-icon">{{ cacheInfo.error ? '⚠' : 'ℹ' }}</span>
+        <span v-if="cacheInfo.error" class="cache-banner-msg">API 오류 · </span>
+        <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 데이터</span>
+        <button v-if="activeTab !== 'surveillance'" class="cache-refresh-btn" :disabled="loading" @click="currentFetchLatest()">
+          {{ loading ? '가져오는 중...' : '최신 정보 가져오기' }}
+        </button>
       </div>
 
       <!-- ═══════════ 병해충검색 ═══════════ -->
@@ -338,6 +388,12 @@ function imgUrl(url) {
             {{ m.label }}
             <span v-if="m.count" class="pest-count">({{ m.count }})</span>
           </button>
+        </div>
+
+        <!-- 검색탭 캐시 없을 때 새로고침 유도 -->
+        <div v-if="!loading && !cacheInfo && !error" class="no-cache-state">
+          <p>저장된 데이터가 없습니다.</p>
+          <button :disabled="loading" @click="fetchLatestSearch">최신 정보 가져오기</button>
         </div>
 
         <!-- 병 목록 (SVC01) + 상세 (SVC05) -->
@@ -482,14 +538,10 @@ function imgUrl(url) {
 
       <!-- ═══════════ 병해충예측 ═══════════ -->
       <template v-if="activeTab === 'prediction'">
-        <div class="sort-filter-bar">
-          <button class="compact-btn" :disabled="loading" @click="fetchPrediction">
-            {{ loading ? localeStore.t('pest.loading') : localeStore.t('pest.query') }}
-          </button>
+        <div v-if="!loading && !predItems.length && !error" class="no-cache-state">
+          <p>저장된 예측 데이터가 없습니다.</p>
+          <button :disabled="loading" @click="fetchPrediction">최신 정보 가져오기</button>
         </div>
-        <p v-if="!loading && !predItems.length && !error" class="muted">
-          {{ localeStore.t('pest.predictionHint') }}
-        </p>
         <ul v-if="predItems.length" class="list clean">
           <li v-for="item in predItems" :key="item.code" class="list-item card-like">
             <div class="pred-header">
@@ -517,11 +569,11 @@ function imgUrl(url) {
             <option v-for="y in YEARS" :key="y" :value="y">{{ y }}년</option>
           </select>
           <button class="compact-btn" :disabled="loading" @click="fetchSurveillance">
-            {{ loading ? localeStore.t('pest.loading') : localeStore.t('pest.query') }}
+            {{ loading ? localeStore.t('pest.loading') : '최신 정보 가져오기' }}
           </button>
         </div>
-        <p v-if="!loading && !survItems.length && !error" class="muted">
-          {{ localeStore.t('pest.surveillanceHint') }}
+        <p v-if="!loading && !survItems.length && !error" class="muted" style="text-align:center; padding: 1.5rem 1rem;">
+          저장된 예찰 데이터가 없습니다.
         </p>
         <ul v-if="survItems.length" class="list clean">
           <li v-for="item in survItems" :key="item.insectKey" class="list-item card-like">
@@ -589,24 +641,47 @@ function imgUrl(url) {
 <style scoped>
 .cache-banner {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
   gap: 0.4rem;
-  background: #fffbe6;
-  border: 1px solid #f5d76e;
-  color: #7a5c00;
+  background: #e8f4fd;
+  border: 1px solid #90caf9;
+  color: #0d47a1;
   border-radius: 0.65rem;
   padding: 0.6rem 0.85rem;
   margin-bottom: 0.75rem;
   font-size: 0.83rem;
 }
+.cache-banner.cache-warn {
+  background: #fffbe6;
+  border-color: #f5d76e;
+  color: #7a5c00;
+}
 .cache-banner-icon { font-size: 0.9rem; }
-.cache-banner-msg { flex: 1; min-width: 0; }
 .cache-banner-time {
   font-size: 0.78rem;
-  opacity: 0.75;
+  opacity: 0.8;
   white-space: nowrap;
 }
+.cache-refresh-btn {
+  margin-left: auto;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cache-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.no-cache-state {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--muted);
+}
+.no-cache-state p { margin: 0 0 0.75rem; font-size: 0.9rem; }
+.no-cache-state button { font-size: 0.85rem; }
 
 .pest-error {
   background: #fde2dd;

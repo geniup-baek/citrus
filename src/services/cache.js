@@ -25,8 +25,9 @@ export function loadCache(key) {
 export async function withCache(key, fn) {
   try {
     const result = await fn()
+    const fetchedAt = new Date().toISOString()
     saveCache(key, result)
-    return { result, fromCache: false, fetchedAt: null, cacheError: null }
+    return { result, fromCache: false, fetchedAt, cacheError: null }
   } catch (e) {
     const cached = loadCache(key)
     if (cached) {

@@ -32,6 +32,7 @@ export const LOCAL_PESTICIDES = [
   { category: '살균제', moa: '다3',    brandName: '해비치(입상)-167g',      targetPests: ['창가병', '탄저병', '저장병'] },
   { category: '살균제', moa: '사1',    brandName: '화시탄(수)-250g',        targetPests: ['창가병', '잿빛곰팡이병'] },
   { category: '살균제', moa: '다5',    brandName: '후론사이드(수)-250g',    targetPests: ['창가병', '잿빛곰팡이병', '탄저병', '녹응이'] },
+  { category: '살균제', moa: '라5',    brandName: '성보크린(수)-250g',       targetPests: ['궤양병'] },
 
   // ── 살비제 ──────────────────────────────────────────────────────────────
   { category: '살비제', moa: '20b',    brandName: '가네마이트(액상)-500ml', targetPests: ['응애류(성충,알)'] },
@@ -134,7 +135,6 @@ export const LOCAL_PESTICIDES = [
   { category: '살충제', moa: '6+10b',  brandName: '응애스타(액상)-200ml',    targetPests: ['귤응애'] },
   { category: '살충제', moa: '23+4a',  brandName: '모벤토스마트(액상)-125ml', targetPests: ['진딧물', '총채벌레', '깍지벌레'] },
   { category: '살충제', moa: '1a+16',  brandName: '마일스톤(수)-330g',       targetPests: ['깍지벌레', '총채벌레'] },
-  { category: '살균제', moa: '라5',    brandName: '성보크린(수)-250g',       targetPests: ['궤양병'] },
 ]
 
 export function findByBrandName(name) {

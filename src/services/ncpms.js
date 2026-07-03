@@ -125,8 +125,8 @@ export async function getInsectDetail({ insectKey } = {}) {
 // 병·병원체·해충 전체를 localStorage에 저장 (최초 1회)
 // API 실패 시 getFromFullPestCache()로 페이지 슬라이싱
 
-async function warmOne(key, fetchFn) {
-  if (loadCache(key)) return
+async function warmOne(key, fetchFn, force = false) {
+  if (!force && loadCache(key)) return
   try {
     const data = await fetchFn()
     saveCache(key, normalizeList(data))
@@ -154,17 +154,29 @@ async function warmDetails(type, items) {
   }
 }
 
-export async function warmFullPestCache() {
+export async function warmFullPestCache(force = false) {
   await Promise.all([
-    warmOne(FULL_KEYS.disease, () => searchDiseases({ page: 1, pageSize: 999 })),
-    warmOne(FULL_KEYS.pathogen, () => searchPathogens({ page: 1, pageSize: 999 })),
-    warmOne(FULL_KEYS.insect, () => searchInsects({ page: 1, pageSize: 999 })),
+    warmOne(FULL_KEYS.disease, () => searchDiseases({ page: 1, pageSize: 999 }), force),
+    warmOne(FULL_KEYS.pathogen, () => searchPathogens({ page: 1, pageSize: 999 }), force),
+    warmOne(FULL_KEYS.insect, () => searchInsects({ page: 1, pageSize: 999 }), force),
   ])
   // 전건 목록 저장 후 상세도 순차 저장 (이미 캐시된 항목 스킵)
   for (const type of ['disease', 'pathogen', 'insect']) {
     const cached = loadCache(FULL_KEYS[type])
     if (cached?.data) await warmDetails(type, cached.data)
   }
+}
+
+export function getPredictionFromCache() {
+  const cached = loadCache('pest:prediction')
+  if (!cached) return null
+  return { result: cached.data, fetchedAt: cached.fetchedAt }
+}
+
+export function getSurveillanceFromCache(year) {
+  const cached = loadCache(`pest:surveillance:${year}`)
+  if (!cached) return null
+  return { result: cached.data, fetchedAt: cached.fetchedAt }
 }
 
 export async function warmSurvDetails(year, items) {

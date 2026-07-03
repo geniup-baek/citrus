@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useLocaleStore } from '../stores/localeStore'
-import { searchPesticides, getPesticideDetail, modeOfActionColor, getAvailableTypes, warmFullCache, searchFromFullCache } from '../services/pesticide'
+import { getPesticideDetail, modeOfActionColor, warmFullCache, searchFromFullCache, getTypesFromCache } from '../services/pesticide'
 import { withCache, formatFetchedAt } from '../services/cache.js'
 
 const localeStore = useLocaleStore()
@@ -9,7 +9,7 @@ const t = (k) => localeStore.t(k)
 
 const pestNameInput = ref('')
 const targetPestInput = ref('')
-const typeFilter = ref('all') // 'all' | '살균' | '살충'
+const typeFilter = ref('all')
 
 const items = ref([])
 const total = ref(0)
@@ -18,7 +18,7 @@ const PAGE_SIZE = 20
 const loading = ref(false)
 const error = ref('')
 
-const nameMode = ref('brand') // 'brand' | 'product'
+const nameMode = ref('brand')
 
 const availableTypes = ref([])
 const cacheInfo = ref(null) // { error, fetchedAt } | null
@@ -29,10 +29,8 @@ const detailLoading = ref(false)
 
 const isMock = !import.meta.env.VITE_AGRI_API_KEY
 
-async function load() {
-  loading.value = true
+function loadFromCache() {
   error.value = ''
-  cacheInfo.value = null
   const params = {
     pestName: pestNameInput.value.trim(),
     targetPest: targetPestInput.value.trim(),
@@ -40,26 +38,28 @@ async function load() {
     page: page.value,
     pageSize: PAGE_SIZE,
   }
+  const local = searchFromFullCache(params)
+  if (local) {
+    items.value = local.list
+    total.value = local.total
+    cacheInfo.value = { error: null, fetchedAt: local.fetchedAt }
+  } else {
+    items.value = []
+    total.value = 0
+    cacheInfo.value = null
+  }
+}
+
+async function fetchLatest() {
+  loading.value = true
+  error.value = ''
   try {
-    const { result, fromCache, fetchedAt, cacheError } = await withCache(
-      `pesticide:search:${JSON.stringify(params)}`,
-      () => searchPesticides(params),
-    )
-    items.value = result.list
-    total.value = result.total
-    if (fromCache) cacheInfo.value = { error: cacheError, fetchedAt }
+    await warmFullCache(true)
+    availableTypes.value = getTypesFromCache()
+    loadFromCache()
   } catch (e) {
-    // API 실패 + 쿼리 캐시 없음 → 전건 캐시에서 클라이언트 필터링 시도
-    const local = searchFromFullCache(params)
-    if (local) {
-      items.value = local.list
-      total.value = local.total
-      cacheInfo.value = { error: e.message, fetchedAt: local.fetchedAt }
-    } else {
-      error.value = e.message
-      items.value = []
-      total.value = 0
-    }
+    error.value = e.message
+    loadFromCache()
   } finally {
     loading.value = false
   }
@@ -68,7 +68,7 @@ async function load() {
 function search() {
   page.value = 1
   expandedId.value = null
-  load()
+  loadFromCache()
 }
 
 function itemKey(item) {
@@ -102,12 +102,12 @@ const totalPages = computed(() => Math.ceil(total.value / PAGE_SIZE))
 
 function goPage(n) {
   page.value = n
-  load()
+  loadFromCache()
 }
 
 onMounted(() => {
-  load().then(() => { warmFullCache() })
-  getAvailableTypes().then(types => { availableTypes.value = types }).catch(() => {})
+  availableTypes.value = getTypesFromCache()
+  loadFromCache()
 })
 </script>
 
@@ -134,9 +134,7 @@ onMounted(() => {
         :placeholder="t('pesticide.searchByPest')"
         @keyup.enter="search"
       />
-      <button @click="search" :disabled="loading">
-        {{ loading ? t('pest.loading') : t('pest.query') }}
-      </button>
+      <button @click="search">{{ t('pest.query') }}</button>
     </div>
 
     <div class="type-filter">
@@ -165,12 +163,19 @@ onMounted(() => {
     </div>
 
     <p v-if="error" class="error-msg">{{ t('pest.apiError') }} {{ error }}</p>
-    <div v-if="cacheInfo" class="cache-banner">
-      <span class="cache-banner-icon">⚠</span>
-      <span class="cache-banner-msg">API 오류: {{ cacheInfo.error }}</span>
-      <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 저장 데이터</span>
+    <div v-if="cacheInfo" class="cache-banner" :class="{ 'cache-warn': cacheInfo.error }">
+      <span class="cache-banner-icon">{{ cacheInfo.error ? '⚠' : 'ℹ' }}</span>
+      <span v-if="cacheInfo.error" class="cache-banner-msg">API 오류 · </span>
+      <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 데이터</span>
+      <button class="cache-refresh-btn" :disabled="loading" @click="fetchLatest">
+        {{ loading ? '가져오는 중...' : '최신 정보 가져오기' }}
+      </button>
     </div>
-    <p v-if="!loading && !error && filteredItems.length === 0" class="empty-msg">{{ t('pest.noResults') }}</p>
+    <div v-if="!loading && !error && !cacheInfo && filteredItems.length === 0" class="no-cache-state">
+      <p>저장된 데이터가 없습니다.</p>
+      <button :disabled="loading" @click="fetchLatest">최신 정보 가져오기</button>
+    </div>
+    <p v-else-if="!loading && !error && cacheInfo && filteredItems.length === 0" class="empty-msg">{{ t('pest.noResults') }}</p>
 
     <div v-if="filteredItems.length > 0" class="pest-list">
       <div
@@ -309,20 +314,44 @@ onMounted(() => {
 
 .cache-banner {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
   gap: 0.4rem;
-  background: #fffbe6;
-  border: 1px solid #f5d76e;
-  color: #7a5c00;
+  background: #e8f4fd;
+  border: 1px solid #90caf9;
+  color: #0d47a1;
   border-radius: 0.65rem;
   padding: 0.6rem 0.85rem;
   margin-bottom: 0.75rem;
   font-size: 0.83rem;
 }
+.cache-banner.cache-warn {
+  background: #fffbe6;
+  border-color: #f5d76e;
+  color: #7a5c00;
+}
 .cache-banner-icon { font-size: 0.9rem; }
-.cache-banner-msg { flex: 1; min-width: 0; }
-.cache-banner-time { font-size: 0.78rem; opacity: 0.75; white-space: nowrap; }
+
+.cache-banner-time { font-size: 0.78rem; opacity: 0.8; white-space: nowrap; }
+.cache-refresh-btn {
+  margin-left: auto;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cache-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.no-cache-state {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--muted);
+}
+.no-cache-state p { margin: 0 0 0.75rem; font-size: 0.9rem; }
+.no-cache-state button { font-size: 0.85rem; }
 
 .pest-list { display: flex; flex-direction: column; gap: 0.6rem; }
 

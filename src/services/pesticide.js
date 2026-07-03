@@ -156,10 +156,10 @@ export async function searchPesticides({
   return { total: merged.length, list: merged.map(normalizeListItem) }
 }
 
-// 전건을 백그라운드에서 로컬 저장 (최초 1회, 이미 있으면 스킵)
-export async function warmFullCache() {
+// 전건을 로컬 저장. force=true면 기존 캐시를 덮어쓴다.
+export async function warmFullCache(force = false) {
   if (USE_MOCK) return
-  if (loadCache(FULL_CACHE_KEY)) return
+  if (!force && loadCache(FULL_CACHE_KEY)) return
   try {
     const { totalCount } = await apiFetch({
       serviceCode: 'SVC01', serviceType: 'AA001',
@@ -197,6 +197,12 @@ export function searchFromFullCache({ pestName = '', targetPest = '', pesticideT
   }
   const start = (page - 1) * pageSize
   return { total: list.length, list: list.slice(start, start + pageSize), fetchedAt: cached.fetchedAt }
+}
+
+export function getTypesFromCache() {
+  const cached = loadCache(FULL_CACHE_KEY)
+  if (!cached) return []
+  return [...new Set(cached.data.map(p => p.pesticideType).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'))
 }
 
 export async function getAvailableTypes() {
