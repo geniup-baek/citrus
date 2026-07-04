@@ -1,4 +1,11 @@
-import { LOCAL_PESTICIDES, matchesPest } from '../data/localPesticides.js'
+function matchesPest(pesticide, term) {
+  if (!term) return true
+  const t = term.trim()
+  return pesticide.targetPests.some(p => {
+    const base = p.replace(/\(.*?\)/g, '').trim()
+    return base.includes(t) || t.includes(base)
+  })
+}
 
 // ── MOA group extraction ────────────────────────────────────────────────────
 // 살균제: Korean-letter prefix ("다2" → "다", "카" → "카")
@@ -75,10 +82,10 @@ function yearUseCount(pesticide, treatments, year) {
 }
 
 // ── Recommendation engine ───────────────────────────────────────────────────
-export function getRecommendations({ targetPest, treatments, settings, today }) {
+export function getRecommendations({ targetPest, treatments, settings, today, pesticides = [] }) {
   const { moaConflictDays, enforceMaxApplications, maxApplicationsPerYear } = settings
 
-  const matched = LOCAL_PESTICIDES.filter(p => matchesPest(p, targetPest))
+  const matched = pesticides.filter(p => matchesPest(p, targetPest))
   const year = today.slice(0, 4)
 
   const recommended = []

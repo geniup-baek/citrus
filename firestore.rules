@@ -5,6 +5,10 @@ service cloud.firestore {
       // Team-shared document for the citrus collaboration app.
       allow read, write: if true;
     }
+    match /shared/availablePesticide {
+      // 가용농약 목록 (구입가능농약 입력, 수동 연결, 목록)
+      allow read, write: if true;
+    }
     match /photos/{photoId} {
       // 사진(base64)을 사진별 개별 문서로 분산 저장한다.
       allow read, write: if true;
