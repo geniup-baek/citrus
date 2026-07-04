@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useTreatmentStore } from '../stores/treatmentStore.js'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore.js'
 import { useFarmStore } from '../stores/farmStore.js'
@@ -9,6 +9,7 @@ import { getRecommendations, moaColor } from '../services/recommend.js'
 import { searchFromFullCache } from '../services/pesticide.js'
 import PesticideInventoryPanel from '../components/PesticideInventoryPanel.vue'
 import { usePesticideTypes } from '../composables/usePesticideTypes.js'
+import { useIsMobile } from '../composables/useIsMobile.js'
 
 const treatStore    = useTreatmentStore()
 const settingsStore = useRecommendSettingsStore()
@@ -33,9 +34,17 @@ const fPest     = ref('')
 const fMemo     = ref('')
 const formError = ref('')
 const saving    = ref(false)
-const editingId     = ref(null)   // null = 신규, string = 편집 중인 record id
+const { isMobile } = useIsMobile()
+
+const showHistoryForm = ref(false)
+const editingId     = ref(null)
 const deleteConfirm = ref(null)
-const formEl        = ref(null)   // form DOM ref for scroll
+
+const histFormTarget = computed(() =>
+  editingId.value && treatStore.treatments.some(t => t.id === editingId.value)
+    ? `#hist-form-slot-${editingId.value}`
+    : '#hist-form-top'
+)
 
 const allBrandNames = LOCAL_PESTICIDES.map(p => p.brandName)
 
@@ -60,17 +69,24 @@ function resetForm() {
 }
 
 function startEdit(t) {
-  suppressBrandWatch  = true
-  editingId.value     = t.id
-  fDate.value         = t.date
-  fBrand.value        = t.brandName
-  fMoa.value          = t.moa      ?? ''
-  fCategory.value     = t.category ?? ''
-  fPest.value         = t.targetPest ?? ''
-  fMemo.value         = t.memo       ?? ''
-  formError.value     = ''
-  deleteConfirm.value = null
-  formEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  suppressBrandWatch    = true
+  showHistoryForm.value = true
+  editingId.value       = t.id
+  fDate.value           = t.date
+  fBrand.value          = t.brandName
+  fMoa.value            = t.moa       ?? ''
+  fCategory.value       = t.category  ?? ''
+  fPest.value           = t.targetPest ?? ''
+  fMemo.value           = t.memo       ?? ''
+  formError.value       = ''
+  deleteConfirm.value   = null
+  histLinkId.value      = null
+  if (isMobile.value) {
+    nextTick(() => {
+      const el = document.getElementById(`hist-form-slot-${t.id}`)
+      ;(el?.closest('li') ?? el)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
 }
 
 async function submitTreatment() {
@@ -110,6 +126,70 @@ async function confirmDelete(id) {
   }
 }
 
+function newHistoryEntry() {
+  resetForm()
+  if (isMobile.value) {
+    nextTick(() => document.getElementById('hist-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+}
+
+// ── 방제이력 농약정보 연결 (폼) ────────────────────────────────────────────────
+const formLinkResults = ref([])
+
+function onFormBrandInput(val) {
+  const q = val.trim()
+  if (!q) { formLinkResults.value = []; return }
+  const result = searchFromFullCache({ pestName: q, page: 1, pageSize: 10 })
+  formLinkResults.value = result?.list ?? []
+}
+
+function applyFormLink(apiItem) {
+  suppressBrandWatch    = true
+  fBrand.value          = apiItem.brandName
+  fMoa.value            = (apiItem.modeOfAction && apiItem.modeOfAction !== '-') ? apiItem.modeOfAction : ''
+  fCategory.value       = normCat(apiItem.pesticideType) || ''
+  formLinkResults.value = []
+}
+
+// ── 방제이력 농약정보 연결 (목록 항목) ─────────────────────────────────────────
+const histLinkId      = ref(null)
+const histLinkQuery   = ref('')
+const histLinkResults = ref([])
+
+function openHistLink(id) {
+  if (histLinkId.value === id) {
+    histLinkId.value      = null
+    histLinkQuery.value   = ''
+    histLinkResults.value = []
+    return
+  }
+  histLinkId.value      = id
+  histLinkQuery.value   = ''
+  histLinkResults.value = []
+}
+
+function searchHistLinkCandidates(query) {
+  if (!query.trim()) { histLinkResults.value = []; return }
+  const result = searchFromFullCache({ pestName: query.trim(), page: 1, pageSize: 12 })
+  histLinkResults.value = result?.list ?? []
+}
+
+async function applyHistLink(treatment, apiItem) {
+  const moa      = (apiItem.modeOfAction && apiItem.modeOfAction !== '-') ? apiItem.modeOfAction : (treatment.moa || '')
+  const category = normCat(apiItem.pesticideType) || treatment.category || ''
+  await treatStore.updateTreatment(treatment.id, {
+    date:       treatment.date,
+    brandName:  apiItem.brandName || treatment.brandName,
+    moa,
+    category,
+    targetPest: treatment.targetPest || '',
+    memo:       treatment.memo || '',
+  })
+  histLinkId.value      = null
+  histLinkQuery.value   = ''
+  histLinkResults.value = []
+}
+
 function formatDate(d) {
   if (!d) return ''
   const [y, m, day] = d.split('-')
@@ -118,6 +198,7 @@ function formatDate(d) {
 
 // ── 농약 추천 Tab ──────────────────────────────────────────────────────────
 const recPest   = ref('')
+const recDate   = ref(today())
 const recResult = ref(null)
 const uniquePests = getUniquePests()
 
@@ -137,7 +218,7 @@ function runRecommend() {
     targetPest: recPest.value.trim(),
     treatments: treatStore.treatments,
     settings:   settingsStore.settings,
-    today:      today(),
+    today:      recDate.value || today(),
     pesticides: apStore.availableList,
   })
 }
@@ -308,88 +389,140 @@ onMounted(() => {
 
     <!-- ═══ 방제 이력 ═══════════════════════════════════════════════════════ -->
     <section v-if="activeTab === 'history'">
-      <div ref="formEl" class="form-card" :class="{ 'form-card-editing': editingId }">
-        <div class="form-card-header">
-          <span class="form-card-title">{{ editingId ? '이력 편집' : '새 기록' }}</span>
-          <button v-if="editingId" class="cancel-btn" @click="resetForm">취소</button>
-        </div>
-        <div class="form-row">
-          <label for="f-date">날짜</label>
-          <input id="f-date" type="date" v-model="fDate" />
-        </div>
-        <div class="form-row">
-          <label for="f-brand">농약</label>
-          <input
-            id="f-brand"
-            v-model="fBrand"
-            list="brand-list"
-            placeholder="상표명 입력 또는 선택"
-            autocomplete="off"
-          />
-          <datalist id="brand-list">
-            <option v-for="n in allBrandNames" :key="n" :value="n" />
-          </datalist>
-        </div>
-        <div v-if="fMoa" class="form-row form-info">
-          <span class="form-row-label">작용기작</span>
-          <span>
-            <span class="moa-badge" :style="{ background: moaColor(fMoa) }">{{ fMoa }}</span>
-            <span class="cat-badge" :class="categoryClass(fCategory)">{{ fCategory }}</span>
-          </span>
-        </div>
-        <div class="form-row">
-          <label for="f-pest">방제 대상</label>
-          <input id="f-pest" v-model="fPest" list="pest-list" placeholder="예: 귤굴나방" autocomplete="off" />
-          <datalist id="pest-list">
-            <option v-for="p in uniquePests" :key="p" :value="p" />
-          </datalist>
-        </div>
-        <div class="form-row">
-          <label for="f-memo">메모</label>
-          <input id="f-memo" v-model="fMemo" placeholder="희석배수, 날씨, 구역 등 (선택)" />
-        </div>
-        <p v-if="formError" class="form-error">{{ formError }}</p>
-        <button class="primary-btn" :disabled="saving" @click="submitTreatment">
-          {{ saving ? '저장 중...' : (editingId ? '저장' : '기록 추가') }}
-        </button>
-      </div>
+      <div :class="['page-grid', showHistoryForm ? 'two-columns' : '']">
 
-      <!-- History list -->
-      <div v-if="treatStore.treatments.length === 0" class="empty-msg">
-        방제 이력이 없습니다. 위 양식으로 기록을 추가하세요.
-      </div>
-      <div v-else class="history-list">
-        <div
-          v-for="t in treatStore.treatments"
-          :key="t.id"
-          class="history-card"
-          :class="{ 'history-card-editing': editingId === t.id }"
-        >
-          <div class="history-top">
-            <span class="history-date">{{ formatDate(t.date) }}</span>
-            <span class="moa-badge" :style="{ background: moaColor(t.moa) }">{{ t.moa || '—' }}</span>
-            <span class="cat-badge" :class="categoryClass(t.category)">{{ t.category }}</span>
-            <div class="history-actions">
-              <button
-                class="action-btn"
-                :class="{ 'action-btn-active': editingId === t.id }"
-                @click="editingId === t.id ? resetForm() : startEdit(t)"
-              >{{ editingId === t.id ? '편집 중' : '편집' }}</button>
-              <button
-                class="del-btn"
-                :class="{ 'del-btn-confirm': deleteConfirm === t.id }"
-                @click="confirmDelete(t.id)"
-                :title="deleteConfirm === t.id ? '한 번 더 누르면 삭제됩니다' : '삭제'"
-              >{{ deleteConfirm === t.id ? '확인' : '삭제' }}</button>
+        <!-- 목록 -->
+        <article class="card">
+          <div class="pip-header">
+            <div class="pip-summary">
+              <span v-if="treatStore.treatments.length" class="summary-chip">{{ treatStore.treatments.length }}건</span>
+            </div>
+            <div class="pip-actions">
+              <button v-if="!showHistoryForm" type="button" @click="showHistoryForm = true">편집</button>
+              <button v-else class="ghost" type="button" @click="resetForm(); showHistoryForm = false">편집종료</button>
             </div>
           </div>
-          <div class="history-brand">{{ t.brandName }}</div>
-          <div v-if="t.targetPest || t.memo" class="history-meta">
-            <span v-if="t.targetPest">{{ t.targetPest }}</span>
-            <span v-if="t.targetPest && t.memo" class="sep">·</span>
-            <span v-if="t.memo" class="history-memo">{{ t.memo }}</span>
+          <div id="hist-form-top" class="mobile-form-slot"></div>
+          <div v-if="treatStore.treatments.length === 0" class="empty-msg">
+            {{ showHistoryForm ? '저장하면 목록에 표시됩니다.' : '기록된 방제 이력이 없습니다.' }}
           </div>
-        </div>
+          <ul v-else class="list clean">
+            <template v-for="t in treatStore.treatments" :key="t.id">
+              <li class="list-item card-like">
+                <div>
+                  <div class="task-card-top">
+                    <p class="item-title">{{ t.brandName }}</p>
+                    <span v-if="t.moa" class="moa-badge" :style="{ background: moaColor(t.moa) }">{{ t.moa }}</span>
+                    <span v-if="t.category" class="cat-badge" :class="categoryClass(t.category)">{{ t.category }}</span>
+                  </div>
+                  <p class="item-meta">{{ formatDate(t.date) }}</p>
+                  <p v-if="t.targetPest || t.memo" class="item-meta">
+                    <span v-if="t.targetPest">{{ t.targetPest }}</span>
+                    <span v-if="t.targetPest && t.memo"> · </span>
+                    <span v-if="t.memo" class="muted">{{ t.memo }}</span>
+                  </p>
+                </div>
+                <div class="row-actions">
+                  <button
+                    class="ghost"
+                    :class="{ 'link-btn-active': histLinkId === t.id }"
+                    type="button"
+                    @click="openHistLink(t.id)"
+                  >{{ t.moa ? '정보 재연결' : '농약정보 연결' }}</button>
+                  <template v-if="showHistoryForm">
+                    <button :class="{ ghost: editingId !== t.id }" type="button" @click="editingId === t.id ? resetForm() : startEdit(t)">편집</button>
+                    <button class="danger" type="button" @click="confirmDelete(t.id)">{{ deleteConfirm === t.id ? '확인' : '삭제' }}</button>
+                  </template>
+                </div>
+                <!-- 농약정보 연결 패널 -->
+                <div v-if="histLinkId === t.id" class="link-panel">
+                  <input
+                    v-model="histLinkQuery"
+                    type="text"
+                    class="link-search-input"
+                    placeholder="농약명 검색 (OpenAPI 데이터)"
+                    @input="searchHistLinkCandidates(histLinkQuery)"
+                  />
+                  <div v-if="histLinkResults.length" class="link-results">
+                    <div
+                      v-for="r in histLinkResults"
+                      :key="`${r.pestiCode}-${r.diseaseUseSeq}`"
+                      class="link-result-item"
+                      @click="applyHistLink(t, r)"
+                    >
+                      <span class="link-result-brand">{{ r.brandName }}</span>
+                      <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(normCat(r.pesticideType))">{{ normCat(r.pesticideType) }}</span>
+                      <span v-if="r.modeOfAction && r.modeOfAction !== '-'" class="moa-badge" :style="{ background: moaColor(r.modeOfAction) }">{{ r.modeOfAction }}</span>
+                      <span class="link-result-pest">{{ r.targetPest }}</span>
+                    </div>
+                  </div>
+                  <p v-else-if="histLinkQuery.trim().length > 1" class="muted" style="font-size:0.82rem; padding:0.4rem 0.65rem;">
+                    검색 결과 없음 — OpenAPI 농약정보를 먼저 가져와야 합니다.
+                  </p>
+                </div>
+                <div :id="`hist-form-slot-${t.id}`" class="mobile-form-slot"></div>
+              </li>
+            </template>
+          </ul>
+        </article>
+
+        <!-- 폼 -->
+        <Teleport v-if="showHistoryForm" :to="histFormTarget" :disabled="!isMobile">
+        <article v-if="showHistoryForm" class="card">
+          <h2>{{ editingId ? '이력 편집' : '새 기록' }}</h2>
+          <form class="stack-form" @submit.prevent="submitTreatment">
+            <label>날짜
+              <input type="date" v-model="fDate" required />
+            </label>
+            <label>농약
+              <input
+                v-model="fBrand"
+                list="brand-list"
+                placeholder="상표명 입력 또는 선택"
+                autocomplete="off"
+                @input="onFormBrandInput($event.target.value)"
+              />
+              <datalist id="brand-list">
+                <option v-for="n in allBrandNames" :key="n" :value="n" />
+              </datalist>
+            </label>
+            <div v-if="formLinkResults.length" class="link-results">
+              <div
+                v-for="r in formLinkResults"
+                :key="`${r.pestiCode}-${r.diseaseUseSeq}`"
+                class="link-result-item"
+                @click="applyFormLink(r)"
+              >
+                <span class="link-result-brand">{{ r.brandName }}</span>
+                <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(normCat(r.pesticideType))">{{ normCat(r.pesticideType) }}</span>
+                <span v-if="r.modeOfAction && r.modeOfAction !== '-'" class="moa-badge" :style="{ background: moaColor(r.modeOfAction) }">{{ r.modeOfAction }}</span>
+                <span class="link-result-pest">{{ r.targetPest }}</span>
+              </div>
+            </div>
+            <div v-if="fMoa" class="hist-form-info">
+              <span class="moa-badge" :style="{ background: moaColor(fMoa) }">{{ fMoa }}</span>
+              <span class="cat-badge" :class="categoryClass(fCategory)">{{ fCategory }}</span>
+            </div>
+            <label>방제 대상
+              <input v-model="fPest" list="pest-list" placeholder="예: 귤굴나방" autocomplete="off" />
+              <datalist id="pest-list">
+                <option v-for="p in uniquePests" :key="p" :value="p" />
+              </datalist>
+            </label>
+            <label>메모
+              <input v-model="fMemo" placeholder="희석배수, 날씨, 구역 등 (선택)" />
+            </label>
+            <p v-if="formError" class="form-error">{{ formError }}</p>
+            <div class="row-actions">
+              <button type="submit" :disabled="saving">
+                {{ saving ? '저장 중...' : (editingId ? '저장' : '기록 추가') }}
+              </button>
+              <button v-if="editingId" class="ghost" type="button" @click="newHistoryEntry">새 기록</button>
+            </div>
+          </form>
+        </article>
+        </Teleport>
+
       </div>
     </section>
 
@@ -411,6 +544,9 @@ onMounted(() => {
         <datalist id="rec-pest-list">
           <option v-for="p in recPests" :key="p" :value="p" />
         </datalist>
+        <label class="rec-date-label">방제 예정일
+          <input type="date" v-model="recDate" class="rec-date-input" @change="runRecommend" />
+        </label>
         <button class="primary-btn" @click="runRecommend">추천 조회</button>
       </div>
 
@@ -420,7 +556,7 @@ onMounted(() => {
       </div>
       <div v-else-if="!recResult" class="empty-msg">
         방제 대상을 입력하고 추천 조회를 눌러주세요.<br>
-        <span class="hint">설정의 제약사항이 반영됩니다 (현재 {{ settingsStore.settings.moaConflictDays }}일 이내 작용기작 중복 제외).</span>
+        <span class="hint">설정의 제약사항이 반영됩니다 ({{ settingsStore.settings.moaConflictDays }}일 이내 작용기작 중복 제외, 방제 예정일 기준).</span>
       </div>
 
       <template v-else>
@@ -714,26 +850,13 @@ onMounted(() => {
 .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
 .tab-btn:hover:not(.active) { color: var(--text); }
 
+/* ── History 2-column layout ── */
+.pip-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+.pip-summary { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.pip-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+
 /* ── Form ── */
-.form-card {
-  background: var(--bg-soft);
-  border: 1px solid var(--line);
-  border-radius: 0.75rem;
-  padding: 1rem 1.1rem;
-  margin-bottom: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-.form-row {
-  display: grid;
-  grid-template-columns: 72px 1fr;
-  align-items: center;
-  gap: 0.5rem;
-}
-.form-row label, .form-row-label { font-size: 0.82rem; color: var(--muted); }
-.form-info { font-size: 0.82rem; }
-.form-info span { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.hist-form-info { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; padding: 0.15rem 0; }
 .form-error { font-size: 0.82rem; color: var(--danger, #dc2626); }
 .primary-btn {
   align-self: flex-end;
@@ -748,74 +871,36 @@ onMounted(() => {
 }
 .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ── History list ── */
-.history-list { display: flex; flex-direction: column; gap: 0.55rem; }
-.history-card {
-  background: var(--bg-soft);
-  border: 1px solid var(--line);
-  border-radius: 0.75rem;
-  padding: 0.7rem 1rem;
-}
-.history-top {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.3rem;
-}
-.history-date { font-size: 0.82rem; color: var(--muted); min-width: 72px; }
-.history-brand { font-weight: 600; font-size: 0.9rem; }
-.history-meta { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; display: flex; gap: 0.35rem; flex-wrap: wrap; }
-.history-memo { font-style: italic; }
-.sep { opacity: 0.4; }
 
-/* ── Form edit mode ── */
-.form-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.25rem;
+/* ── 농약정보 연결 ── */
+.link-btn-active { background: var(--primary) !important; color: var(--primary-ink) !important; border-color: var(--primary) !important; }
+.link-panel {
+  margin-top: 0.5rem;
+  border: 1px solid var(--primary);
+  border-radius: 0.5rem;
+  overflow: hidden;
 }
-.form-card-title { font-size: 0.8rem; font-weight: 600; color: var(--muted); }
-.form-card-editing {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+.link-search-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.88rem;
+  background: color-mix(in srgb, var(--primary) 4%, var(--surface));
+  outline: none;
+  box-sizing: border-box;
 }
-.cancel-btn {
-  font-size: 0.78rem;
-  color: var(--muted);
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  padding: 0.15rem 0.6rem;
-  cursor: pointer;
+.link-search-input:focus { background: var(--surface); }
+.link-results { max-height: 200px; overflow-y: auto; }
+.link-result-item {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem;
+  padding: 0.38rem 0.65rem; cursor: pointer; font-size: 0.83rem;
+  border-bottom: 1px solid var(--line);
 }
-.cancel-btn:hover { color: var(--text); border-color: var(--muted); }
-
-/* ── History card actions ── */
-.history-actions { margin-left: auto; display: flex; gap: 0.3rem; }
-.action-btn {
-  font-size: 0.75rem;
-  color: var(--primary);
-  background: none;
-  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
-  border-radius: 0.4rem;
-  padding: 0.15rem 0.5rem;
-  cursor: pointer;
-}
-.action-btn-active { background: color-mix(in srgb, var(--primary) 12%, transparent); }
-.history-card-editing { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 4%, var(--bg-soft)); }
-
-.del-btn {
-  font-size: 0.75rem;
-  color: var(--muted);
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  padding: 0.15rem 0.5rem;
-  cursor: pointer;
-}
-.del-btn-confirm { color: #b91c1c; border-color: #fca5a5; background: #fff1f2; }
+.link-result-item:last-child { border-bottom: none; }
+.link-result-item:hover { background: var(--surface-strong); }
+.link-result-brand { font-weight: 600; }
+.link-result-pest { font-size: 0.76rem; color: var(--muted); margin-left: auto; }
 
 /* ── MOA / category badges ── */
 .moa-badge {
@@ -841,8 +926,10 @@ onMounted(() => {
 .cat-miticide   { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
 
 /* ── Recommend ── */
-.rec-search { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
-.rec-search input { flex: 1; min-width: 180px; }
+.rec-search { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: flex-end; }
+.rec-search > input { flex: 1; min-width: 180px; }
+.rec-date-label { font-size: 0.78rem; color: var(--muted); display: flex; flex-direction: column; gap: 0.2rem; }
+.rec-date-input { flex: none; width: auto; }
 
 .rec-section { margin-bottom: 1.25rem; }
 .rec-section-title {

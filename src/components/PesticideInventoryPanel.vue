@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import { differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
@@ -7,6 +7,7 @@ import { confirm } from '../composables/useConfirm'
 import { searchFromFullCache } from '../services/pesticide.js'
 import { moaColor } from '../services/recommend.js'
 import { usePesticideTypes } from '../composables/usePesticideTypes.js'
+import { useIsMobile } from '../composables/useIsMobile.js'
 
 const store      = useFarmStore()
 const localeStr  = useLocaleStore()
@@ -15,6 +16,21 @@ const t          = (key, p) => localeStr.t(key, p)
 const CATEGORY = '농약'
 
 const { typeNames: pesticideTypes, resolveType } = usePesticideTypes()
+const { isMobile } = useIsMobile()
+
+const formTarget = computed(() =>
+  editingId.value && displayedItems.value.some(i => i.id === editingId.value)
+    ? `#pip-form-slot-${editingId.value}`
+    : '#pip-form-top'
+)
+
+function scrollToItem(slotId) {
+  if (!isMobile.value) return
+  nextTick(() => {
+    const el = document.getElementById(slotId)
+    ;(el?.closest('li') ?? el)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
 
 const showForm     = ref(false)
 const editingId    = ref('')
@@ -94,7 +110,7 @@ async function applyLink(item, apiItem) {
   const mappedType = resolveType(apiItem.pesticideType)
   await store.upsertInventoryItem({
     id:            item.id,
-    name:          item.name,
+    name:          apiItem.brandName || item.name,
     category:      CATEGORY,
     pesticideType: pesticideTypes.value.includes(mappedType) ? mappedType : (item.pesticideType || ''),
     actionGroup:   (apiItem.modeOfAction && apiItem.modeOfAction !== '-') ? apiItem.modeOfAction : (item.actionGroup || ''),
@@ -189,7 +205,12 @@ function clearForm() {
 }
 
 function openAdd() { clearForm(); showForm.value = true }
-function newEntry() { clearForm() }
+function newEntry() {
+  clearForm()
+  if (isMobile.value) {
+    nextTick(() => document.getElementById('pip-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+}
 
 function editItem(item) {
   if (editingId.value === item.id) return
@@ -204,6 +225,7 @@ function editItem(item) {
   })
   editingId.value  = item.id
   showForm.value   = true
+  scrollToItem(`pip-form-slot-${item.id}`)
 }
 
 function closeForm() { clearForm(); showForm.value = false }
@@ -346,12 +368,13 @@ function downloadReport() {
           </select>
           <button class="ghost compact-btn" type="button" @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'">{{ sortDir === 'asc' ? '↑' : '↓' }}</button>
           <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="downloadReport">{{ t('inventory.downloadReport') }}</button>
-          <button v-if="!showForm" type="button" @click="openAdd">{{ t('inventory.addItem') }}</button>
-          <button v-else class="ghost" type="button" @click="closeForm">{{ t('common.exitEdit') }}</button>
+          <button v-if="!showForm" type="button" @click="openAdd">편집</button>
+          <button v-else class="ghost" type="button" @click="closeForm">편집종료</button>
         </div>
       </div>
 
       <!-- 품목 목록 -->
+      <div id="pip-form-top" class="mobile-form-slot"></div>
       <div v-if="displayedItems.length === 0" class="empty-msg">
         {{ showForm ? '저장하면 목록에 표시됩니다.' : '농약 재고 품목이 없습니다. 추가 버튼으로 등록하세요.' }}
       </div>
@@ -423,6 +446,8 @@ function downloadReport() {
             </p>
           </div>
 
+          <div :id="`pip-form-slot-${item.id}`" class="mobile-form-slot"></div>
+
           <!-- 입출고 패널 -->
           <div v-if="expandedId === item.id" class="log-panel">
             <form class="stack-form" style="margin-bottom: 1rem;" @submit.prevent="recordTxn(item)">
@@ -489,6 +514,7 @@ function downloadReport() {
     </article>
 
     <!-- ── 폼 열 ──────────────────────────────────────────────── -->
+    <Teleport v-if="showForm" :to="formTarget" :disabled="!isMobile">
     <article v-if="showForm" class="card">
       <h2>{{ editingId ? t('inventory.editItem') : t('inventory.addItem') }}</h2>
       <form class="stack-form" @submit.prevent="saveItem">
@@ -529,6 +555,7 @@ function downloadReport() {
       </form>
       <p class="muted" style="font-size: 0.8rem;">{{ t('inventory.inOut') }}로 규격·유효기간별 재고를 등록·관리합니다.</p>
     </article>
+    </Teleport>
   </div>
 </template>
 

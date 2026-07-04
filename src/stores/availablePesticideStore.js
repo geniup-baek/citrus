@@ -210,8 +210,33 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     try { localStorage.setItem(LS_LIST, JSON.stringify(availableList.value)) } catch {}
   }
 
+  function exportData() {
+    return {
+      purchaseInput: purchaseInput.value,
+      manualMatches: manualMatches.value,
+      availableList: availableList.value,
+    }
+  }
+
+  function restoreData(data) {
+    if (!data) return
+    if (typeof data.purchaseInput === 'string') {
+      purchaseInput.value = data.purchaseInput
+      try { localStorage.setItem(LS_PURCHASE, data.purchaseInput) } catch {}
+    }
+    if (data.manualMatches && typeof data.manualMatches === 'object') {
+      manualMatches.value = data.manualMatches
+      try { localStorage.setItem(LS_MATCHES, JSON.stringify(data.manualMatches)) } catch {}
+    }
+    if (Array.isArray(data.availableList)) {
+      availableList.value = data.availableList
+      try { localStorage.setItem(LS_LIST, JSON.stringify(data.availableList)) } catch {}
+    }
+  }
+
   return {
     purchaseInput, availableList, manualMatches,
     init, savePurchaseInput, buildList, applyManualMatch, clearManualMatch, removeFromList,
+    exportData, restoreData,
   }
 })

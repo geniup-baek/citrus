@@ -4,11 +4,13 @@ import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { useTreatmentStore } from '../stores/treatmentStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
+import { useAvailablePesticideStore } from '../stores/availablePesticideStore'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const treatStore = useTreatmentStore()
 const recSettingsStore = useRecommendSettingsStore()
+const apStore = useAvailablePesticideStore()
 
 // ── 백업 / 복원 ──────────────────────────────────────────────────────────────
 const backupMessage = ref('')
@@ -25,17 +27,21 @@ const datasetLabels = {
   issues: () => localeStore.t('nav.issues'),
   inventory: () => localeStore.t('nav.inventory'),
   treatments: () => '방제기록',
+  availablePesticides: () => '가용농약',
 }
 
 function extendedSummary(payload) {
   const base = store.backupSummary(payload)
   base.treatments = Array.isArray(payload?.data?.treatments) ? payload.data.treatments.length : 0
+  const ap = payload?.data?.availablePesticide
+  base.availablePesticides = Array.isArray(ap?.availableList) ? ap.availableList.length : 0
   return base
 }
 
 const currentCounts = computed(() => {
   const base = store.backupSummary(store.exportBackup())
   base.treatments = treatStore.treatments.length
+  base.availablePesticides = apStore.availableList.length
   return base
 })
 
@@ -43,6 +49,7 @@ async function exportBackup() {
   const payload = await store.exportBackupWithPhotos()
   payload.data.treatments = treatStore.treatments
   payload.data.recommendSettings = { ...recSettingsStore.settings }
+  payload.data.availablePesticide = apStore.exportData()
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -90,6 +97,9 @@ async function confirmRestore() {
   }
   if (payload.data?.recommendSettings) {
     recSettingsStore.restoreSettings(payload.data.recommendSettings)
+  }
+  if (payload.data?.availablePesticide) {
+    apStore.restoreData(payload.data.availablePesticide)
   }
   pendingRestore.value = null
   backupMessage.value = localeStore.t('settings.restoreDone')
