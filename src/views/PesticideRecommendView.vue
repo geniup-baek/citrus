@@ -4,7 +4,6 @@ import { useTreatmentStore } from '../stores/treatmentStore.js'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore.js'
 import { useFarmStore } from '../stores/farmStore.js'
 import { useAvailablePesticideStore, parsePurchaseText } from '../stores/availablePesticideStore.js'
-import { LOCAL_PESTICIDES, findByBrandName, getUniquePests } from '../data/localPesticides.js'
 import { getRecommendations, moaColor } from '../services/recommend.js'
 import { searchFromFullCache } from '../services/pesticide.js'
 import PesticideInventoryPanel from '../components/PesticideInventoryPanel.vue'
@@ -46,16 +45,6 @@ const histFormTarget = computed(() =>
     : '#hist-form-top'
 )
 
-const allBrandNames = LOCAL_PESTICIDES.map(p => p.brandName)
-
-let suppressBrandWatch = false
-watch(fBrand, (val) => {
-  if (suppressBrandWatch) { suppressBrandWatch = false; return }
-  const found = findByBrandName(val)
-  fMoa.value      = found?.moa ?? ''
-  fCategory.value = found?.category ?? ''
-})
-
 function resetForm() {
   editingId.value = null
   fDate.value     = today()
@@ -69,7 +58,6 @@ function resetForm() {
 }
 
 function startEdit(t) {
-  suppressBrandWatch    = true
   showHistoryForm.value = true
   editingId.value       = t.id
   fDate.value           = t.date
@@ -144,10 +132,9 @@ function onFormBrandInput(val) {
 }
 
 function applyFormLink(apiItem) {
-  suppressBrandWatch    = true
-  fBrand.value          = apiItem.brandName
-  fMoa.value            = (apiItem.modeOfAction && apiItem.modeOfAction !== '-') ? apiItem.modeOfAction : ''
-  fCategory.value       = normCat(apiItem.pesticideType) || ''
+  fBrand.value = apiItem.brandName
+  if (apiItem.pesticideType)                                 fCategory.value = normCat(apiItem.pesticideType)
+  if (apiItem.modeOfAction && apiItem.modeOfAction !== '-')  fMoa.value      = apiItem.modeOfAction
   formLinkResults.value = []
 }
 
@@ -200,7 +187,6 @@ function formatDate(d) {
 const recPest   = ref('')
 const recDate   = ref(today())
 const recResult = ref(null)
-const uniquePests = getUniquePests()
 
 const recPests = computed(() => {
   const set = new Set()
@@ -477,26 +463,22 @@ onMounted(() => {
             <label>농약
               <input
                 v-model="fBrand"
-                list="brand-list"
-                placeholder="상표명 입력 또는 선택"
+                placeholder="상표명 입력 (OpenAPI 검색)"
                 autocomplete="off"
                 @input="onFormBrandInput($event.target.value)"
               />
-              <datalist id="brand-list">
-                <option v-for="n in allBrandNames" :key="n" :value="n" />
-              </datalist>
             </label>
-            <div v-if="formLinkResults.length" class="link-results">
+            <div v-if="formLinkResults.length" class="inv-api-panel">
               <div
                 v-for="r in formLinkResults"
                 :key="`${r.pestiCode}-${r.diseaseUseSeq}`"
-                class="link-result-item"
-                @click="applyFormLink(r)"
+                class="inv-api-item"
+                @mousedown.prevent="applyFormLink(r)"
               >
-                <span class="link-result-brand">{{ r.brandName }}</span>
+                <span class="inv-api-brand">{{ r.brandName }}</span>
                 <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(normCat(r.pesticideType))">{{ normCat(r.pesticideType) }}</span>
                 <span v-if="r.modeOfAction && r.modeOfAction !== '-'" class="moa-badge" :style="{ background: moaColor(r.modeOfAction) }">{{ r.modeOfAction }}</span>
-                <span class="link-result-pest">{{ r.targetPest }}</span>
+                <span class="inv-api-pest">{{ r.targetPest }}</span>
               </div>
             </div>
             <div v-if="fMoa" class="hist-form-info">
@@ -506,7 +488,7 @@ onMounted(() => {
             <label>방제 대상
               <input v-model="fPest" list="pest-list" placeholder="예: 귤굴나방" autocomplete="off" />
               <datalist id="pest-list">
-                <option v-for="p in uniquePests" :key="p" :value="p" />
+                <option v-for="p in recPests" :key="p" :value="p" />
               </datalist>
             </label>
             <label>메모
@@ -901,6 +883,24 @@ onMounted(() => {
 .link-result-item:hover { background: var(--surface-strong); }
 .link-result-brand { font-weight: 600; }
 .link-result-pest { font-size: 0.76rem; color: var(--muted); margin-left: auto; }
+
+/* OpenAPI 검색 패널 (폼 농약 입력란) */
+.inv-api-panel {
+  display: flex; flex-direction: column; gap: 0.2rem;
+  max-height: 220px; overflow-y: auto;
+  border: 1px solid var(--primary); border-radius: 0.45rem;
+  background: var(--bg);
+  margin-top: -0.25rem; margin-bottom: 0.25rem;
+}
+.inv-api-item {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem;
+  padding: 0.38rem 0.65rem; cursor: pointer; font-size: 0.83rem;
+  border-bottom: 1px solid var(--line);
+}
+.inv-api-item:last-child { border-bottom: none; }
+.inv-api-item:hover { background: var(--surface-strong); }
+.inv-api-brand { font-weight: 600; }
+.inv-api-pest { font-size: 0.76rem; color: var(--muted); margin-left: auto; }
 
 /* ── MOA / category badges ── */
 .moa-badge {

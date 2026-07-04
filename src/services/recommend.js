@@ -1,4 +1,11 @@
-import { matchesPest } from '../data/localPesticides.js'
+function matchesPest(pesticide, term) {
+  if (!term) return true
+  const t = term.trim()
+  return pesticide.targetPests.some(p => {
+    const base = p.replace(/\(.*?\)/g, '').trim()
+    return base.includes(t) || t.includes(base)
+  })
+}
 
 // ── MOA group extraction ────────────────────────────────────────────────────
 // 살균제: Korean-letter prefix ("다2" → "다", "카" → "카")

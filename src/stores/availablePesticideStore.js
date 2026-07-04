@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { loadCache } from '../services/cache.js'
+import { db, firebaseEnabled } from '../services/firebase.js'
 
 const LS_PURCHASE = 'citrus:ap:purchase-input'
 const LS_LIST     = 'citrus:ap:list'
@@ -79,8 +81,40 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
   const purchaseInput  = ref('')
   const availableList  = ref([])
   const manualMatches  = ref({})  // normName(brandName) → enrichment
+  const initialized    = ref(false)
 
-  function init() {
+  function persistLocal() {
+    try {
+      localStorage.setItem(LS_PURCHASE, purchaseInput.value)
+      localStorage.setItem(LS_LIST, JSON.stringify(availableList.value))
+      localStorage.setItem(LS_MATCHES, JSON.stringify(manualMatches.value))
+    } catch {}
+  }
+
+  let firestoreDebounceTimer = null
+  function scheduleFirestoreWrite() {
+    if (!firebaseEnabled || !db) return
+    clearTimeout(firestoreDebounceTimer)
+    firestoreDebounceTimer = setTimeout(async () => {
+      try {
+        const ref = doc(db, 'shared', 'availablePesticide')
+        await setDoc(ref, {
+          purchaseInput: purchaseInput.value,
+          availableList: availableList.value,
+          manualMatches: manualMatches.value,
+        }, { merge: true })
+      } catch (e) {
+        console.warn('[availablePesticideStore] Firestore write failed, will retry on next change.', e)
+      }
+    }, 500)
+  }
+
+  function persistAll() {
+    persistLocal()
+    scheduleFirestoreWrite()
+  }
+
+  function loadLocal() {
     try {
       purchaseInput.value = localStorage.getItem(LS_PURCHASE) ?? ''
       const savedList = localStorage.getItem(LS_LIST)
@@ -90,9 +124,32 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     } catch {}
   }
 
+  function init() {
+    if (initialized.value) return
+    initialized.value = true
+
+    if (firebaseEnabled && db) {
+      const ref = doc(db, 'shared', 'availablePesticide')
+      onSnapshot(ref, (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data()
+          purchaseInput.value = typeof data.purchaseInput === 'string' ? data.purchaseInput : ''
+          availableList.value = Array.isArray(data.availableList) ? data.availableList : []
+          manualMatches.value = data.manualMatches && typeof data.manualMatches === 'object' ? data.manualMatches : {}
+          persistLocal()
+        } else {
+          loadLocal()
+          persistAll()
+        }
+      })
+    } else {
+      loadLocal()
+    }
+  }
+
   function savePurchaseInput(text) {
     purchaseInput.value = text
-    try { localStorage.setItem(LS_PURCHASE, text) } catch {}
+    persistAll()
   }
 
   // 구입가능농약 + 재고농약 → 가용농약 목록 작성
@@ -147,7 +204,7 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     for (const item of inventoryPesticides) addItem(item.name, '', '', 'inventory', item)
 
     availableList.value = list
-    try { localStorage.setItem(LS_LIST, JSON.stringify(list)) } catch {}
+    persistAll()
     return list
   }
 
@@ -179,10 +236,7 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     manualMatches.value = { ...manualMatches.value, [key]: enrich }
     Object.assign(item, enrich)
 
-    try {
-      localStorage.setItem(LS_MATCHES, JSON.stringify(manualMatches.value))
-      localStorage.setItem(LS_LIST, JSON.stringify(availableList.value))
-    } catch {}
+    persistAll()
   }
 
   function clearManualMatch(itemId) {
@@ -199,15 +253,12 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     const reset = { matchSource: null, category: '', moa: '', targetPests: [], preHarvestDays: '', maxApplications: '', ingredient: '', manufacturer: '', pestiCode: '' }
     Object.assign(item, apiEnrich || reset)
 
-    try {
-      localStorage.setItem(LS_MATCHES, JSON.stringify(manualMatches.value))
-      localStorage.setItem(LS_LIST, JSON.stringify(availableList.value))
-    } catch {}
+    persistAll()
   }
 
   function removeFromList(id) {
     availableList.value = availableList.value.filter(p => p.id !== id)
-    try { localStorage.setItem(LS_LIST, JSON.stringify(availableList.value)) } catch {}
+    persistAll()
   }
 
   function exportData() {
@@ -220,18 +271,10 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
 
   function restoreData(data) {
     if (!data) return
-    if (typeof data.purchaseInput === 'string') {
-      purchaseInput.value = data.purchaseInput
-      try { localStorage.setItem(LS_PURCHASE, data.purchaseInput) } catch {}
-    }
-    if (data.manualMatches && typeof data.manualMatches === 'object') {
-      manualMatches.value = data.manualMatches
-      try { localStorage.setItem(LS_MATCHES, JSON.stringify(data.manualMatches)) } catch {}
-    }
-    if (Array.isArray(data.availableList)) {
-      availableList.value = data.availableList
-      try { localStorage.setItem(LS_LIST, JSON.stringify(data.availableList)) } catch {}
-    }
+    if (typeof data.purchaseInput === 'string') purchaseInput.value = data.purchaseInput
+    if (data.manualMatches && typeof data.manualMatches === 'object') manualMatches.value = data.manualMatches
+    if (Array.isArray(data.availableList)) availableList.value = data.availableList
+    persistAll()
   }
 
   return {
