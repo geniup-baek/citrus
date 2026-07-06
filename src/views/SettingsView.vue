@@ -1,16 +1,87 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { useTreatmentStore } from '../stores/treatmentStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useAvailablePesticideStore } from '../stores/availablePesticideStore'
+import { db, firebaseEnabled } from '../services/firebase'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const treatStore = useTreatmentStore()
 const recSettingsStore = useRecommendSettingsStore()
 const apStore = useAvailablePesticideStore()
+
+// ── 저장공간 사용 현황 ────────────────────────────────────────────────────────
+const LOCAL_STORAGE_QUOTA_BYTES = 5 * 1024 * 1024 // 브라우저마다 다르나 보수적으로 5MB 가정
+const FIRESTORE_QUOTA_BYTES = 1024 * 1024 * 1024  // Firebase 무료(Spark) 플랜 저장용량 1GiB
+
+function byteSize(value) {
+  return new Blob([JSON.stringify(value ?? null)]).size
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0KB'
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)}MB`
+}
+
+const localStorageBytes = ref(0)
+
+function refreshLocalStorageUsage() {
+  let bytes = 0
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    bytes += (key?.length ?? 0) + (localStorage.getItem(key)?.length ?? 0)
+  }
+  localStorageBytes.value = bytes
+}
+
+const localStoragePercent = computed(() =>
+  Math.min(100, Math.round((localStorageBytes.value / LOCAL_STORAGE_QUOTA_BYTES) * 100)),
+)
+
+const firestoreLoading = ref(false)
+const firestoreUsage = ref(null) // { total, breakdown: [{ label, bytes }] }
+
+async function refreshFirestoreUsage() {
+  if (!firebaseEnabled || !db) return
+  firestoreLoading.value = true
+  try {
+    const breakdown = []
+
+    for (const [label, docPath] of [
+      ['농장 데이터(재배동·작업·재고 등)', ['shared', 'farmData']],
+      ['가용농약', ['shared', 'availablePesticide']],
+    ]) {
+      const snap = await getDoc(doc(db, ...docPath))
+      breakdown.push({ label, bytes: snap.exists() ? byteSize(snap.data()) : 0 })
+    }
+
+    for (const [label, colName] of [
+      ['방제이력', 'treatments'],
+      ['사진', 'photos'],
+      ['OpenAPI 캐시(농약·병해충 정보)', 'sharedCache'],
+    ]) {
+      const snap = await getDocs(collection(db, colName))
+      let bytes = 0
+      snap.forEach((d) => { bytes += byteSize(d.data()) })
+      breakdown.push({ label, bytes })
+    }
+
+    firestoreUsage.value = { total: breakdown.reduce((s, b) => s + b.bytes, 0), breakdown }
+  } finally {
+    firestoreLoading.value = false
+  }
+}
+
+const firestorePercent = computed(() =>
+  firestoreUsage.value ? Math.min(100, Math.round((firestoreUsage.value.total / FIRESTORE_QUOTA_BYTES) * 100)) : 0,
+)
+
+onMounted(refreshLocalStorageUsage)
 
 // ── 백업 / 복원 ──────────────────────────────────────────────────────────────
 const backupMessage = ref('')
@@ -333,6 +404,42 @@ function saveEdit(key, i, isPair) {
             </div>
           </template>
           <p v-if="errors[group.key]" class="settings-error">{{ errors[group.key] }}</p>
+        </div>
+      </div>
+
+      <div class="sub-card settings-storage">
+        <div class="settings-group-head">
+          <h3>저장공간 사용 현황</h3>
+        </div>
+        <p class="muted settings-group-hint">이 기기의 로컬 저장소와 Firebase 저장용량을 대략적으로 확인합니다.</p>
+
+        <div class="storage-block">
+          <div class="storage-block-head">
+            <span>로컬 저장소 (이 기기)</span>
+            <span class="muted">{{ formatBytes(localStorageBytes) }} 사용 중 (추정치)</span>
+          </div>
+          <div class="storage-bar"><div class="storage-bar-fill" :style="{ width: localStoragePercent + '%' }"></div></div>
+        </div>
+
+        <div v-if="firebaseEnabled" class="storage-block">
+          <div class="storage-block-head">
+            <span>Firebase 저장용량 (팀 공유)</span>
+            <button class="ghost compact-btn" type="button" :disabled="firestoreLoading" @click="refreshFirestoreUsage">
+              {{ firestoreLoading ? '확인 중...' : (firestoreUsage ? '새로고침' : '확인') }}
+            </button>
+          </div>
+          <template v-if="firestoreUsage">
+            <div class="storage-bar"><div class="storage-bar-fill" :style="{ width: firestorePercent + '%' }"></div></div>
+            <p class="muted" style="font-size:0.8rem; margin: 0.3rem 0 0.5rem;">
+              {{ formatBytes(firestoreUsage.total) }} / 1GiB 사용 중 (무료 플랜 기준, 추정치)
+            </p>
+            <ul class="list clean compact storage-breakdown">
+              <li v-for="b in firestoreUsage.breakdown" :key="b.label" class="item-meta">
+                {{ b.label }} <span class="muted">{{ formatBytes(b.bytes) }}</span>
+              </li>
+            </ul>
+          </template>
+          <p v-else class="muted" style="font-size:0.82rem;">확인 버튼을 누르면 조회합니다 (사진·캐시 데이터가 많으면 몇 초 걸릴 수 있습니다).</p>
         </div>
       </div>
 

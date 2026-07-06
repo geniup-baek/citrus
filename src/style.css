@@ -726,6 +726,33 @@ button.pill:hover {
   margin: 0.3rem 0 0.65rem;
 }
 
+/* ── 저장공간 사용 현황 ── */
+.storage-block { margin-bottom: 1rem; }
+.storage-block:last-child { margin-bottom: 0; }
+.storage-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+.storage-bar {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  overflow: hidden;
+}
+.storage-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: width 0.2s;
+}
+.storage-breakdown { margin-top: 0.3rem; }
+.storage-breakdown li { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.15rem 0; }
+
 .settings-item {
   display: flex;
   align-items: center;
