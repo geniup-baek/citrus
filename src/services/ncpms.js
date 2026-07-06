@@ -9,7 +9,7 @@
 //   SVC03 - 해충 검색 (requires cropName)
 //   SVC17~SVC25 - 예측·예찰 (ERR_104: 추가 권한 신청 필요)
 
-import { saveCache, loadCache } from './cache.js'
+import { saveCache, loadCache, pushSharedCache } from './cache.js'
 
 const API_KEY = import.meta.env.VITE_NCPMS_API_KEY
 const CROP_NAME = '감귤'
@@ -22,8 +22,8 @@ const FULL_KEYS = {
 }
 
 function buildUrl(serviceCode, params = {}) {
-  // 개발: Vite 프록시 (/ncpms-api → http://ncpms.rda.go.kr)
-  // 프로덕션: Netlify 리다이렉트 프록시 (/ncpms-api → http://ncpms.rda.go.kr)
+  // 개발: Vite 프록시 (/ncpms-api → http://ncpms.rda.go.kr), 로컬 실행에서만 직접 호출 가능
+  // 배포본(GitHub Pages 등): 직접 호출 불가. 로컬에서 가져온 전건 캐시를 Firestore로 공유해서 사용한다.
   const base = '/ncpms-api'
   const sp = new URLSearchParams()
   sp.set('apiKey', API_KEY)
@@ -128,8 +128,9 @@ export async function getInsectDetail({ insectKey } = {}) {
 async function warmOne(key, fetchFn, force = false) {
   if (!force && loadCache(key)) return
   try {
-    const data = await fetchFn()
-    saveCache(key, normalizeList(data))
+    const list = normalizeList(await fetchFn())
+    saveCache(key, list)
+    pushSharedCache(key, list)
   } catch {}
 }
 

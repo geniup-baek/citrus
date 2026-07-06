@@ -10,7 +10,7 @@
 // SVC02: 농약등록정보 상세
 //   필수: apiKey, serviceCode=SVC02, pestiCode, diseaseUseSeq (SVC01 응답에서 획득)
 
-import { saveCache, loadCache } from './cache.js'
+import { saveCache, loadCache, pushSharedCache } from './cache.js'
 
 const API_KEY = import.meta.env.VITE_AGRI_API_KEY
 const USE_MOCK = !API_KEY
@@ -18,8 +18,8 @@ const USE_MOCK = !API_KEY
 const FULL_CACHE_KEY = 'pesticide:all'
 
 // 엔드포인트: http://psis.rda.go.kr/openApi/service.do
-// 개발: vite.config.js /agri-api → http://psis.rda.go.kr 프록시
-// 프로덕션: netlify/functions/agri-proxy → http://psis.rda.go.kr
+// 개발: vite.config.js /agri-api → http://psis.rda.go.kr 프록시 (로컬 실행에서만 직접 호출 가능)
+// 배포본(GitHub Pages 등): 직접 호출 불가. 로컬에서 가져온 전건 캐시를 Firestore로 공유해서 사용한다.
 const BASE_PATH = '/agri-api/openApi/service.do'
 
 function buildUrl(params = {}) {
@@ -171,7 +171,9 @@ export async function warmFullCache(force = false) {
       cropName: '감귤', cropCheck: 'Y',
       displayCount: totalCount, startPoint: 0,
     })
-    saveCache(FULL_CACHE_KEY, list.map(normalizeListItem))
+    const normalized = list.map(normalizeListItem)
+    saveCache(FULL_CACHE_KEY, normalized)
+    pushSharedCache(FULL_CACHE_KEY, normalized)
   } catch {}
 }
 

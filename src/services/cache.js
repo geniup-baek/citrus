@@ -1,4 +1,37 @@
+import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { db, firebaseEnabled } from './firebase.js'
+
 const PREFIX = 'citrus:'
+const SHARED_COLLECTION = 'sharedCache'
+
+// 로컬(개발 서버 프록시)에서만 성공하는 OpenAPI 전체 조회 결과를 Firestore에 올려,
+// 배포된 환경(GitHub Pages 등, 직접 API 호출 불가)과 공유한다.
+export async function pushSharedCache(key, data) {
+  if (!firebaseEnabled || !db) return
+  try {
+    await setDoc(doc(db, SHARED_COLLECTION, key), {
+      data,
+      fetchedAt: new Date().toISOString(),
+    })
+  } catch (e) {
+    console.warn(`[cache] 공유 캐시 업로드 실패: ${key}`, e)
+  }
+}
+
+// Firestore에 공유된 캐시를 로컬로 가져온다. 로컬 캐시가 없거나 더 오래된 경우에만 덮어쓴다.
+export async function pullSharedCache(key) {
+  if (!firebaseEnabled || !db) return
+  try {
+    const snap = await getDoc(doc(db, SHARED_COLLECTION, key))
+    if (!snap.exists()) return
+    const remote = snap.data()
+    const local = loadCache(key)
+    if (local?.fetchedAt && local.fetchedAt >= remote.fetchedAt) return
+    localStorage.setItem(PREFIX + key, JSON.stringify({ data: remote.data, fetchedAt: remote.fetchedAt }))
+  } catch (e) {
+    console.warn(`[cache] 공유 캐시 조회 실패: ${key}`, e)
+  }
+}
 
 export function saveCache(key, data) {
   try {

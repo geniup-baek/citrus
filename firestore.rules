@@ -17,5 +17,9 @@ service cloud.firestore {
       // 농약 방제 이력
       allow read, write: if true;
     }
+    match /sharedCache/{key} {
+      // 로컬 실행 환경에서 가져온 OpenAPI 전건 캐시(농약정보/병해충정보)를 공유한다.
+      allow read, write: if true;
+    }
   }
 }
