@@ -394,7 +394,7 @@ clearForm()
     <article class="card">
       <div class="row-actions align-start">
         <h2>{{ localeStore.t('issues.issueHistory') }}</h2>
-        <button v-if="!showForm" class="ghost" @click="showForm = true; formOpen = true">{{ localeStore.t('common.edit') }}</button>
+        <button v-if="!showForm" @click="showForm = true; formOpen = true">{{ localeStore.t('common.edit') }}</button>
         <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
       </div>
       <div id="issue-form-top" class="mobile-form-slot"></div>

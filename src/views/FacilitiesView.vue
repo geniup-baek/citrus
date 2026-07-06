@@ -207,7 +207,7 @@ async function saveFacility() {
     <article class="card">
       <div class="row-actions align-start">
         <h2>{{ localeStore.t('facilities.inventory') }}</h2>
-        <button v-if="!showForm" class="ghost" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
+        <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
         <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
       </div>
       <div id="fac-form-top" class="mobile-form-slot"></div>
@@ -232,7 +232,7 @@ async function saveFacility() {
           <div v-if="showForm" class="row-actions">
             <button class="ghost" :disabled="i === 0" @click="moveFacility(i, -1)">{{ localeStore.t('common.moveUp') }}</button>
             <button class="ghost" :disabled="i === store.state.facilities.length - 1" @click="moveFacility(i, 1)">{{ localeStore.t('common.moveDown') }}</button>
-            <button class="ghost" @click="editFacility(facility)">{{ localeStore.t('common.edit') }}</button>
+            <button :class="{ ghost: editingId !== facility.id }" @click="editFacility(facility)">{{ localeStore.t('common.edit') }}</button>
             <button class="danger" @click="confirmDeleteFacility(facility)">{{ localeStore.t('common.delete') }}</button>
           </div>
           <div :id="`fac-form-slot-${facility.id}`" class="mobile-form-slot"></div>

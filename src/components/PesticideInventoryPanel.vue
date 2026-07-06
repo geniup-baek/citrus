@@ -567,15 +567,6 @@ function downloadReport() {
 </template>
 
 <style scoped>
-.pip-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.pip-summary { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
-.pip-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
 
 /* OpenAPI search panel */
 .inv-api-panel {

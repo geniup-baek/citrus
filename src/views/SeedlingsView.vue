@@ -421,7 +421,7 @@ clearForm()
         <h2>{{ localeStore.t('seedlings.overview') }}</h2>
         <div v-if="!showForm" class="row-actions">
           <button class="ghost" @click="openBatch">{{ localeStore.t('seedlings.batchAdd') }}</button>
-          <button class="ghost" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
+          <button @click="openAdd">{{ localeStore.t('common.edit') }}</button>
         </div>
         <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
       </div>

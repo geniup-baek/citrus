@@ -554,6 +554,18 @@ button.pill:hover {
   border-color: transparent;
 }
 
+/* ── 목록 헤더 (제목/카운트 + 액션 버튼) ────────────────── */
+.pip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.pip-summary { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.pip-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+
 /* ── 카테고리 chip 필터 ────────────────────────────────── */
 .category-chip-row {
   display: flex;

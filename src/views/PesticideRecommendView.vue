@@ -9,11 +9,14 @@ import { searchFromFullCache } from '../services/pesticide.js'
 import PesticideInventoryPanel from '../components/PesticideInventoryPanel.vue'
 import { usePesticideTypes } from '../composables/usePesticideTypes.js'
 import { useIsMobile } from '../composables/useIsMobile.js'
+import { useLocaleStore } from '../stores/localeStore'
+import { confirm } from '../composables/useConfirm'
 
 const treatStore    = useTreatmentStore()
 const settingsStore = useRecommendSettingsStore()
 const farmStore     = useFarmStore()
 const apStore       = useAvailablePesticideStore()
+const localeStore   = useLocaleStore()
 
 const activeTab = ref('history')
 
@@ -37,7 +40,6 @@ const { isMobile } = useIsMobile()
 
 const showHistoryForm = ref(false)
 const editingId     = ref(null)
-const deleteConfirm = ref(null)
 
 const histFormTarget = computed(() =>
   editingId.value && treatStore.treatments.some(t => t.id === editingId.value)
@@ -68,7 +70,6 @@ function resetForm() {
   fPest.value     = ''
   fMemo.value     = ''
   formError.value = ''
-  deleteConfirm.value  = null
   histLinkId.value      = null
   histLinkQuery.value   = ''
   histLinkResults.value = []
@@ -84,7 +85,6 @@ function startEdit(t) {
   fPest.value           = t.targetPest ?? ''
   fMemo.value           = t.memo       ?? ''
   formError.value       = ''
-  deleteConfirm.value   = null
   histLinkId.value      = null
   if (isMobile.value) {
     nextTick(() => {
@@ -121,14 +121,11 @@ async function submitTreatment() {
   }
 }
 
-async function confirmDelete(id) {
-  if (deleteConfirm.value === id) {
-    if (editingId.value === id) resetForm()
-    await treatStore.deleteTreatment(id)
-    deleteConfirm.value = null
-  } else {
-    deleteConfirm.value = id
-  }
+async function confirmDeleteTreatment(t) {
+  const ok = await confirm({ message: localeStore.t('confirm.treatment', { date: formatDate(t.date), brandName: t.brandName }) })
+  if (!ok) return
+  if (editingId.value === t.id) resetForm()
+  await treatStore.deleteTreatment(t.id)
 }
 
 function newHistoryEntry() {
@@ -382,6 +379,12 @@ function applyMatch(itemId, apiItem) {
   matchResults.value = []
 }
 
+async function confirmDeleteAp(item) {
+  const ok = await confirm({ message: localeStore.t('confirm.availablePesticide', { brandName: item.brandName }) })
+  if (!ok) return
+  apStore.removeFromList(item.id)
+}
+
 function openManualEdit(item) {
   matchingItemId.value = null
   matchQuery.value = ''
@@ -504,7 +507,7 @@ onMounted(() => {
                       @click="openHistLink(t.id)"
                     >{{ t.moa ? '정보 재연결' : '농약정보 연결' }}</button>
                     <button :class="{ ghost: editingId !== t.id }" type="button" @click="editingId === t.id ? resetForm() : startEdit(t)">편집</button>
-                    <button class="danger" type="button" @click="confirmDelete(t.id)">{{ deleteConfirm === t.id ? '확인' : '삭제' }}</button>
+                    <button class="danger" type="button" @click="confirmDeleteTreatment(t)">삭제</button>
                   </template>
                 </div>
                 <!-- 농약정보 연결 패널 -->
@@ -616,7 +619,7 @@ onMounted(() => {
         <label class="rec-date-label">방제 예정일
           <input type="date" v-model="recDate" class="rec-date-input" @change="runRecommend" />
         </label>
-        <button class="primary-btn" @click="runRecommend">추천 조회</button>
+        <button @click="runRecommend">추천 조회</button>
       </div>
 
       <div v-if="apStore.availableList.length === 0" class="empty-msg">
@@ -732,7 +735,7 @@ onMounted(() => {
 
       <!-- 목록 작성 버튼 -->
       <div v-if="apEditMode" class="ap-build-row">
-        <button class="primary-btn" :disabled="apBuilding || !apInputText.trim()" @click="buildApList">
+        <button :disabled="apBuilding || !apInputText.trim()" @click="buildApList">
           {{ apBuilding ? '작성 중...' : '목록 작성' }}
         </button>
         <span v-if="apStats.total > 0" class="ap-stats">
@@ -805,21 +808,21 @@ onMounted(() => {
             <!-- 카드 액션 -->
             <div v-if="apEditMode" class="ap-card-actions">
               <button
-                class="action-btn"
-                :class="{ 'action-btn-active': matchingItemId === item.id }"
+                class="ghost"
+                :class="{ 'link-btn-active': matchingItemId === item.id }"
                 @click="openManualMatch(item.id)"
               >{{ item.matchSource === 'manual' ? '연결 변경' : (item.matchSource ? '수동 재연결' : '수동 연결') }}</button>
               <button
-                class="action-btn"
-                :class="{ 'action-btn-active': manualEditId === item.id }"
+                class="ghost"
+                :class="{ 'link-btn-active': manualEditId === item.id }"
                 @click="openManualEdit(item)"
               >{{ item.matchSource ? '정보 수정' : '직접 입력' }}</button>
               <button
                 v-if="item.matchSource === 'manual'"
-                class="cancel-btn"
+                class="ghost"
                 @click="apStore.clearManualMatch(item.id)"
               >연결 해제</button>
-              <button class="del-btn" @click="apStore.removeFromList(item.id)">삭제</button>
+              <button class="danger" @click="confirmDeleteAp(item)">삭제</button>
             </div>
 
             <!-- 수동 연결 패널 -->
@@ -968,26 +971,9 @@ onMounted(() => {
 .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
 .tab-btn:hover:not(.active) { color: var(--text); }
 
-/* ── History 2-column layout ── */
-.pip-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
-.pip-summary { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
-.pip-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
-
 /* ── Form ── */
 .hist-form-info { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; padding: 0.15rem 0; }
 .form-error { font-size: 0.82rem; color: var(--danger, #dc2626); }
-.primary-btn {
-  align-self: flex-end;
-  padding: 0.45rem 1.2rem;
-  background: var(--primary);
-  color: var(--primary-ink);
-  border: none;
-  border-radius: 0.5rem;
-  font-size: 0.88rem;
-  cursor: pointer;
-  font-weight: 600;
-}
-.primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 
 /* ── 농약정보 연결 ── */

@@ -213,7 +213,7 @@ async function saveAncillary() {
     <article class="card">
       <div class="row-actions align-start">
         <h2>{{ localeStore.t('ancillary.inventory') }}</h2>
-        <button v-if="!showForm" class="ghost" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
+        <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
         <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
       </div>
       <div id="anc-form-top" class="mobile-form-slot"></div>
@@ -238,7 +238,7 @@ async function saveAncillary() {
           <div v-if="showForm" class="row-actions">
             <button class="ghost" :disabled="i === 0" @click="moveAncillary(i, -1)">{{ localeStore.t('common.moveUp') }}</button>
             <button class="ghost" :disabled="i === store.state.ancillaries.length - 1" @click="moveAncillary(i, 1)">{{ localeStore.t('common.moveDown') }}</button>
-            <button class="ghost" @click="editAncillary(item)">{{ localeStore.t('common.edit') }}</button>
+            <button :class="{ ghost: editingId !== item.id }" @click="editAncillary(item)">{{ localeStore.t('common.edit') }}</button>
             <button class="danger" @click="confirmDeleteAncillary(item)">{{ localeStore.t('common.delete') }}</button>
           </div>
           <div :id="`anc-form-slot-${item.id}`" class="mobile-form-slot"></div>
