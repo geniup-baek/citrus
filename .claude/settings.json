@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(curl -s -i -X OPTIONS https://firebasestorage.googleapis.com/v0/b/citrus-collab-2026.firebasestorage.app/o?name=photos%2Ftest.jpg -H 'Origin: https://geniup-baek.github.io' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type')",
-      "Bash(grep -n \"^  }$\\\\|^}\" src/stores/farmStore.js)"
+      "Bash(grep -n \"^  }$\\\\|^}\" src/stores/farmStore.js)",
+      "Bash(xxd)"
     ]
   }
 }

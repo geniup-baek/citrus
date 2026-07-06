@@ -22,6 +22,7 @@ export default defineConfig({
   },
   base: './',
   server: {
+    host: true,
     proxy: {
       '/ncpms-api': {
         target: 'http://ncpms.rda.go.kr',

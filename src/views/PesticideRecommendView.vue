@@ -45,6 +45,20 @@ const histFormTarget = computed(() =>
     : '#hist-form-top'
 )
 
+// ── 방제이력 연도별 필터 ────────────────────────────────────────────────────
+const histYear = ref('')
+
+const histYears = computed(() =>
+  [...new Set(treatStore.treatments.map(t => t.date?.slice(0, 4)).filter(Boolean))]
+    .sort((a, b) => b.localeCompare(a)),
+)
+
+const filteredTreatments = computed(() =>
+  histYear.value
+    ? treatStore.treatments.filter(t => t.date?.startsWith(histYear.value))
+    : treatStore.treatments,
+)
+
 function resetForm() {
   editingId.value = null
   fDate.value     = today()
@@ -54,7 +68,10 @@ function resetForm() {
   fPest.value     = ''
   fMemo.value     = ''
   formError.value = ''
-  deleteConfirm.value = null
+  deleteConfirm.value  = null
+  histLinkId.value      = null
+  histLinkQuery.value   = ''
+  histLinkResults.value = []
 }
 
 function startEdit(t) {
@@ -231,7 +248,7 @@ const sortedExcluded = computed(() =>
 )
 
 // ── computed helpers ───────────────────────────────────────────────────────
-const { resolveType: normCat } = usePesticideTypes()
+const { resolveType: normCat, typeNames: pesticideTypes } = usePesticideTypes()
 
 const categoryClass = (cat) => ({
   '살균제': 'cat-fungicide',
@@ -246,10 +263,24 @@ const apInputText    = ref('')
 const apFilter        = ref('')
 const apSourceFilter  = ref('all')   // 'all' | 'purchase' | 'inventory'
 const apUnmatchedOnly = ref(false)
+const apEditMode     = ref(false)
 const matchingItemId = ref(null)   // 수동 연결 패널이 열린 아이템 id
 const matchQuery     = ref('')
 const matchResults   = ref([])
 const apBuilding     = ref(false)
+const manualEditId   = ref(null)   // 직접 입력/수정 패널이 열린 아이템 id
+const manualEditForm = ref({
+  category: '', moa: '', targetPests: '',
+  preHarvestDays: '', maxApplications: '', ingredient: '', manufacturer: '',
+})
+
+function closeApEdit() {
+  apEditMode.value     = false
+  matchingItemId.value = null
+  matchQuery.value     = ''
+  matchResults.value   = []
+  manualEditId.value   = null
+}
 
 const inventoryPesticides = computed(() =>
   (farmStore.state?.inventory ?? []).filter(i => i.category === '농약'),
@@ -326,6 +357,7 @@ async function buildApList() {
 }
 
 function openManualMatch(itemId) {
+  manualEditId.value = null
   if (matchingItemId.value === itemId) {
     matchingItemId.value = null
     matchQuery.value = ''
@@ -350,6 +382,40 @@ function applyMatch(itemId, apiItem) {
   matchResults.value = []
 }
 
+function openManualEdit(item) {
+  matchingItemId.value = null
+  matchQuery.value = ''
+  matchResults.value = []
+  if (manualEditId.value === item.id) {
+    manualEditId.value = null
+    return
+  }
+  manualEditId.value = item.id
+  manualEditForm.value = {
+    category:        item.category || '',
+    moa:             item.moa || '',
+    targetPests:     (item.targetPests || []).join(', '),
+    preHarvestDays:  item.preHarvestDays || '',
+    maxApplications: item.maxApplications || '',
+    ingredient:      item.ingredient || '',
+    manufacturer:    item.manufacturer || '',
+  }
+}
+
+function saveManualEdit(item) {
+  const f = manualEditForm.value
+  apStore.updateManualInfo(item.id, {
+    category:        f.category.trim(),
+    moa:             f.moa.trim(),
+    targetPests:     f.targetPests.split(',').map(s => s.trim()).filter(Boolean),
+    preHarvestDays:  f.preHarvestDays.trim(),
+    maxApplications: f.maxApplications.trim(),
+    ingredient:      f.ingredient.trim(),
+    manufacturer:    f.manufacturer.trim(),
+  })
+  manualEditId.value = null
+}
+
 onMounted(() => {
   treatStore.init()
   apStore.init()
@@ -360,8 +426,8 @@ onMounted(() => {
 <template>
   <div class="card recommend-view">
     <div class="view-header">
-      <h2>농약 방제 추천</h2>
-      <p class="subtitle">방제 이력 기반 작용기작 중복 방지 · 구입 가능 농약 목록 기준</p>
+      <h2>방제 관리</h2>
+      <p class="subtitle">방제 이력 기록부터 농약재고·가용농약 관리, 작용기작 중복 방지 추천까지 한 곳에서 관리합니다.</p>
     </div>
 
     <!-- Tabs -->
@@ -381,19 +447,41 @@ onMounted(() => {
         <article class="card">
           <div class="pip-header">
             <div class="pip-summary">
-              <span v-if="treatStore.treatments.length" class="summary-chip">{{ treatStore.treatments.length }}건</span>
+              <span v-if="filteredTreatments.length" class="summary-chip">{{ filteredTreatments.length }}건</span>
             </div>
             <div class="pip-actions">
               <button v-if="!showHistoryForm" type="button" @click="showHistoryForm = true">편집</button>
               <button v-else class="ghost" type="button" @click="resetForm(); showHistoryForm = false">편집종료</button>
             </div>
           </div>
+          <div v-if="histYears.length" class="sort-filter-bar">
+            <button
+              class="ghost compact-btn"
+              :class="{ 'hist-year-active': histYear === '' }"
+              type="button"
+              @click="histYear = ''"
+            >전체</button>
+            <button
+              v-for="y in histYears"
+              :key="y"
+              class="ghost compact-btn"
+              :class="{ 'hist-year-active': histYear === y }"
+              type="button"
+              @click="histYear = y"
+            >{{ y }}년</button>
+          </div>
           <div id="hist-form-top" class="mobile-form-slot"></div>
           <div v-if="treatStore.treatments.length === 0" class="empty-msg">
             {{ showHistoryForm ? '저장하면 목록에 표시됩니다.' : '기록된 방제 이력이 없습니다.' }}
           </div>
+          <div v-else-if="filteredTreatments.length === 0" class="empty-msg">
+            {{ histYear }}년 방제 이력이 없습니다.
+          </div>
           <ul v-else class="list clean">
-            <template v-for="t in treatStore.treatments" :key="t.id">
+            <template v-for="(t, i) in filteredTreatments" :key="t.id">
+              <li v-if="i === 0 || t.date !== filteredTreatments[i - 1].date" class="hist-date-divider">
+                <span>{{ formatDate(t.date) }}</span>
+              </li>
               <li class="list-item card-like">
                 <div>
                   <div class="task-card-top">
@@ -401,7 +489,6 @@ onMounted(() => {
                     <span v-if="t.moa" class="moa-badge" :style="{ background: moaColor(t.moa) }">{{ t.moa }}</span>
                     <span v-if="t.category" class="cat-badge" :class="categoryClass(t.category)">{{ t.category }}</span>
                   </div>
-                  <p class="item-meta">{{ formatDate(t.date) }}</p>
                   <p v-if="t.targetPest || t.memo" class="item-meta">
                     <span v-if="t.targetPest">{{ t.targetPest }}</span>
                     <span v-if="t.targetPest && t.memo"> · </span>
@@ -409,13 +496,13 @@ onMounted(() => {
                   </p>
                 </div>
                 <div class="row-actions">
-                  <button
-                    class="ghost"
-                    :class="{ 'link-btn-active': histLinkId === t.id }"
-                    type="button"
-                    @click="openHistLink(t.id)"
-                  >{{ t.moa ? '정보 재연결' : '농약정보 연결' }}</button>
                   <template v-if="showHistoryForm">
+                    <button
+                      class="ghost"
+                      :class="{ 'link-btn-active': histLinkId === t.id }"
+                      type="button"
+                      @click="openHistLink(t.id)"
+                    >{{ t.moa ? '정보 재연결' : '농약정보 연결' }}</button>
                     <button :class="{ ghost: editingId !== t.id }" type="button" @click="editingId === t.id ? resetForm() : startEdit(t)">편집</button>
                     <button class="danger" type="button" @click="confirmDelete(t.id)">{{ deleteConfirm === t.id ? '확인' : '삭제' }}</button>
                   </template>
@@ -602,8 +689,18 @@ onMounted(() => {
     <!-- ═══ 가용농약 ════════════════════════════════════════════════════════ -->
     <section v-if="activeTab === 'avail'">
 
+      <div class="pip-header">
+        <div class="pip-summary">
+          <span v-if="apStats.total > 0" class="summary-chip">{{ apStats.total }}개</span>
+        </div>
+        <div class="pip-actions">
+          <button v-if="!apEditMode" type="button" @click="apEditMode = true">편집</button>
+          <button v-else class="ghost" type="button" @click="closeApEdit">편집종료</button>
+        </div>
+      </div>
+
       <!-- 구입가능농약 입력 -->
-      <div class="form-card">
+      <div v-if="apEditMode" class="form-card">
         <div class="form-card-header">
           <span class="form-card-title">구입가능농약 입력</span>
         </div>
@@ -634,8 +731,8 @@ onMounted(() => {
       </div>
 
       <!-- 목록 작성 버튼 -->
-      <div class="ap-build-row">
-        <button class="primary-btn" :disabled="apBuilding" @click="buildApList">
+      <div v-if="apEditMode" class="ap-build-row">
+        <button class="primary-btn" :disabled="apBuilding || !apInputText.trim()" @click="buildApList">
           {{ apBuilding ? '작성 중...' : '목록 작성' }}
         </button>
         <span v-if="apStats.total > 0" class="ap-stats">
@@ -706,12 +803,17 @@ onMounted(() => {
             </div>
 
             <!-- 카드 액션 -->
-            <div class="ap-card-actions">
+            <div v-if="apEditMode" class="ap-card-actions">
               <button
                 class="action-btn"
                 :class="{ 'action-btn-active': matchingItemId === item.id }"
                 @click="openManualMatch(item.id)"
               >{{ item.matchSource === 'manual' ? '연결 변경' : (item.matchSource ? '수동 재연결' : '수동 연결') }}</button>
+              <button
+                class="action-btn"
+                :class="{ 'action-btn-active': manualEditId === item.id }"
+                @click="openManualEdit(item)"
+              >{{ item.matchSource ? '정보 수정' : '직접 입력' }}</button>
               <button
                 v-if="item.matchSource === 'manual'"
                 class="cancel-btn"
@@ -745,6 +847,40 @@ onMounted(() => {
               <p v-else-if="matchQuery.trim().length > 1" class="muted" style="font-size:0.82rem; padding:0.5rem 0;">
                 검색 결과 없음 — OpenAPI 데이터가 없거나 농약정보를 먼저 가져와야 합니다.
               </p>
+            </div>
+
+            <!-- 직접 입력/수정 패널 -->
+            <div v-if="manualEditId === item.id" class="manual-edit-panel">
+              <div class="manual-edit-grid">
+                <label>분류
+                  <select v-model="manualEditForm.category">
+                    <option value="">선택 안 함</option>
+                    <option v-for="tp in pesticideTypes" :key="tp" :value="tp">{{ tp }}</option>
+                  </select>
+                </label>
+                <label>작용기작
+                  <input v-model="manualEditForm.moa" type="text" placeholder="예: 4a, 나1" />
+                </label>
+                <label>대상 병해충
+                  <input v-model="manualEditForm.targetPests" type="text" placeholder="쉼표로 구분 (예: 귤굴나방, 진딧물)" />
+                </label>
+                <label>수확 전 일수
+                  <input v-model="manualEditForm.preHarvestDays" type="text" placeholder="예: 14" />
+                </label>
+                <label>최대 사용 횟수
+                  <input v-model="manualEditForm.maxApplications" type="text" placeholder="예: 3" />
+                </label>
+                <label>성분
+                  <input v-model="manualEditForm.ingredient" type="text" />
+                </label>
+                <label>제조사
+                  <input v-model="manualEditForm.manufacturer" type="text" />
+                </label>
+              </div>
+              <div class="row-actions">
+                <button type="button" @click="saveManualEdit(item)">저장</button>
+                <button class="ghost" type="button" @click="manualEditId = null">취소</button>
+              </div>
             </div>
           </div>
 
@@ -856,6 +992,31 @@ onMounted(() => {
 
 /* ── 농약정보 연결 ── */
 .link-btn-active { background: var(--primary) !important; color: var(--primary-ink) !important; border-color: var(--primary) !important; }
+
+.hist-year-active {
+  background: var(--surface-strong);
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.hist-date-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.9rem 0 0.35rem;
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.hist-date-divider:first-child { margin-top: 0; }
+.hist-date-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
 .link-panel {
   margin-top: 0.5rem;
   border: 1px solid var(--primary);
@@ -1236,6 +1397,25 @@ onMounted(() => {
 .match-result-item:hover { background: var(--surface-strong); border-color: var(--primary); }
 .match-result-brand { font-weight: 600; }
 .match-result-pest  { font-size: 0.76rem; color: var(--muted); margin-left: auto; }
+
+.manual-edit-panel {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--line);
+}
+.manual-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.manual-edit-grid label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
 
 /* ── Shared ── */
 .empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; line-height: 1.6; }

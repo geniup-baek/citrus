@@ -228,7 +228,14 @@ function editItem(item) {
   scrollToItem(`pip-form-slot-${item.id}`)
 }
 
-function closeForm() { clearForm(); showForm.value = false }
+function closeForm() {
+  clearForm()
+  showForm.value      = false
+  expandedId.value    = ''
+  linkingItemId.value = null
+  linkQuery.value     = ''
+  linkResults.value   = []
+}
 
 async function saveItem() {
   await store.upsertInventoryItem({
@@ -321,8 +328,8 @@ function statusText(dateStr) {
 
 function downloadReport() {
   const headers = [
-    t('inventory.name'), t('inventory.pesticideType'),
-    t('inventory.actionGroup'), t('inventory.productName'),
+    t('pesticideInventory.name'), t('pesticideInventory.pesticideType'),
+    t('pesticideInventory.actionGroup'), t('pesticideInventory.productName'),
     t('inventory.volume'), t('inventory.expiryDate'),
     t('inventory.amount'), t('inventory.reportStatus'), t('inventory.notes'),
   ]
@@ -363,7 +370,7 @@ function downloadReport() {
         </div>
         <div class="pip-actions">
           <select v-model="sortBy" class="compact-select">
-            <option value="name">{{ t('inventory.sortName') }}</option>
+            <option value="name">{{ t('pesticideInventory.sortName') }}</option>
             <option value="expiry">{{ t('inventory.sortExpiry') }}</option>
           </select>
           <button class="ghost compact-btn" type="button" @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'">{{ sortDir === 'asc' ? '↑' : '↓' }}</button>
@@ -406,14 +413,14 @@ function downloadReport() {
           </div>
 
           <div class="row-actions">
-            <button :class="{ ghost: expandedId !== item.id }" type="button" @click="toggleExpand(item)">{{ t('inventory.inOut') }}</button>
-            <button
-              class="ghost"
-              :class="{ 'link-btn-active': linkingItemId === item.id }"
-              type="button"
-              @click="openLink(item.id)"
-            >{{ item.actionGroup ? '정보 재연결' : '농약정보 연결' }}</button>
             <template v-if="showForm">
+              <button :class="{ ghost: expandedId !== item.id }" type="button" @click="toggleExpand(item)">{{ t('inventory.inOut') }}</button>
+              <button
+                class="ghost"
+                :class="{ 'link-btn-active': linkingItemId === item.id }"
+                type="button"
+                @click="openLink(item.id)"
+              >{{ item.actionGroup ? '정보 재연결' : '농약정보 연결' }}</button>
               <button :class="{ ghost: editingId !== item.id }" type="button" @click="editItem(item)">{{ t('common.edit') }}</button>
               <button class="danger" type="button" @click="deleteItem(item)">{{ t('common.delete') }}</button>
             </template>
@@ -518,8 +525,8 @@ function downloadReport() {
     <article v-if="showForm" class="card">
       <h2>{{ editingId ? t('inventory.editItem') : t('inventory.addItem') }}</h2>
       <form class="stack-form" @submit.prevent="saveItem">
-        <label>{{ t('inventory.name') }}
-          <input v-model="form.name" required type="text" :placeholder="t('inventory.namePlaceholder')" @input="onNameInput" />
+        <label>{{ t('pesticideInventory.name') }}
+          <input v-model="form.name" required type="text" :placeholder="t('pesticideInventory.namePlaceholder')" @input="onNameInput" />
         </label>
         <div v-if="invMatchResults.length" class="inv-api-panel">
           <div
@@ -534,16 +541,16 @@ function downloadReport() {
             <span class="inv-api-pest">{{ r.targetPest }}</span>
           </div>
         </div>
-        <label>{{ t('inventory.pesticideType') }}
+        <label>{{ t('pesticideInventory.pesticideType') }}
           <select v-model="form.pesticideType">
             <option v-for="tp in pesticideTypes" :key="tp" :value="tp">{{ tp }}</option>
           </select>
         </label>
-        <label>{{ t('inventory.actionGroup') }}
-          <input v-model="form.actionGroup" type="text" :placeholder="t('inventory.actionGroupPlaceholder')" />
+        <label>{{ t('pesticideInventory.actionGroup') }}
+          <input v-model="form.actionGroup" type="text" :placeholder="t('pesticideInventory.actionGroupPlaceholder')" />
         </label>
-        <label>{{ t('inventory.productName') }}
-          <input v-model="form.productName" type="text" :placeholder="t('inventory.productNamePlaceholder')" />
+        <label>{{ t('pesticideInventory.productName') }}
+          <input v-model="form.productName" type="text" :placeholder="t('pesticideInventory.productNamePlaceholder')" />
         </label>
         <label>{{ t('inventory.notes') }}
           <textarea v-model="form.notes" rows="2" />
