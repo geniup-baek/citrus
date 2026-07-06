@@ -151,6 +151,7 @@ async function warmDetails(type, items) {
     try {
       const data = await detailFn(id)
       saveCache(cacheKey, data)
+      pushSharedCache(cacheKey, data)
     } catch {}
   }
 }
@@ -189,6 +190,7 @@ export async function warmSurvDetails(year, items) {
     try {
       const data = await getSurveillanceDetailByGungu({ insectKey: id })
       saveCache(cacheKey, data)
+      pushSharedCache(cacheKey, data)
     } catch {}
   }
 }

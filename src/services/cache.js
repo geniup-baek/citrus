@@ -52,17 +52,23 @@ export function loadCache(key) {
   }
 }
 
-// fn 성공 시 캐시 저장, 실패 시 캐시에서 복원
+// fn 성공 시 캐시 저장(+ Firestore 공유), 실패 시 로컬 캐시에서 복원
+// 로컬 캐시도 없으면(배포 환경 첫 방문 등) Firestore 공유 캐시를 당겨와 재시도한다.
 // 반환: { result, fromCache, fetchedAt, cacheError }
-// 캐시도 없으면 원래 에러를 그대로 throw
+// 그래도 없으면 원래 에러를 그대로 throw
 export async function withCache(key, fn) {
   try {
     const result = await fn()
     const fetchedAt = new Date().toISOString()
     saveCache(key, result)
+    pushSharedCache(key, result)
     return { result, fromCache: false, fetchedAt, cacheError: null }
   } catch (e) {
-    const cached = loadCache(key)
+    let cached = loadCache(key)
+    if (!cached) {
+      await pullSharedCache(key)
+      cached = loadCache(key)
+    }
     if (cached) {
       return {
         result: cached.data,

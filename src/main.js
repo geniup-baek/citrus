@@ -15,7 +15,7 @@ app.mount('#app')
 
 // 로컬 실행 환경에서 가져와 Firestore에 공유해둔 OpenAPI 전건 캐시를,
 // 직접 API 호출이 불가한 배포 환경(GitHub Pages 등)에서도 쓸 수 있도록 동기화한다.
-;['pesticide:all', 'pest:diseases:all', 'pest:pathogens:all', 'pest:insects:all']
+;['pesticide:all', 'pest:diseases:all', 'pest:pathogens:all', 'pest:insects:all', 'pest:prediction']
   .forEach(key => pullSharedCache(key))
 
 registerSW({
