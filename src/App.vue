@@ -4,13 +4,19 @@ import AppHeader from './components/AppHeader.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import { useFarmStore } from './stores/farmStore'
 import { useLocaleStore } from './stores/localeStore'
+import { useTreatmentStore } from './stores/treatmentStore'
+import { useAvailablePesticideStore } from './stores/availablePesticideStore'
 import { useTaskNotifier } from './composables/useTaskNotifier'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
+const treatStore = useTreatmentStore()
+const apStore = useAvailablePesticideStore()
 
 onMounted(async () => {
   await store.init()
+  treatStore.init()
+  apStore.init()
 })
 
 onBeforeUnmount(() => {

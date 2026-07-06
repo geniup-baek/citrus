@@ -22,8 +22,12 @@ function saveLS(arr) {
 export const useTreatmentStore = defineStore('treatment', () => {
   const treatments = ref([])
   const ready = ref(false)
+  const initialized = ref(false)
 
   function init() {
+    if (initialized.value) return
+    initialized.value = true
+
     if (firebaseEnabled && db) {
       const q = query(collection(db, 'treatments'), orderBy('date', 'desc'))
       onSnapshot(q, (snap) => {

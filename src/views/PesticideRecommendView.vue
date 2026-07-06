@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useTreatmentStore } from '../stores/treatmentStore.js'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore.js'
 import { useFarmStore } from '../stores/farmStore.js'
@@ -212,6 +212,20 @@ const recPests = computed(() => {
   return [...set].sort((a, b) => a.localeCompare(b, 'ko'))
 })
 
+const recConstraintHint = computed(() => {
+  const s = settingsStore.settings
+  const parts = [`${s.moaConflictDays}일 이내 작용기작 중복 제외`]
+  if (s.enforceMaxApplications) {
+    parts.push(
+      s.preferPesticideMaxApplications
+        ? `연간 최대 사용 횟수 제한(농약별 등록정보 우선, 기본 ${s.maxApplicationsPerYear}회)`
+        : `연간 최대 ${s.maxApplicationsPerYear}회 사용 제한`,
+    )
+  }
+  parts.push('방제 예정일 기준')
+  return parts.join(' · ')
+})
+
 function runRecommend() {
   if (!recPest.value.trim()) { recResult.value = null; return }
   recResult.value = getRecommendations({
@@ -419,11 +433,9 @@ function saveManualEdit(item) {
   manualEditId.value = null
 }
 
-onMounted(() => {
-  treatStore.init()
-  apStore.init()
-  apInputText.value = apStore.purchaseInput
-})
+// apStore.init()은 App.vue에서 전역으로 한 번 호출되며, Firestore 동기화 시점에 따라
+// purchaseInput이 마운트 이후에 채워질 수 있으므로 값을 반응형으로 동기화한다.
+watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate: true })
 </script>
 
 <template>
@@ -628,7 +640,7 @@ onMounted(() => {
       </div>
       <div v-else-if="!recResult" class="empty-msg">
         방제 대상을 입력하고 추천 조회를 눌러주세요.<br>
-        <span class="hint">설정의 제약사항이 반영됩니다 ({{ settingsStore.settings.moaConflictDays }}일 이내 작용기작 중복 제외, 방제 예정일 기준).</span>
+        <span class="hint">설정의 제약사항이 반영됩니다 ({{ recConstraintHint }}).</span>
       </div>
 
       <template v-else>
@@ -905,9 +917,11 @@ onMounted(() => {
             <span class="setting-hint">같은 작용기작을 이 기간 내 재사용 시 제외</span>
           </div>
           <div class="setting-control days-control">
-            <button class="ghost days-btn" @click="settingsStore.settings.moaConflictDays = Math.max(14, settingsStore.settings.moaConflictDays - 7)">−</button>
+            <button class="ghost days-btn days-btn-wide" @click="settingsStore.settings.moaConflictDays = Math.max(14, settingsStore.settings.moaConflictDays - 10)">−10</button>
+            <button class="ghost days-btn" @click="settingsStore.settings.moaConflictDays = Math.max(14, settingsStore.settings.moaConflictDays - 1)">−</button>
             <span class="days-value">{{ settingsStore.settings.moaConflictDays }}일</span>
-            <button class="ghost days-btn" @click="settingsStore.settings.moaConflictDays = Math.min(180, settingsStore.settings.moaConflictDays + 7)">+</button>
+            <button class="ghost days-btn" @click="settingsStore.settings.moaConflictDays = Math.min(180, settingsStore.settings.moaConflictDays + 1)">+</button>
+            <button class="ghost days-btn days-btn-wide" @click="settingsStore.settings.moaConflictDays = Math.min(180, settingsStore.settings.moaConflictDays + 10)">+10</button>
           </div>
         </div>
 
@@ -1145,8 +1159,9 @@ onMounted(() => {
 .setting-control { flex-shrink: 0; }
 .setting-reset { margin-top: 0.75rem; }
 
-.days-control { display: flex; align-items: center; gap: 0.5rem; }
+.days-control { display: flex; align-items: center; gap: 0.4rem; }
 .days-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+.days-btn-wide { width: auto; padding: 0 0.55rem; font-size: 0.82rem; }
 .days-value { font-size: 0.88rem; font-weight: 600; min-width: 52px; text-align: center; }
 
 .toggle { position: relative; display: inline-block; width: 40px; height: 22px; cursor: pointer; }
