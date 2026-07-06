@@ -308,7 +308,7 @@ export const messages = {
     duplicateError: '이미 있는 항목입니다.',
     itemCount: '{count}개',
     backupTitle: '데이터 백업 / 복원',
-    backupDesc: '재배동·부대시설·묘목·작업·반복규칙·문제·재고와 설정값을 파일로 저장하거나, 백업 파일에서 복원합니다.',
+    backupDesc: '재배동·부대시설·묘목·작업·반복규칙·문제·재고·방제기록·가용농약과 추천 설정을 포함한 설정값을 파일로 저장하거나, 백업 파일에서 복원합니다.',
     backupRules: '반복규칙',
     backupSettingsIncluded: '설정값 포함',
     backupPhotos: '사진 {count}장',

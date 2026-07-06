@@ -438,8 +438,8 @@ onMounted(() => {
       <button class="tab-btn" :class="{ active: activeTab === 'history' }"   @click="activeTab = 'history'">방제 이력</button>
       <button class="tab-btn" :class="{ active: activeTab === 'peststock' }" @click="activeTab = 'peststock'">농약재고</button>
       <button class="tab-btn" :class="{ active: activeTab === 'avail' }"     @click="activeTab = 'avail'">가용농약</button>
-      <button class="tab-btn" :class="{ active: activeTab === 'recommend' }" @click="activeTab = 'recommend'">농약 추천</button>
       <button class="tab-btn" :class="{ active: activeTab === 'settings' }"  @click="activeTab = 'settings'">추천 설정</button>
+      <button class="tab-btn" :class="{ active: activeTab === 'recommend' }" @click="activeTab = 'recommend'">농약 추천</button>
     </div>
 
     <!-- ═══ 방제 이력 ═══════════════════════════════════════════════════════ -->
@@ -653,7 +653,7 @@ onMounted(() => {
                   <span class="cat-badge" :class="categoryClass(p.category)">{{ p.category }}</span>
                 </div>
                 <div class="rec-pests">{{ p.targetPests.join(', ') }}</div>
-                <div v-if="p.useCount > 0" class="rec-usecount">올해 {{ p.useCount }}회 사용</div>
+                <div v-if="p.useCount > 0" class="rec-usecount">올해 {{ p.useCount }}회 사용{{ p.appliedLimit ? ` (최대 ${p.appliedLimit}회)` : '' }}</div>
                 <div v-if="inventoryStockMap[p.brandName]?.length" class="ap-stock-row">
                   재고
                   <span v-for="lot in inventoryStockMap[p.brandName]" :key="`${lot.vol}-${lot.expiry}`" class="ap-stock-lot">{{ stockLotLabel(lot) }}</span>
@@ -924,13 +924,25 @@ onMounted(() => {
 
         <div v-if="settingsStore.settings.enforceMaxApplications" class="setting-row setting-sub">
           <div class="setting-label">
-            <span>최대 허용 횟수</span>
+            <span>최대 허용 횟수 (기본값)</span>
+            <span class="setting-hint">농약별 등록정보가 없을 때 적용되는 값</span>
           </div>
           <div class="setting-control days-control">
             <button class="ghost days-btn" @click="settingsStore.settings.maxApplicationsPerYear = Math.max(1, settingsStore.settings.maxApplicationsPerYear - 1)">−</button>
             <span class="days-value">{{ settingsStore.settings.maxApplicationsPerYear }}회/년</span>
             <button class="ghost days-btn" @click="settingsStore.settings.maxApplicationsPerYear = Math.min(10, settingsStore.settings.maxApplicationsPerYear + 1)">+</button>
           </div>
+        </div>
+
+        <div v-if="settingsStore.settings.enforceMaxApplications" class="setting-row setting-sub">
+          <div class="setting-label">
+            <span>농약별 등록정보 우선 적용</span>
+            <span class="setting-hint">농약정보에 최대 사용 횟수가 등록되어 있으면 위 기본값 대신 그 값을 사용</span>
+          </div>
+          <label class="toggle" aria-label="농약별 등록정보 우선 적용">
+            <input type="checkbox" v-model="settingsStore.settings.preferPesticideMaxApplications" />
+            <span class="toggle-slider"></span>
+          </label>
         </div>
 
         <div class="setting-reset">

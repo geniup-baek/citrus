@@ -81,9 +81,19 @@ function yearUseCount(pesticide, treatments, year) {
   ).length
 }
 
+// 농약 정보에 등록된 최대 사용 횟수가 있으면(설정으로 우선 적용 지정 시) 그 값을, 없으면 설정값을 사용한다.
+function resolveMaxApplicationsLimit(pesticide, { maxApplicationsPerYear, preferPesticideMaxApplications }) {
+  const pesticideLimit = Number(pesticide.maxApplications)
+  const usePesticideLimit = preferPesticideMaxApplications && Number.isFinite(pesticideLimit) && pesticideLimit > 0
+  return {
+    limit: usePesticideLimit ? pesticideLimit : maxApplicationsPerYear,
+    limitLabel: usePesticideLimit ? '농약별 등록정보' : '설정',
+  }
+}
+
 // ── Recommendation engine ───────────────────────────────────────────────────
 export function getRecommendations({ targetPest, treatments, settings, today, pesticides = [] }) {
-  const { moaConflictDays, enforceMaxApplications, maxApplicationsPerYear } = settings
+  const { moaConflictDays, enforceMaxApplications } = settings
 
   const matched = pesticides.filter(p => matchesPest(p, targetPest))
   const year = today.slice(0, 4)
@@ -105,14 +115,16 @@ export function getRecommendations({ targetPest, treatments, settings, today, pe
     }
 
     const useCount = yearUseCount(p, treatments, year)
-    if (enforceMaxApplications && maxApplicationsPerYear > 0 && useCount >= maxApplicationsPerYear) {
-      reasons.push(`올해 ${useCount}회 사용 (설정 최대 ${maxApplicationsPerYear}회)`)
+    const { limit, limitLabel } = resolveMaxApplicationsLimit(p, settings)
+    if (enforceMaxApplications && limit > 0 && useCount >= limit) {
+      reasons.push(`올해 ${useCount}회 사용 (${limitLabel} 최대 ${limit}회)`)
     }
 
+    const appliedLimit = enforceMaxApplications ? limit : null
     if (reasons.length > 0) {
-      excluded.push({ ...p, reasons, useCount })
+      excluded.push({ ...p, reasons, useCount, appliedLimit })
     } else {
-      recommended.push({ ...p, useCount })
+      recommended.push({ ...p, useCount, appliedLimit })
     }
   }
 

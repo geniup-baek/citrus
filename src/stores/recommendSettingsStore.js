@@ -5,8 +5,9 @@ const LS_KEY = 'citrus:recommend-settings'
 
 const DEFAULTS = {
   moaConflictDays: 60,
-  enforceMaxApplications: false,
+  enforceMaxApplications: true,
   maxApplicationsPerYear: 3,
+  preferPesticideMaxApplications: true,
 }
 
 export const useRecommendSettingsStore = defineStore('recommendSettings', () => {

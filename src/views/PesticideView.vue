@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useLocaleStore } from '../stores/localeStore'
-import { getPesticideDetail, modeOfActionColor, warmFullCache, searchFromFullCache, getTypesFromCache, formatPreHarvest, formatMaxApplications } from '../services/pesticide'
+import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, searchFromFullCache, getTypesFromCache, formatPreHarvest, formatMaxApplications } from '../services/pesticide'
 import { withCache, formatFetchedAt } from '../services/cache.js'
 
 const localeStore = useLocaleStore()
@@ -62,6 +62,22 @@ async function fetchLatest() {
     loadFromCache()
   } finally {
     loading.value = false
+  }
+}
+
+const detailsWarming = ref(false)
+const detailsProgress = ref(null) // { done, total } | null
+
+async function fetchAllDetails() {
+  detailsWarming.value = true
+  detailsProgress.value = null
+  try {
+    await warmAllDetails(false, (done, listTotal) => {
+      detailsProgress.value = { done, total: listTotal }
+    })
+  } finally {
+    detailsWarming.value = false
+    detailsProgress.value = null
   }
 }
 
@@ -169,6 +185,9 @@ onMounted(() => {
       <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 데이터</span>
       <button class="cache-refresh-btn" :disabled="loading" @click="fetchLatest">
         {{ loading ? '가져오는 중...' : '최신 정보 가져오기' }}
+      </button>
+      <button class="cache-refresh-btn" :disabled="isMock || detailsWarming" @click="fetchAllDetails">
+        {{ detailsWarming ? `상세정보 가져오는 중... (${detailsProgress?.done ?? 0}/${detailsProgress?.total ?? 0})` : '상세정보 전체 가져오기' }}
       </button>
     </div>
     <div v-if="!loading && !error && !cacheInfo && filteredItems.length === 0" class="no-cache-state">

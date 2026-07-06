@@ -269,6 +269,28 @@ export async function getPesticideDetail({ pestiCode, diseaseUseSeq } = {}) {
   return normalizeDetail(list[0] ?? {})
 }
 
+// 전건 목록(SVC01)에 있는 모든 항목의 상세정보(SVC02)를 순차 조회해 캐시 + 공유 캐시에 저장한다.
+// 이미 캐시된 항목은 건너뛴다(force=true면 전부 다시 가져옴).
+// onProgress(done, total)로 진행 상황을 알릴 수 있다.
+export async function warmAllDetails(force = false, onProgress = () => {}) {
+  if (USE_MOCK) return
+  const cached = loadCache(FULL_CACHE_KEY)
+  const list = cached?.data ?? []
+  let done = 0
+  for (const item of list) {
+    done++
+    onProgress(done, list.length)
+    if (!item.pestiCode || !item.diseaseUseSeq) continue
+    const key = `pesticide:detail:${item.pestiCode}-${item.diseaseUseSeq}`
+    if (!force && loadCache(key)) continue
+    try {
+      const detail = await getPesticideDetail({ pestiCode: item.pestiCode, diseaseUseSeq: item.diseaseUseSeq })
+      saveCache(key, detail)
+      pushSharedCache(key, detail)
+    } catch {}
+  }
+}
+
 export function modeOfActionColor(code) {
   if (!code || code === '-') return 'var(--muted, #aaa)'
   const upper = code.toUpperCase()
