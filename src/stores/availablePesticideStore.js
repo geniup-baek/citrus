@@ -239,6 +239,30 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     persistAll()
   }
 
+  // 사용자가 직접 입력/수정한 정보로 갱신 (미연결 항목의 수동 입력, 또는 기존 연결 정보의 수정)
+  function updateManualInfo(itemId, info) {
+    const item = availableList.value.find(p => p.id === itemId)
+    if (!item) return
+    const key = normName(item.brandName)
+
+    const enrich = {
+      matchSource:    'manual',
+      category:       info.category ?? '',
+      moa:            info.moa ?? '',
+      targetPests:    Array.isArray(info.targetPests) ? info.targetPests : [],
+      preHarvestDays: info.preHarvestDays ?? '',
+      maxApplications: info.maxApplications ?? '',
+      ingredient:     info.ingredient ?? '',
+      manufacturer:   info.manufacturer ?? '',
+      pestiCode:      item.pestiCode || '',
+    }
+
+    manualMatches.value = { ...manualMatches.value, [key]: enrich }
+    Object.assign(item, enrich)
+
+    persistAll()
+  }
+
   function clearManualMatch(itemId) {
     const item = availableList.value.find(p => p.id === itemId)
     if (!item) return
@@ -279,7 +303,7 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
 
   return {
     purchaseInput, availableList, manualMatches,
-    init, savePurchaseInput, buildList, applyManualMatch, clearManualMatch, removeFromList,
+    init, savePurchaseInput, buildList, applyManualMatch, updateManualInfo, clearManualMatch, removeFromList,
     exportData, restoreData,
   }
 })
