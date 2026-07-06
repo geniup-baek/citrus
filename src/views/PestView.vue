@@ -125,6 +125,14 @@ function loadInsects(page = 1) {
   })
 }
 
+// 서브탭 카운트는 현재 보고 있는 탭과 무관하게 항상 표시되어야 하므로,
+// 세 종류의 전건 캐시에서 total만 따로 읽어 채운다.
+function refreshCounts() {
+  diseaseTotal.value  = getFromFullPestCache('disease', 1, PAGE_SIZE)?.total ?? 0
+  pathogenTotal.value = getFromFullPestCache('pathogen', 1, PAGE_SIZE)?.total ?? 0
+  insectTotal.value   = getFromFullPestCache('insect', 1, PAGE_SIZE)?.total ?? 0
+}
+
 function switchSearchMode(mode) {
   searchMode.value = mode
   error.value = ''
@@ -151,6 +159,7 @@ async function fetchLatestSearch() {
     diseaseLoaded.value = false
     pathogenLoaded.value = false
     insectLoaded.value = false
+    refreshCounts()
     loadSearchTab()
   } catch (e) {
     error.value = e.message
@@ -321,6 +330,7 @@ watch(survYear, () => {
 })
 
 onMounted(() => {
+  refreshCounts()
   loadSearchTab()
 })
 </script>
