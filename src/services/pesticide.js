@@ -68,6 +68,35 @@ async function apiFetch(params) {
   return parseXmlResponse(text)
 }
 
+// useSuittime(안전사용기준) 원본 예시: "14", "수확10일전", "잡초발생기", "-"
+// 숫자가 있으면 숫자만 남기고("수확10일전" → "10"), 없으면(생육단계 표현 등) 원문을 그대로 둔다.
+function cleanPreHarvestDays(raw) {
+  if (!raw || raw === '-') return ''
+  const digits = raw.match(/\d+/)
+  return digits ? digits[0] : raw.replace(/^수확\s*/, '').replace(/\s*전까지$/, '').trim()
+}
+
+// useNum(사용횟수) 원본 예시: "3", "3회", "-"
+function cleanMaxApplications(raw) {
+  if (!raw) return ''
+  const digits = raw.match(/\d+/)
+  return digits ? digits[0] : raw
+}
+
+// preHarvestDays가 숫자면 "수확 N일 전까지", 생육단계 표현이면 "OO 전까지"로 표시한다.
+// (예전에 캐시된 미가공 값 "수확10일전" 등이 남아있어도 안전하도록 항상 재정리한다)
+export function formatPreHarvest(preHarvestDays) {
+  const clean = cleanPreHarvestDays(preHarvestDays)
+  if (!clean) return ''
+  return /^\d+$/.test(clean) ? `수확 ${clean}일 전까지` : `${clean} 전까지`
+}
+
+export function formatMaxApplications(maxApplications) {
+  const clean = cleanMaxApplications(maxApplications)
+  if (!clean) return ''
+  return `${clean}회 이내`
+}
+
 // SVC01 응답 → 내부 구조 정규화
 function normalizeListItem(item) {
   return {
@@ -84,8 +113,8 @@ function normalizeListItem(item) {
     manufacturer: item.compName ?? '',
     applicationMethod: item.pestiUse ?? '',
     dilution: item.dilutUnit ?? '',
-    preHarvestDays: item.useSuittime ?? '',  // 예: "14"
-    maxApplications: item.useNum ?? '',      // 예: "3"
+    preHarvestDays: cleanPreHarvestDays(item.useSuittime),  // 예: "14"
+    maxApplications: cleanMaxApplications(item.useNum),     // 예: "3"
     cropName: item.cropName ?? '감귤',
     registDate: item.applyFirstRegDate ?? '',
   }
@@ -107,8 +136,8 @@ function normalizeDetail(item) {
     targetPest: item.diseaseWeedName ?? '',
     applicationMethod: item.pestiUse ?? '',
     dilution: item.dilutUnit ?? '',
-    preHarvestDays: item.useSuittime ?? '',
-    maxApplications: item.useNum ?? '',
+    preHarvestDays: cleanPreHarvestDays(item.useSuittime),
+    maxApplications: cleanMaxApplications(item.useNum),
   }
 }
 

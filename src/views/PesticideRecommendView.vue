@@ -5,7 +5,7 @@ import { useRecommendSettingsStore } from '../stores/recommendSettingsStore.js'
 import { useFarmStore } from '../stores/farmStore.js'
 import { useAvailablePesticideStore, parsePurchaseText } from '../stores/availablePesticideStore.js'
 import { getRecommendations, moaColor } from '../services/recommend.js'
-import { searchFromFullCache } from '../services/pesticide.js'
+import { searchFromFullCache, formatPreHarvest, formatMaxApplications } from '../services/pesticide.js'
 import PesticideInventoryPanel from '../components/PesticideInventoryPanel.vue'
 import { usePesticideTypes } from '../composables/usePesticideTypes.js'
 import { useIsMobile } from '../composables/useIsMobile.js'
@@ -792,7 +792,7 @@ onMounted(() => {
                 {{ item.targetPests.join(' · ') }}
               </div>
               <div v-if="item.preHarvestDays" class="ap-safety">
-                수확 {{ item.preHarvestDays }}일 전까지 · {{ item.maxApplications }}회 이내
+                {{ formatPreHarvest(item.preHarvestDays) }} · {{ formatMaxApplications(item.maxApplications) }}
               </div>
               <div v-if="item.ingredient" class="ap-ingredient">{{ item.ingredient }}</div>
               <div v-if="inventoryStockMap[item.brandName]?.length" class="ap-stock-row">

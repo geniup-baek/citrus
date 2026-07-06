@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useLocaleStore } from '../stores/localeStore'
-import { getPesticideDetail, modeOfActionColor, warmFullCache, searchFromFullCache, getTypesFromCache } from '../services/pesticide'
+import { getPesticideDetail, modeOfActionColor, warmFullCache, searchFromFullCache, getTypesFromCache, formatPreHarvest, formatMaxApplications } from '../services/pesticide'
 import { withCache, formatFetchedAt } from '../services/cache.js'
 
 const localeStore = useLocaleStore()
@@ -229,7 +229,7 @@ onMounted(() => {
               </div>
               <div class="detail-row">
                 <span class="dlabel">{{ t('pesticide.preHarvest') }}</span>
-                <span>수확 {{ item.preHarvestDays }}일 전까지 / {{ item.maxApplications }}회 이내</span>
+                <span>{{ formatPreHarvest(item.preHarvestDays) }} / {{ formatMaxApplications(item.maxApplications) }}</span>
               </div>
               <div class="detail-row">
                 <span class="dlabel">{{ t('pesticide.modeOfAction') }}</span>
