@@ -1,10 +1,12 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useLocaleStore } from '../stores/localeStore'
+import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, searchFromFullCache, getTypesFromCache, formatPreHarvest, formatMaxApplications } from '../services/pesticide'
 import { withCache, formatFetchedAt } from '../services/cache.js'
 
 const localeStore = useLocaleStore()
+const settingsStore = useRecommendSettingsStore()
 const t = (k) => localeStore.t(k)
 
 const pestNameInput = ref('')
@@ -72,7 +74,8 @@ async function fetchAllDetails() {
   detailsWarming.value = true
   detailsProgress.value = null
   try {
-    await warmAllDetails(false, (done, listTotal) => {
+    const force = !settingsStore.settings.skipCachedPesticideDetails
+    await warmAllDetails(force, (done, listTotal) => {
       detailsProgress.value = { done, total: listTotal }
     })
   } finally {
@@ -183,12 +186,16 @@ onMounted(() => {
       <span class="cache-banner-icon">{{ cacheInfo.error ? '⚠' : 'ℹ' }}</span>
       <span v-if="cacheInfo.error" class="cache-banner-msg">API 오류 · </span>
       <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 데이터</span>
-      <button class="cache-refresh-btn" :disabled="loading" @click="fetchLatest">
-        {{ loading ? '가져오는 중...' : '최신 정보 가져오기' }}
-      </button>
-      <button class="cache-refresh-btn" :disabled="isMock || detailsWarming" @click="fetchAllDetails">
-        {{ detailsWarming ? `상세정보 가져오는 중... (${detailsProgress?.done ?? 0}/${detailsProgress?.total ?? 0})` : '상세정보 전체 가져오기' }}
-      </button>
+      <div class="cache-banner-actions">
+        <button class="cache-refresh-btn" :disabled="loading" @click="fetchLatest">
+          {{ loading ? '가져오는 중...' : '최신 정보 가져오기' }}
+        </button>
+        <button class="cache-refresh-btn" :disabled="isMock || detailsWarming" @click="fetchAllDetails">
+          {{ detailsWarming
+            ? `상세정보 가져오는 중... (${detailsProgress?.done ?? 0}/${detailsProgress?.total ?? 0})`
+            : `상세정보 전체 가져오기 (${settingsStore.settings.skipCachedPesticideDetails ? '이미 있는 항목 건너뛰기' : '전체 새로 가져오기'})` }}
+        </button>
+      </div>
     </div>
     <div v-if="!loading && !error && !cacheInfo && filteredItems.length === 0" class="no-cache-state">
       <p>저장된 데이터가 없습니다.</p>
@@ -352,8 +359,13 @@ onMounted(() => {
 .cache-banner-icon { font-size: 0.9rem; }
 
 .cache-banner-time { font-size: 0.78rem; opacity: 0.8; white-space: nowrap; }
-.cache-refresh-btn {
+.cache-banner-actions {
   margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.cache-refresh-btn {
   border: 1px solid currentColor;
   background: transparent;
   color: inherit;

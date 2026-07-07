@@ -48,17 +48,27 @@ function parseXmlResponse(text) {
     throw new Error(`${errorCode}: ${errorMsg ?? 'API 오류'}`)
   }
 
-  const totalCount = Number(service.querySelector('totalCount')?.textContent ?? 0)
-  const listEls = service.querySelectorAll('list > item')
-  const list = Array.from(listEls).map(el => {
-    const obj = {}
-    for (const child of el.children) {
-      obj[child.tagName] = child.textContent?.trim() ?? ''
-    }
-    return obj
-  })
+  // SVC01(목록)은 <list><item>...</item></list>로 감싸져 오지만,
+  // SVC02(상세)는 <list> 래퍼 없이 필드가 <service> 바로 아래에 오는 단건(flat) 구조라 별도 처리한다.
+  const listEl = service.querySelector('list')
+  if (listEl) {
+    const totalCount = Number(service.querySelector('totalCount')?.textContent ?? 0)
+    const list = Array.from(listEl.querySelectorAll('item')).map(el => {
+      const obj = {}
+      for (const child of el.children) {
+        obj[child.tagName] = child.textContent?.trim() ?? ''
+      }
+      return obj
+    })
+    return { totalCount, list }
+  }
 
-  return { totalCount, list }
+  const obj = {}
+  for (const child of service.children) {
+    if (child.tagName === 'errorCode' || child.tagName === 'errorMsg') continue
+    obj[child.tagName] = child.textContent?.trim() ?? ''
+  }
+  return { totalCount: 1, list: [obj] }
 }
 
 async function apiFetch(params) {
@@ -70,14 +80,14 @@ async function apiFetch(params) {
 
 // useSuittime(안전사용기준) 원본 예시: "14", "수확10일전", "잡초발생기", "-"
 // 숫자가 있으면 숫자만 남기고("수확10일전" → "10"), 없으면(생육단계 표현 등) 원문을 그대로 둔다.
-function cleanPreHarvestDays(raw) {
+export function cleanPreHarvestDays(raw) {
   if (!raw || raw === '-') return ''
   const digits = raw.match(/\d+/)
   return digits ? digits[0] : raw.replace(/^수확\s*/, '').replace(/\s*전까지$/, '').trim()
 }
 
 // useNum(사용횟수) 원본 예시: "3", "3회", "-"
-function cleanMaxApplications(raw) {
+export function cleanMaxApplications(raw) {
   if (!raw) return ''
   const digits = raw.match(/\d+/)
   return digits ? digits[0] : raw
@@ -206,6 +216,27 @@ export async function warmFullCache(force = false) {
   } catch {}
 }
 
+function normalizeBrandKey(name) {
+  return name.toLowerCase().replace(/[\s\-()·.]/g, '')
+}
+
+// 전건 캐시에서 상표명이 정확히(우선) 또는 접두로 일치하는 항목 하나를 찾는다.
+// (방제이력·가용농약 등에서 "전체 재연결" 시 브랜드명 기준으로 자동 매칭할 때 사용)
+export function findBestMatchInCache(brandName) {
+  if (!brandName) return null
+  const cached = loadCache(FULL_CACHE_KEY)
+  const cacheData = cached?.data ?? []
+  if (!cacheData.length) return null
+  const q = normalizeBrandKey(brandName)
+  if (!q) return null
+  const exact = cacheData.find(p => normalizeBrandKey(p.brandName) === q)
+  if (exact) return exact
+  return cacheData.find(p => {
+    const n = normalizeBrandKey(p.brandName)
+    return (n.length >= 2 && q.length >= 2) && (n.startsWith(q) || q.startsWith(n))
+  }) ?? null
+}
+
 // 전건 캐시에서 클라이언트 필터링
 export function searchFromFullCache({ pestName = '', targetPest = '', pesticideType = '', page = 1, pageSize = 20 } = {}) {
   const cached = loadCache(FULL_CACHE_KEY)
@@ -228,6 +259,71 @@ export function searchFromFullCache({ pestName = '', targetPest = '', pesticideT
   }
   const start = (page - 1) * pageSize
   return { total: list.length, list: list.slice(start, start + pageSize), fetchedAt: cached.fetchedAt }
+}
+
+// 독성 등급 (농약관리법 기준 4단계, 높은 순서)
+export const TOXIC_GRADES = ['맹독성', '고독성', '보통독성', '저독성']
+
+// 상세정보(SVC02) 캐시에서 독성 등급을 조회한다.
+// (독성 정보는 목록(SVC01)엔 없고 상세조회로만 얻을 수 있어, "상세정보 전체 가져오기"로 미리 캐시해둔 것을 사용한다)
+export function getToxicityFromCache(pestiCode, diseaseUseSeq) {
+  if (!pestiCode || !diseaseUseSeq) return ''
+  const cached = loadCache(`pesticide:detail:${pestiCode}-${diseaseUseSeq}`)
+  return cached?.data?.toxicName ?? ''
+}
+
+// 어독성 등급 (농약관리법 기준 3단계, 저장값은 API 원본 표기인 로마숫자 그대로 사용)
+export const FISH_TOXIC_GRADES = ['Ⅰ급', 'Ⅱ급', 'Ⅲ급']
+
+export const FISH_TOXIC_INFO = {
+  'Ⅰ급': {
+    label: 'I급 (강독성)',
+    lc50: '96시간 LC50 ≤ 10 mg/L',
+    desc: '아주 적은 농도에서도 어류에 치명적',
+    guidance: '하천·저수지 인근에서는 사용 금지 또는 강력 제한',
+  },
+  'Ⅱ급': {
+    label: 'II급 (중독성)',
+    lc50: '96시간 LC50 10 ~ 100 mg/L',
+    desc: '일정 농도 이상에서 어류 피해 발생',
+    guidance: '수질 오염 우려가 있으므로 사용 시 주의 필요',
+  },
+  'Ⅲ급': {
+    label: 'III급 (약독성)',
+    lc50: '96시간 LC50 ≥ 100 mg/L',
+    desc: '상대적으로 어류에 안전',
+    guidance: '수질 영향이 적어 수계 주변에서도 비교적 안전하게 사용 가능',
+  },
+}
+
+// API가 반환하는 표기가 조금씩 다를 수 있어(로마숫자/아라비아숫자 등) 셋 중 하나로 정규화한다.
+function normalizeFishGrade(raw) {
+  if (!raw) return ''
+  if (raw.includes('Ⅰ') || raw.trim().startsWith('1')) return 'Ⅰ급'
+  if (raw.includes('Ⅱ') || raw.trim().startsWith('2')) return 'Ⅱ급'
+  if (raw.includes('Ⅲ') || raw.trim().startsWith('3')) return 'Ⅲ급'
+  return raw
+}
+
+export function formatFishToxic(grade) {
+  const g = normalizeFishGrade(grade)
+  return FISH_TOXIC_INFO[g]?.label ?? g
+}
+
+const FISH_TOXIC_ROMAN = { 'Ⅰ급': 'I급', 'Ⅱ급': 'II급', 'Ⅲ급': 'III급' }
+
+// 뱃지 등 짧게 표시할 곳에 쓰는 축약형 ("어독성 I급")
+export function formatFishToxicBadge(grade) {
+  const g = normalizeFishGrade(grade)
+  const roman = FISH_TOXIC_ROMAN[g]
+  return roman ? `어독성 ${roman}` : ''
+}
+
+// 상세정보(SVC02) 캐시에서 어독성 등급을 조회한다.
+export function getFishToxicFromCache(pestiCode, diseaseUseSeq) {
+  if (!pestiCode || !diseaseUseSeq) return ''
+  const cached = loadCache(`pesticide:detail:${pestiCode}-${diseaseUseSeq}`)
+  return normalizeFishGrade(cached?.data?.fishToxic ?? '')
 }
 
 export function getTypesFromCache() {

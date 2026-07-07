@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { loadCache } from '../services/cache.js'
 import { db, firebaseEnabled } from '../services/firebase.js'
+import { getToxicityFromCache, getFishToxicFromCache } from '../services/pesticide.js'
 
 const LS_PURCHASE = 'citrus:ap:purchase-input'
 const LS_LIST     = 'citrus:ap:list'
@@ -59,6 +60,8 @@ function buildEnrichment(matches) {
     ingredient: first.ingredient || '',
     manufacturer: first.manufacturer || '',
     pestiCode: first.pestiCode || '',
+    toxicName: getToxicityFromCache(first.pestiCode, first.diseaseUseSeq),
+    fishToxic: getFishToxicFromCache(first.pestiCode, first.diseaseUseSeq),
   }
 }
 
@@ -153,21 +156,37 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
   }
 
   // 구입가능농약 + 재고농약 → 가용농약 목록 작성
+  // 같은 상표명이 구입가능 목록과 재고 목록 양쪽에 있으면 source: 'both'로 표시하여
+  // "재고" 필터에서 누락되지 않도록 한다 (첫 등장 소스만 남기던 이전 방식의 버그 수정).
   function buildList(inventoryPesticides = []) {
     const cached = loadCache(FULL_KEY)
     const cacheData = cached?.data ?? []
 
     const purchaseEntries = parsePurchaseText(purchaseInput.value)
 
-    const seen = new Set()
+    const purchaseByKey  = new Map()
+    for (const e of purchaseEntries) {
+      const key = normName(e.brandName)
+      if (key && !purchaseByKey.has(key)) purchaseByKey.set(key, e)
+    }
+    const inventoryByKey = new Map()
+    for (const item of inventoryPesticides) {
+      const key = normName(item.name)
+      if (key && !inventoryByKey.has(key)) inventoryByKey.set(key, item)
+    }
+
+    const allKeys = new Set([...purchaseByKey.keys(), ...inventoryByKey.keys()])
     const list = []
     let seq = 0
 
-    function addItem(brandName, form, volume, source, invData = null) {
-      if (!brandName.trim()) return
-      const key = normName(brandName)
-      if (seen.has(key)) return
-      seen.add(key)
+    for (const key of allKeys) {
+      const purchase = purchaseByKey.get(key)
+      const invData  = inventoryByKey.get(key)
+      let source = 'inventory'
+      if (purchase && invData) source = 'both'
+      else if (purchase) source = 'purchase'
+      const brandName = (purchase?.brandName ?? invData?.name ?? '').trim()
+      if (!brandName) continue
 
       // 우선순위: 수동 연결 > API 자동 > 재고 데이터
       const manual   = manualMatches.value[key]
@@ -177,16 +196,16 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
         category: invData.pesticideType || '',
         moa:      invData.actionGroup  || '',
         targetPests: [], preHarvestDays: '', maxApplications: '',
-        ingredient: '', manufacturer: '', pestiCode: '',
+        ingredient: '', manufacturer: '', pestiCode: '', toxicName: '', fishToxic: '',
       } : null
 
       const enrich = manual || apiMatch || invMatch || {}
 
       list.push({
         id:             `ap-${++seq}`,
-        brandName:      brandName.trim(),
-        form,
-        volume,
+        brandName,
+        form:           purchase?.form   ?? '',
+        volume:         purchase?.volume ?? '',
         source,
         matchSource:    enrich.matchSource    ?? null,
         category:       enrich.category       ?? '',
@@ -197,11 +216,10 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
         ingredient:     enrich.ingredient     ?? '',
         manufacturer:   enrich.manufacturer   ?? '',
         pestiCode:      enrich.pestiCode      ?? '',
+        toxicName:      enrich.toxicName      ?? '',
+        fishToxic:      enrich.fishToxic      ?? '',
       })
     }
-
-    for (const e of purchaseEntries) addItem(e.brandName, e.form, e.volume, 'purchase')
-    for (const item of inventoryPesticides) addItem(item.name, '', '', 'inventory', item)
 
     availableList.value = list
     persistAll()
@@ -231,12 +249,36 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
           ingredient:     apiItem.ingredient || '',
           manufacturer:   apiItem.manufacturer || '',
           pestiCode:      apiItem.pestiCode || '',
+          toxicName:      getToxicityFromCache(apiItem.pestiCode, apiItem.diseaseUseSeq),
+          fishToxic:      getFishToxicFromCache(apiItem.pestiCode, apiItem.diseaseUseSeq),
         }
 
     manualMatches.value = { ...manualMatches.value, [key]: enrich }
     Object.assign(item, enrich)
 
     persistAll()
+  }
+
+  // 목록의 모든 항목을 최신 OpenAPI 캐시 기준으로 다시 매칭한다.
+  // 사용자가 직접 '수동 연결'해둔 항목(matchSource: 'manual')은 건드리지 않는다.
+  function refreshAllFromCache() {
+    const cached = loadCache(FULL_KEY)
+    const cacheData = cached?.data ?? []
+    let updated = 0
+
+    for (const item of availableList.value) {
+      const key = normName(item.brandName)
+      if (manualMatches.value[key]) continue
+
+      const apiMatch = findInCache(item.brandName, cacheData)
+      if (apiMatch) {
+        Object.assign(item, apiMatch)
+        updated++
+      }
+    }
+
+    if (updated > 0) persistAll()
+    return updated
   }
 
   // 사용자가 직접 입력/수정한 정보로 갱신 (미연결 항목의 수동 입력, 또는 기존 연결 정보의 수정)
@@ -255,6 +297,8 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
       ingredient:     info.ingredient ?? '',
       manufacturer:   info.manufacturer ?? '',
       pestiCode:      item.pestiCode || '',
+      toxicName:      info.toxicName ?? '',
+      fishToxic:      info.fishToxic ?? '',
     }
 
     manualMatches.value = { ...manualMatches.value, [key]: enrich }
@@ -274,7 +318,7 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     const cached = loadCache(FULL_KEY)
     const cacheData = cached?.data ?? []
     const apiEnrich = findInCache(item.brandName, cacheData)
-    const reset = { matchSource: null, category: '', moa: '', targetPests: [], preHarvestDays: '', maxApplications: '', ingredient: '', manufacturer: '', pestiCode: '' }
+    const reset = { matchSource: null, category: '', moa: '', targetPests: [], preHarvestDays: '', maxApplications: '', ingredient: '', manufacturer: '', pestiCode: '', toxicName: '', fishToxic: '' }
     Object.assign(item, apiEnrich || reset)
 
     persistAll()
@@ -304,6 +348,6 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
   return {
     purchaseInput, availableList, manualMatches,
     init, savePurchaseInput, buildList, applyManualMatch, updateManualInfo, clearManualMatch, removeFromList,
-    exportData, restoreData,
+    refreshAllFromCache, exportData, restoreData,
   }
 })

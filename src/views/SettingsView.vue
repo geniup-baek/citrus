@@ -443,6 +443,48 @@ function saveEdit(key, i, isPair) {
         </div>
       </div>
 
+      <div class="sub-card">
+        <div class="settings-group-head">
+          <h3>OpenAPI 상세정보 가져오기</h3>
+        </div>
+        <p class="muted settings-group-hint">농약검색 페이지의 "상세정보 전체 가져오기" 실행 방식을 설정합니다.</p>
+        <label class="settings-item" style="cursor: pointer;">
+          <span class="settings-item-name">이미 가져온 항목은 건너뛰기</span>
+          <input type="checkbox" v-model="recSettingsStore.settings.skipCachedPesticideDetails" />
+        </label>
+        <p class="muted" style="font-size: 0.78rem; margin-top: 0.3rem;">
+          꺼두면 매번 전체 항목을 새로 가져옵니다 (API를 다시 다 호출하므로 시간이 오래 걸립니다). 데이터 구조가 바뀌었거나 잘못 저장된 캐시를 고쳐야 할 때만 꺼주세요.
+        </p>
+      </div>
+
+      <div class="sub-card">
+        <div class="settings-group-head">
+          <h3>방제이력 전체 재연결</h3>
+        </div>
+        <p class="muted settings-group-hint">방제이력 탭의 "전체 재연결" 실행 방식을 설정합니다.</p>
+        <label class="settings-item" style="cursor: pointer;">
+          <span class="settings-item-name">이미 연결된 이력도 덮어쓰기</span>
+          <input type="checkbox" v-model="recSettingsStore.settings.overwriteLinkedTreatments" />
+        </label>
+        <p class="muted" style="font-size: 0.78rem; margin-top: 0.3rem;">
+          꺼두면 아직 연결 안 된 이력만 연결합니다. 켜면 이미 연결된 이력도 최신 정보로 다시 덮어씁니다.
+        </p>
+      </div>
+
+      <div class="sub-card">
+        <div class="settings-group-head">
+          <h3>PDF 출력</h3>
+        </div>
+        <p class="muted settings-group-hint">비료·농약재고 현황의 "PDF 출력" 버튼 동작 방식을 설정합니다.</p>
+        <label class="settings-item" style="cursor: pointer;">
+          <span class="settings-item-name">인쇄 대화상자 자동으로 열기</span>
+          <input type="checkbox" v-model="recSettingsStore.settings.autoOpenPrintDialog" />
+        </label>
+        <p class="muted" style="font-size: 0.78rem; margin-top: 0.3rem;">
+          꺼두면 보고서 화면만 새 창으로 열리고 인쇄 대화상자는 자동으로 뜨지 않습니다. 필요할 때 직접 인쇄(Ctrl+P)하면 됩니다.
+        </p>
+      </div>
+
       <div class="sub-card settings-backup">
         <div class="settings-group-head">
           <h3>{{ localeStore.t('settings.backupTitle') }}</h3>
