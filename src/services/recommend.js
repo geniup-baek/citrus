@@ -1,3 +1,5 @@
+import { cleanPreHarvestDays, cleanMaxApplications, formatFishToxic } from './pesticide.js'
+
 function matchesPest(pesticide, term) {
   if (!term) return true
   const t = term.trim()
@@ -83,7 +85,7 @@ function yearUseCount(pesticide, treatments, year) {
 
 // 농약 정보에 등록된 최대 사용 횟수가 있으면(설정으로 우선 적용 지정 시) 그 값을, 없으면 설정값을 사용한다.
 function resolveMaxApplicationsLimit(pesticide, { maxApplicationsPerYear, preferPesticideMaxApplications }) {
-  const pesticideLimit = Number(pesticide.maxApplications)
+  const pesticideLimit = Number(cleanMaxApplications(pesticide.maxApplications))
   const usePesticideLimit = preferPesticideMaxApplications && Number.isFinite(pesticideLimit) && pesticideLimit > 0
   return {
     limit: usePesticideLimit ? pesticideLimit : maxApplicationsPerYear,
@@ -91,10 +93,57 @@ function resolveMaxApplicationsLimit(pesticide, { maxApplicationsPerYear, prefer
   }
 }
 
-// ── Recommendation engine ───────────────────────────────────────────────────
-export function getRecommendations({ targetPest, treatments, settings, today, pesticides = [] }) {
-  const { moaConflictDays, enforceMaxApplications } = settings
+// 수확 전 안전기간(PHI) 위반 여부. harvestDate가 없거나 preHarvestDays가 숫자가 아니면(생육단계 표현 등) 검사하지 않는다.
+function checkPhi(pesticide, treatmentDate, harvestDate) {
+  if (!harvestDate) return null
+  const required = Number(cleanPreHarvestDays(pesticide.preHarvestDays))
+  if (!Number.isFinite(required) || required <= 0) return null
+  const daysUntilHarvest = Math.round(daysBetween(treatmentDate, harvestDate))
+  if (daysUntilHarvest >= required) return null
+  return { required, daysUntilHarvest }
+}
 
+function moaConflictReason(p, treatments, moaConflictDays, today) {
+  const conflicts = conflictingHistory(p, treatments, moaConflictDays, today)
+  if (conflicts.length === 0) return null
+  const latest = conflicts.reduce((a, b) => (a.date > b.date ? a : b))
+  const days = Math.round(daysBetween(latest.date, today))
+  const groups = getMoaGroups(p.moa).filter(g => getMoaGroups(latest.moa).includes(g))
+  return `${moaConflictDays}일 이내 작용기작 겹침 (${groups.join('/')} · ${latest.date} 사용 · ${days}일 전)`
+}
+
+// 농약 1건에 대해 방제이력·수확전안전기간·독성등급 등 모든 제약을 평가한다.
+function evaluatePesticide(p, { treatments, today, harvestDate, settings, year }) {
+  const { moaConflictDays, enforceMaxApplications, excludeToxicGrades = [], excludeFishToxicGrades = [] } = settings
+  const reasons = []
+
+  const moaReason = moaConflictReason(p, treatments, moaConflictDays, today)
+  if (moaReason) reasons.push(moaReason)
+
+  const useCount = yearUseCount(p, treatments, year)
+  const { limit, limitLabel } = resolveMaxApplicationsLimit(p, settings)
+  if (enforceMaxApplications && limit > 0 && useCount >= limit) {
+    reasons.push(`올해 ${useCount}회 사용 (${limitLabel} 최대 ${limit}회)`)
+  }
+
+  const phi = checkPhi(p, today, harvestDate)
+  if (phi) {
+    reasons.push(`수확 ${phi.required}일 전까지 사용 가능 (수확예정일까지 ${phi.daysUntilHarvest}일 · ${phi.required - phi.daysUntilHarvest}일 부족)`)
+  }
+
+  if (p.toxicName && excludeToxicGrades.includes(p.toxicName)) {
+    reasons.push(`제외 대상 독성등급 (${p.toxicName})`)
+  }
+
+  if (p.fishToxic && excludeFishToxicGrades.includes(p.fishToxic)) {
+    reasons.push(`제외 대상 어독성등급 (${formatFishToxic(p.fishToxic)})`)
+  }
+
+  return { reasons, useCount, appliedLimit: enforceMaxApplications ? limit : null }
+}
+
+// ── Recommendation engine ───────────────────────────────────────────────────
+export function getRecommendations({ targetPest, treatments, settings, today, harvestDate = '', pesticides = [] }) {
   const matched = pesticides.filter(p => matchesPest(p, targetPest))
   const year = today.slice(0, 4)
 
@@ -102,25 +151,7 @@ export function getRecommendations({ targetPest, treatments, settings, today, pe
   const excluded = []
 
   for (const p of matched) {
-    const reasons = []
-
-    const conflicts = conflictingHistory(p, treatments, moaConflictDays, today)
-    if (conflicts.length > 0) {
-      const latest = conflicts.reduce((a, b) => (a.date > b.date ? a : b))
-      const days = Math.round(daysBetween(latest.date, today))
-      const groups = getMoaGroups(p.moa).filter(g =>
-        getMoaGroups(latest.moa).includes(g),
-      )
-      reasons.push(`${moaConflictDays}일 이내 작용기작 겹침 (${groups.join('/')} · ${latest.date} 사용 · ${days}일 전)`)
-    }
-
-    const useCount = yearUseCount(p, treatments, year)
-    const { limit, limitLabel } = resolveMaxApplicationsLimit(p, settings)
-    if (enforceMaxApplications && limit > 0 && useCount >= limit) {
-      reasons.push(`올해 ${useCount}회 사용 (${limitLabel} 최대 ${limit}회)`)
-    }
-
-    const appliedLimit = enforceMaxApplications ? limit : null
+    const { reasons, useCount, appliedLimit } = evaluatePesticide(p, { treatments, today, harvestDate, settings, year })
     if (reasons.length > 0) {
       excluded.push({ ...p, reasons, useCount, appliedLimit })
     } else {

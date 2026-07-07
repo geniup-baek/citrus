@@ -271,7 +271,7 @@ export const messages = {
     summaryTotal: '전체 {count}',
     summaryExpiring: '기한 임박/만료 {count}',
     downloadReport: 'CSV 다운로드',
-    printReport: 'PDF / 인쇄',
+    printReport: 'PDF 출력',
     reportStatus: '상태',
     reportFileName: '비료현황',
     reportTitle: '비료 현황 보고서',
@@ -286,6 +286,7 @@ export const messages = {
     actionGroupPlaceholder: '예: 1B, 9C (선택)',
     productName: '품목명',
     productNamePlaceholder: '예: 코퍼옥시클로라이드·가스가마이신 수화제',
+    reportTitle: '농약재고 현황 보고서',
   },
   settings: {
     title: '설정',

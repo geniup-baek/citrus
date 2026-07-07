@@ -5,7 +5,7 @@ import { useRecommendSettingsStore } from '../stores/recommendSettingsStore.js'
 import { useFarmStore } from '../stores/farmStore.js'
 import { useAvailablePesticideStore, parsePurchaseText } from '../stores/availablePesticideStore.js'
 import { getRecommendations, moaColor } from '../services/recommend.js'
-import { searchFromFullCache, formatPreHarvest, formatMaxApplications } from '../services/pesticide.js'
+import { searchFromFullCache, findBestMatchInCache, formatPreHarvest, formatMaxApplications, TOXIC_GRADES, FISH_TOXIC_GRADES, FISH_TOXIC_INFO, formatFishToxic, formatFishToxicBadge } from '../services/pesticide.js'
 import PesticideInventoryPanel from '../components/PesticideInventoryPanel.vue'
 import { usePesticideTypes } from '../composables/usePesticideTypes.js'
 import { useIsMobile } from '../composables/useIsMobile.js'
@@ -34,6 +34,7 @@ const fMoa      = ref('')
 const fCategory = ref('')
 const fPest     = ref('')
 const fMemo     = ref('')
+const fMatchSource = ref(null) // 'auto' | null — OpenAPI 자동 연결로 채워졌는지
 const formError = ref('')
 const saving    = ref(false)
 const { isMobile } = useIsMobile()
@@ -69,6 +70,7 @@ function resetForm() {
   fCategory.value = ''
   fPest.value     = ''
   fMemo.value     = ''
+  fMatchSource.value = null
   formError.value = ''
   histLinkId.value      = null
   histLinkQuery.value   = ''
@@ -84,6 +86,7 @@ function startEdit(t) {
   fCategory.value       = t.category  ?? ''
   fPest.value           = t.targetPest ?? ''
   fMemo.value           = t.memo       ?? ''
+  fMatchSource.value    = t.matchSource ?? null
   formError.value       = ''
   histLinkId.value      = null
   if (isMobile.value) {
@@ -100,12 +103,13 @@ async function submitTreatment() {
   if (!fBrand.value) { formError.value = '농약을 선택하세요.'; return }
   saving.value = true
   const record = {
-    date:       fDate.value,
-    brandName:  fBrand.value,
-    moa:        fMoa.value,
-    category:   fCategory.value,
-    targetPest: fPest.value.trim(),
-    memo:       fMemo.value.trim(),
+    date:        fDate.value,
+    brandName:   fBrand.value,
+    moa:         fMoa.value,
+    category:    fCategory.value,
+    targetPest:  fPest.value.trim(),
+    memo:        fMemo.value.trim(),
+    matchSource: fMatchSource.value,
   }
   try {
     if (editingId.value) {
@@ -139,6 +143,7 @@ function newHistoryEntry() {
 const formLinkResults = ref([])
 
 function onFormBrandInput(val) {
+  fMatchSource.value = null // 직접 입력 중이므로 자동 연결 표시 해제
   const q = val.trim()
   if (!q) { formLinkResults.value = []; return }
   const result = searchFromFullCache({ pestName: q, page: 1, pageSize: 10 })
@@ -149,6 +154,7 @@ function applyFormLink(apiItem) {
   fBrand.value = apiItem.brandName
   if (apiItem.pesticideType)                                 fCategory.value = normCat(apiItem.pesticideType)
   if (apiItem.modeOfAction && apiItem.modeOfAction !== '-')  fMoa.value      = apiItem.modeOfAction
+  fMatchSource.value = 'auto'
   formLinkResults.value = []
 }
 
@@ -179,16 +185,45 @@ async function applyHistLink(treatment, apiItem) {
   const moa      = (apiItem.modeOfAction && apiItem.modeOfAction !== '-') ? apiItem.modeOfAction : (treatment.moa || '')
   const category = normCat(apiItem.pesticideType) || treatment.category || ''
   await treatStore.updateTreatment(treatment.id, {
-    date:       treatment.date,
-    brandName:  apiItem.brandName || treatment.brandName,
+    date:        treatment.date,
+    brandName:   apiItem.brandName || treatment.brandName,
     moa,
     category,
-    targetPest: treatment.targetPest || '',
-    memo:       treatment.memo || '',
+    targetPest:  treatment.targetPest || '',
+    memo:        treatment.memo || '',
+    matchSource: 'auto',
   })
   histLinkId.value      = null
   histLinkQuery.value   = ''
   histLinkResults.value = []
+}
+
+const histRefreshMessage = ref('')
+
+// 아직 농약정보가 연결되지 않은(작용기작이 비어있는) 이력만 브랜드명 기준으로 일괄 연결한다.
+// 설정에서 켜면 이미 연결된 이력도 다시 연결(덮어쓰기)한다.
+async function refreshAllTreatmentLinks() {
+  const overwrite = settingsStore.settings.overwriteLinkedTreatments
+  let updated = 0
+  for (const t of treatStore.treatments) {
+    if (t.moa && !overwrite) continue
+    const match = findBestMatchInCache(t.brandName)
+    if (!match) continue
+    const moa = (match.modeOfAction && match.modeOfAction !== '-') ? match.modeOfAction : ''
+    const category = normCat(match.pesticideType) || ''
+    if (!moa && !category) continue
+    await treatStore.updateTreatment(t.id, {
+      date:        t.date,
+      brandName:   t.brandName,
+      moa,
+      category,
+      targetPest:  t.targetPest || '',
+      memo:        t.memo || '',
+      matchSource: 'auto',
+    })
+    updated++
+  }
+  histRefreshMessage.value = updated > 0 ? `${updated}건 정보를 연결했습니다.` : '연결할 항목이 없습니다 (이미 연결된 이력 제외).'
 }
 
 function formatDate(d) {
@@ -198,9 +233,10 @@ function formatDate(d) {
 }
 
 // ── 농약 추천 Tab ──────────────────────────────────────────────────────────
-const recPest   = ref('')
-const recDate   = ref(today())
-const recResult = ref(null)
+const recPest        = ref('')
+const recDate        = ref(today())
+const recHarvestDate = ref('')
+const recResult      = ref(null)
 
 const recPests = computed(() => {
   const set = new Set()
@@ -222,6 +258,9 @@ const recConstraintHint = computed(() => {
         : `연간 최대 ${s.maxApplicationsPerYear}회 사용 제한`,
     )
   }
+  if (recHarvestDate.value) parts.push('수확 전 안전기간(PHI) 확인')
+  if (s.excludeToxicGrades.length) parts.push(`독성등급 제외(${s.excludeToxicGrades.join('/')})`)
+  if (s.excludeFishToxicGrades.length) parts.push(`어독성 제외(${s.excludeFishToxicGrades.map(formatFishToxic).join('/')})`)
   parts.push('방제 예정일 기준')
   return parts.join(' · ')
 })
@@ -229,11 +268,12 @@ const recConstraintHint = computed(() => {
 function runRecommend() {
   if (!recPest.value.trim()) { recResult.value = null; return }
   recResult.value = getRecommendations({
-    targetPest: recPest.value.trim(),
-    treatments: treatStore.treatments,
-    settings:   settingsStore.settings,
-    today:      recDate.value || today(),
-    pesticides: apStore.availableList,
+    targetPest:  recPest.value.trim(),
+    treatments:  treatStore.treatments,
+    settings:    settingsStore.settings,
+    today:       recDate.value || today(),
+    harvestDate: recHarvestDate.value || '',
+    pesticides:  apStore.availableList,
   })
 }
 
@@ -269,11 +309,27 @@ const categoryClass = (cat) => ({
 
 const categoryClassFor = (cat) => categoryClass(normCat(cat))
 
+const toxicClass = (grade) => ({
+  '저독성': 'toxic-low',
+  '보통독성': 'toxic-mid',
+  '고독성': 'toxic-high',
+  '맹독성': 'toxic-extreme',
+}[grade] ?? '')
+
+const fishToxicClass = (grade) => ({
+  'Ⅰ급': 'fishtoxic-1',
+  'Ⅱ급': 'fishtoxic-2',
+  'Ⅲ급': 'fishtoxic-3',
+}[grade] ?? '')
+
+const showFishToxicInfo = ref(false)
+
 // ── 가용농약 Tab ───────────────────────────────────────────────────────────
 const apInputText    = ref('')
 const apFilter        = ref('')
 const apSourceFilter  = ref('all')   // 'all' | 'purchase' | 'inventory'
 const apUnmatchedOnly = ref(false)
+const apManualOnly   = ref(false)
 const apEditMode     = ref(false)
 const matchingItemId = ref(null)   // 수동 연결 패널이 열린 아이템 id
 const matchQuery     = ref('')
@@ -282,8 +338,18 @@ const apBuilding     = ref(false)
 const manualEditId   = ref(null)   // 직접 입력/수정 패널이 열린 아이템 id
 const manualEditForm = ref({
   category: '', moa: '', targetPests: '',
-  preHarvestDays: '', maxApplications: '', ingredient: '', manufacturer: '',
+  preHarvestDays: '', maxApplications: '', ingredient: '', manufacturer: '', toxicName: '', fishToxic: '',
 })
+const apRefreshMessage = ref('')
+
+const manualEditItem = computed(() =>
+  manualEditId.value ? apStore.availableList.find(p => p.id === manualEditId.value) ?? null : null,
+)
+const apFormTarget = computed(() =>
+  manualEditId.value && filteredApList.value.some(p => p.id === manualEditId.value)
+    ? `#ap-form-slot-${manualEditId.value}`
+    : '#ap-form-top',
+)
 
 function closeApEdit() {
   apEditMode.value     = false
@@ -291,6 +357,12 @@ function closeApEdit() {
   matchQuery.value     = ''
   matchResults.value   = []
   manualEditId.value   = null
+  apRefreshMessage.value = ''
+}
+
+function refreshAllPesticideInfo() {
+  const updated = apStore.refreshAllFromCache()
+  apRefreshMessage.value = updated > 0 ? `${updated}개 항목 정보를 갱신했습니다.` : '갱신할 항목이 없습니다 (수동 연결 항목 제외).'
 }
 
 const inventoryPesticides = computed(() =>
@@ -331,18 +403,23 @@ const parsedCount = computed(() => parsePurchaseText(apInputText.value).length)
 const apStats = computed(() => {
   const total   = apStore.availableList.length
   const matched = apStore.availableList.filter(p => p.matchSource).length
-  return { total, matched, unmatched: total - matched }
+  const manual  = apStore.availableList.filter(p => p.matchSource === 'manual').length
+  return { total, matched, unmatched: total - matched, manual }
 })
 
+// '재고'는 재고에 실제로 있는 항목 전체(구입가능 목록과 겹치는 'both' 포함),
+// '구입가능'은 구입 가능한 항목 전체('both' 포함) — 둘은 서로 배타적이지 않다.
 const apSourceCounts = computed(() => ({
-  purchase: apStore.availableList.filter(p => p.source === 'purchase').length,
-  inventory: apStore.availableList.filter(p => p.source === 'inventory').length,
+  purchase: apStore.availableList.filter(p => p.source === 'purchase' || p.source === 'both').length,
+  inventory: apStore.availableList.filter(p => p.source === 'inventory' || p.source === 'both').length,
 }))
 
 const filteredApList = computed(() => {
   let list = apStore.availableList
-  if (apSourceFilter.value !== 'all') list = list.filter(p => p.source === apSourceFilter.value)
+  if (apSourceFilter.value === 'purchase') list = list.filter(p => p.source === 'purchase' || p.source === 'both')
+  else if (apSourceFilter.value === 'inventory') list = list.filter(p => p.source === 'inventory' || p.source === 'both')
   if (apUnmatchedOnly.value) list = list.filter(p => !p.matchSource)
+  if (apManualOnly.value) list = list.filter(p => p.matchSource === 'manual')
   const q = apFilter.value.trim().toLowerCase()
   if (q) list = list.filter(p =>
     p.brandName.toLowerCase().includes(q) ||
@@ -416,6 +493,8 @@ function openManualEdit(item) {
     maxApplications: item.maxApplications || '',
     ingredient:      item.ingredient || '',
     manufacturer:    item.manufacturer || '',
+    toxicName:       item.toxicName || '',
+    fishToxic:       item.fishToxic || '',
   }
 }
 
@@ -429,6 +508,8 @@ function saveManualEdit(item) {
     maxApplications: f.maxApplications.trim(),
     ingredient:      f.ingredient.trim(),
     manufacturer:    f.manufacturer.trim(),
+    toxicName:       f.toxicName,
+    fishToxic:       f.fishToxic,
   })
   manualEditId.value = null
 }
@@ -465,10 +546,14 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
               <span v-if="filteredTreatments.length" class="summary-chip">{{ filteredTreatments.length }}건</span>
             </div>
             <div class="pip-actions">
+              <button v-if="showHistoryForm && treatStore.treatments.length > 0" class="ghost" type="button" @click="refreshAllTreatmentLinks">
+                전체 재연결 ({{ settingsStore.settings.overwriteLinkedTreatments ? '기존 연결도 덮어쓰기' : '미연결만' }})
+              </button>
               <button v-if="!showHistoryForm" type="button" @click="showHistoryForm = true">편집</button>
-              <button v-else class="ghost" type="button" @click="resetForm(); showHistoryForm = false">편집종료</button>
+              <button v-else class="ghost" type="button" @click="resetForm(); showHistoryForm = false; histRefreshMessage = ''">편집종료</button>
             </div>
           </div>
+          <p v-if="histRefreshMessage" class="muted" style="font-size:0.82rem; margin: -0.4rem 0 0.6rem;">{{ histRefreshMessage }}</p>
           <div v-if="histYears.length" class="sort-filter-bar">
             <button
               class="ghost compact-btn"
@@ -503,6 +588,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                     <p class="item-title">{{ t.brandName }}</p>
                     <span v-if="t.moa" class="moa-badge" :style="{ background: moaColor(t.moa) }">{{ t.moa }}</span>
                     <span v-if="t.category" class="cat-badge" :class="categoryClass(t.category)">{{ t.category }}</span>
+                    <span v-if="t.matchSource === 'auto'" class="match-badge match-ok">자동</span>
                   </div>
                   <p v-if="t.targetPest || t.memo" class="item-meta">
                     <span v-if="t.targetPest">{{ t.targetPest }}</span>
@@ -631,6 +717,9 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
         <label class="rec-date-label">방제 예정일
           <input type="date" v-model="recDate" class="rec-date-input" @change="runRecommend" />
         </label>
+        <label class="rec-date-label">수확 예정일 <span class="muted">(선택)</span>
+          <input type="date" v-model="recHarvestDate" class="rec-date-input" @change="runRecommend" />
+        </label>
         <button @click="runRecommend">추천 조회</button>
       </div>
 
@@ -663,8 +752,11 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                   <span class="rec-brand">{{ p.brandName }}</span>
                   <span class="moa-badge" :style="{ background: moaColor(p.moa) }">{{ p.moa }}</span>
                   <span class="cat-badge" :class="categoryClass(p.category)">{{ p.category }}</span>
+                  <span v-if="p.toxicName" class="toxic-badge" :class="toxicClass(p.toxicName)">{{ p.toxicName }}</span>
+                  <span v-if="p.fishToxic" class="toxic-badge" :class="fishToxicClass(p.fishToxic)">{{ formatFishToxicBadge(p.fishToxic) }}</span>
                 </div>
                 <div class="rec-pests">{{ p.targetPests.join(', ') }}</div>
+                <div v-if="p.preHarvestDays" class="ap-safety">{{ formatPreHarvest(p.preHarvestDays) }}</div>
                 <div v-if="p.useCount > 0" class="rec-usecount">올해 {{ p.useCount }}회 사용{{ p.appliedLimit ? ` (최대 ${p.appliedLimit}회)` : '' }}</div>
                 <div v-if="inventoryStockMap[p.brandName]?.length" class="ap-stock-row">
                   재고
@@ -686,6 +778,8 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                   <span class="rec-brand">{{ p.brandName }}</span>
                   <span class="moa-badge moa-faded" :style="{ background: moaColor(p.moa) }">{{ p.moa }}</span>
                   <span class="cat-badge" :class="categoryClass(p.category)">{{ p.category }}</span>
+                  <span v-if="p.toxicName" class="toxic-badge" :class="toxicClass(p.toxicName)">{{ p.toxicName }}</span>
+                  <span v-if="p.fishToxic" class="toxic-badge" :class="fishToxicClass(p.fishToxic)">{{ formatFishToxicBadge(p.fishToxic) }}</span>
                 </div>
                 <ul class="rec-reasons">
                   <li v-for="(r, i) in p.reasons" :key="i">{{ r }}</li>
@@ -702,38 +796,22 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
     </section>
 
     <!-- ═══ 가용농약 ════════════════════════════════════════════════════════ -->
-    <section v-if="activeTab === 'avail'">
+    <section v-if="activeTab === 'avail'" :class="['page-grid', apEditMode ? 'two-columns' : '']">
+      <article class="card">
 
       <div class="pip-header">
         <div class="pip-summary">
           <span v-if="apStats.total > 0" class="summary-chip">{{ apStats.total }}개</span>
         </div>
         <div class="pip-actions">
+          <button v-if="apEditMode && apStore.availableList.length > 0" class="ghost" type="button" @click="refreshAllPesticideInfo">
+            전체 재연결
+          </button>
           <button v-if="!apEditMode" type="button" @click="apEditMode = true">편집</button>
           <button v-else class="ghost" type="button" @click="closeApEdit">편집종료</button>
         </div>
       </div>
-
-      <!-- 구입가능농약 입력 -->
-      <div v-if="apEditMode" class="form-card">
-        <div class="form-card-header">
-          <span class="form-card-title">구입가능농약 입력</span>
-        </div>
-        <p class="ap-hint">
-          <code>상표명(형태)-용량</code> 형식, 줄바꿈으로 구분. 유사 농약은 <code>/</code>로 연결.<br>
-          예) <code>만수무강(액상)-500ml</code> &nbsp;|&nbsp; <code>겔럭시(유)-200ml/올스타/오쏘도</code>
-        </p>
-        <textarea
-          v-model="apInputText"
-          class="ap-textarea"
-          placeholder="여기에 붙여넣기..."
-          rows="6"
-        ></textarea>
-        <div class="ap-input-footer">
-          <span v-if="parsedCount > 0" class="ap-parse-count">{{ parsedCount }}개 항목 인식됨</span>
-          <span v-else class="ap-parse-count muted">입력 없음</span>
-        </div>
-      </div>
+      <p v-if="apRefreshMessage" class="muted" style="font-size:0.82rem; margin: -0.4rem 0 0.6rem;">{{ apRefreshMessage }}</p>
 
       <!-- 재고농약 표시 -->
       <div class="ap-inv-row">
@@ -745,15 +823,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
         </span>
       </div>
 
-      <!-- 목록 작성 버튼 -->
-      <div v-if="apEditMode" class="ap-build-row">
-        <button :disabled="apBuilding || !apInputText.trim()" @click="buildApList">
-          {{ apBuilding ? '작성 중...' : '목록 작성' }}
-        </button>
-        <span v-if="apStats.total > 0" class="ap-stats">
-          {{ apStats.total }}개 &nbsp;·&nbsp; 연결 {{ apStats.matched }} &nbsp;·&nbsp; 미연결 {{ apStats.unmatched }}
-        </span>
-      </div>
+      <div id="ap-form-top" class="mobile-form-slot"></div>
 
       <!-- 가용농약 목록 -->
       <template v-if="apStore.availableList.length > 0">
@@ -769,6 +839,11 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
             :class="{ 'ap-unmatched-active': apUnmatchedOnly }"
             @click="apUnmatchedOnly = !apUnmatchedOnly"
           >미연결만 ({{ apStats.unmatched }})</button>
+          <button
+            class="ghost ap-unmatched-btn"
+            :class="{ 'ap-unmatched-active': apManualOnly }"
+            @click="apManualOnly = !apManualOnly"
+          >수동만 ({{ apStats.manual }})</button>
           <input
             v-model="apFilter"
             type="text"
@@ -787,14 +862,23 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                 <span v-if="item.volume" class="ap-vol">{{ item.volume }}</span>
               </div>
               <div class="ap-card-badges">
-                <span class="source-badge" :class="item.source === 'purchase' ? 'src-purchase' : 'src-inv'">
-                  {{ item.source === 'purchase' ? '구입가능' : '재고' }}
+                <span
+                  class="source-badge"
+                  :class="{ 'src-purchase': item.source === 'purchase', 'src-inv': item.source === 'inventory', 'src-both': item.source === 'both' }"
+                >
+                  {{ item.source === 'both' ? '구입+재고' : item.source === 'purchase' ? '구입가능' : '재고' }}
                 </span>
                 <span v-if="item.category" class="cat-badge" :class="categoryClassFor(item.category)">
                   {{ normCat(item.category) }}
                 </span>
                 <span v-if="item.moa" class="moa-badge" :style="{ background: moaColor(item.moa) }">
                   {{ item.moa }}
+                </span>
+                <span v-if="item.toxicName" class="toxic-badge" :class="toxicClass(item.toxicName)">
+                  {{ item.toxicName }}
+                </span>
+                <span v-if="item.fishToxic" class="toxic-badge" :class="fishToxicClass(item.fishToxic)">
+                  {{ formatFishToxicBadge(item.fishToxic) }}
                 </span>
                 <span class="match-badge" :class="item.matchSource ? 'match-ok' : 'match-none'">
                   {{ matchLabel(item.matchSource) }}
@@ -864,39 +948,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
               </p>
             </div>
 
-            <!-- 직접 입력/수정 패널 -->
-            <div v-if="manualEditId === item.id" class="manual-edit-panel">
-              <div class="manual-edit-grid">
-                <label>분류
-                  <select v-model="manualEditForm.category">
-                    <option value="">선택 안 함</option>
-                    <option v-for="tp in pesticideTypes" :key="tp" :value="tp">{{ tp }}</option>
-                  </select>
-                </label>
-                <label>작용기작
-                  <input v-model="manualEditForm.moa" type="text" placeholder="예: 4a, 나1" />
-                </label>
-                <label>대상 병해충
-                  <input v-model="manualEditForm.targetPests" type="text" placeholder="쉼표로 구분 (예: 귤굴나방, 진딧물)" />
-                </label>
-                <label>수확 전 일수
-                  <input v-model="manualEditForm.preHarvestDays" type="text" placeholder="예: 14" />
-                </label>
-                <label>최대 사용 횟수
-                  <input v-model="manualEditForm.maxApplications" type="text" placeholder="예: 3" />
-                </label>
-                <label>성분
-                  <input v-model="manualEditForm.ingredient" type="text" />
-                </label>
-                <label>제조사
-                  <input v-model="manualEditForm.manufacturer" type="text" />
-                </label>
-              </div>
-              <div class="row-actions">
-                <button type="button" @click="saveManualEdit(item)">저장</button>
-                <button class="ghost" type="button" @click="manualEditId = null">취소</button>
-              </div>
-            </div>
+            <div :id="`ap-form-slot-${item.id}`" class="mobile-form-slot"></div>
           </div>
 
           <p v-if="filteredApList.length === 0" class="empty-msg small">필터 결과 없음</p>
@@ -906,6 +958,83 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
         구입가능농약을 입력하거나 재고를 추가한 후 '목록 작성'을 눌러주세요.
       </div>
 
+      </article>
+
+      <!-- 편집 패널: 직접 입력/수정 중이면 해당 항목 폼, 아니면 구입가능농약 입력 폼 -->
+      <Teleport v-if="apEditMode" :to="apFormTarget" :disabled="!isMobile">
+      <article v-if="apEditMode" class="card">
+        <template v-if="manualEditItem">
+          <h2>{{ manualEditItem.brandName }} {{ manualEditItem.matchSource ? '정보 수정' : '직접 입력' }}</h2>
+          <div class="manual-edit-grid">
+            <label>분류
+              <select v-model="manualEditForm.category">
+                <option value="">선택 안 함</option>
+                <option v-for="tp in pesticideTypes" :key="tp" :value="tp">{{ tp }}</option>
+              </select>
+            </label>
+            <label>작용기작
+              <input v-model="manualEditForm.moa" type="text" placeholder="예: 4a, 나1" />
+            </label>
+            <label>대상 병해충
+              <input v-model="manualEditForm.targetPests" type="text" placeholder="쉼표로 구분 (예: 귤굴나방, 진딧물)" />
+            </label>
+            <label>수확 전 일수
+              <input v-model="manualEditForm.preHarvestDays" type="text" placeholder="예: 14" />
+            </label>
+            <label>최대 사용 횟수
+              <input v-model="manualEditForm.maxApplications" type="text" placeholder="예: 3" />
+            </label>
+            <label>독성 등급
+              <select v-model="manualEditForm.toxicName">
+                <option value="">선택 안 함</option>
+                <option v-for="g in TOXIC_GRADES" :key="g" :value="g">{{ g }}</option>
+              </select>
+            </label>
+            <label>어독성 등급
+              <select v-model="manualEditForm.fishToxic">
+                <option value="">선택 안 함</option>
+                <option v-for="g in FISH_TOXIC_GRADES" :key="g" :value="g">{{ formatFishToxic(g) }}</option>
+              </select>
+            </label>
+            <label>성분
+              <input v-model="manualEditForm.ingredient" type="text" />
+            </label>
+            <label>제조사
+              <input v-model="manualEditForm.manufacturer" type="text" />
+            </label>
+          </div>
+          <div class="row-actions">
+            <button type="button" @click="saveManualEdit(manualEditItem)">저장</button>
+            <button class="ghost" type="button" @click="manualEditId = null">취소</button>
+          </div>
+        </template>
+        <template v-else>
+          <h2>구입가능농약 입력</h2>
+          <p class="ap-hint">
+            <code>상표명(형태)-용량</code> 형식, 줄바꿈으로 구분. 유사 농약은 <code>/</code>로 연결.<br>
+            예) <code>만수무강(액상)-500ml</code> &nbsp;|&nbsp; <code>겔럭시(유)-200ml/올스타/오쏘도</code>
+          </p>
+          <textarea
+            v-model="apInputText"
+            class="ap-textarea"
+            placeholder="여기에 붙여넣기..."
+            rows="6"
+          ></textarea>
+          <div class="ap-input-footer">
+            <span v-if="parsedCount > 0" class="ap-parse-count">{{ parsedCount }}개 항목 인식됨</span>
+            <span v-else class="ap-parse-count muted">입력 없음</span>
+          </div>
+          <div class="ap-build-row">
+            <button :disabled="apBuilding || !apInputText.trim()" @click="buildApList">
+              {{ apBuilding ? '작성 중...' : '목록 작성' }}
+            </button>
+            <span v-if="apStats.total > 0" class="ap-stats">
+              {{ apStats.total }}개 &nbsp;·&nbsp; 연결 {{ apStats.matched }} &nbsp;·&nbsp; 미연결 {{ apStats.unmatched }}
+            </span>
+          </div>
+        </template>
+      </article>
+      </Teleport>
     </section>
 
     <!-- ═══ 추천 설정 ═══════════════════════════════════════════════════════ -->
@@ -959,13 +1088,56 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
           </label>
         </div>
 
+        <div class="setting-row">
+          <div class="setting-label">
+            <span>제외할 독성 등급</span>
+            <span class="setting-hint">체크한 등급의 농약은 추천에서 자동 제외 (상세정보를 가져와야 등급이 채워집니다)</span>
+          </div>
+          <div class="toxic-grade-checks">
+            <label v-for="g in TOXIC_GRADES" :key="g" class="toxic-grade-check">
+              <input type="checkbox" :value="g" v-model="settingsStore.settings.excludeToxicGrades" />
+              {{ g }}
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-label">
+            <span>
+              제외할 어독성 등급
+              <button
+                type="button"
+                class="info-icon-btn"
+                :aria-label="showFishToxicInfo ? '어독성 등급 설명 닫기' : '어독성 등급 설명 보기'"
+                @click="showFishToxicInfo = !showFishToxicInfo"
+              >ⓘ</button>
+            </span>
+            <span class="setting-hint">체크한 등급의 농약은 추천에서 자동 제외 (상세정보를 가져와야 등급이 채워집니다)</span>
+          </div>
+          <div class="toxic-grade-checks">
+            <label v-for="g in FISH_TOXIC_GRADES" :key="g" class="toxic-grade-check">
+              <input type="checkbox" :value="g" v-model="settingsStore.settings.excludeFishToxicGrades" />
+              {{ formatFishToxic(g) }}
+            </label>
+          </div>
+        </div>
+
+        <div v-if="showFishToxicInfo" class="fish-toxic-info">
+          <div v-for="g in FISH_TOXIC_GRADES" :key="g" class="fish-toxic-info-row">
+            <p class="fish-toxic-info-title">{{ FISH_TOXIC_INFO[g].label }}</p>
+            <p class="fish-toxic-info-lc50">{{ FISH_TOXIC_INFO[g].lc50 }}</p>
+            <p class="muted">{{ FISH_TOXIC_INFO[g].desc }}</p>
+            <p class="muted">{{ FISH_TOXIC_INFO[g].guidance }}</p>
+          </div>
+        </div>
+
         <div class="setting-reset">
           <button class="ghost" @click="settingsStore.reset()">기본값으로 초기화</button>
         </div>
       </div>
 
       <div class="settings-note">
-        <p>수확 전 안전기간 · 독성 등급 필터는 농약정보서비스 API 데이터 연동 시 추가 지원 예정입니다.</p>
+        <p>수확 전 안전기간(PHI)은 '농약 추천' 탭에서 수확 예정일을 입력하면 자동으로 반영됩니다.</p>
       </div>
     </section>
   </div>
@@ -1098,6 +1270,22 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 .cat-insecticide { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
 .cat-miticide   { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
 
+.toxic-badge {
+  font-size: 0.68rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-weight: 600;
+  border: 1px solid;
+}
+.toxic-low     { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+.toxic-mid     { background: #fefce8; color: #854d0e; border-color: #fde68a; }
+.toxic-high    { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
+.toxic-extreme { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+
+.fishtoxic-1 { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+.fishtoxic-2 { background: #fefce8; color: #854d0e; border-color: #fde68a; }
+.fishtoxic-3 { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+
 /* ── Recommend ── */
 .rec-search { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: flex-end; }
 .rec-search > input { flex: 1; min-width: 180px; }
@@ -1182,6 +1370,31 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 }
 .toggle input:checked + .toggle-slider { background: var(--primary); }
 .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+.toxic-grade-checks { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.toxic-grade-check { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; cursor: pointer; }
+
+.info-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; margin-left: 0.3rem;
+  padding: 0; border-radius: 50%;
+  background: var(--surface-strong); color: var(--muted);
+  font-size: 0.75rem; line-height: 1; cursor: pointer; vertical-align: middle;
+}
+.info-icon-btn:hover { background: var(--primary); color: var(--primary-ink); }
+
+.fish-toxic-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.6rem;
+  margin: -0.25rem 0 0.75rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border-radius: 0.5rem;
+}
+.fish-toxic-info-row p { margin: 0.1rem 0; font-size: 0.78rem; }
+.fish-toxic-info-title { font-weight: 700; font-size: 0.85rem !important; }
+.fish-toxic-info-lc50 { color: var(--primary); font-weight: 600; }
 
 .settings-note {
   margin-top: 0.75rem;
@@ -1360,6 +1573,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 }
 .src-purchase { background: #f0fdf4; color: #15803d; border-color: #86efac; }
 .src-inv      { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }
+.src-both     { background: #faf5ff; color: #7e22ce; border-color: #d8b4fe; }
 
 .match-badge {
   font-size: 0.68rem;

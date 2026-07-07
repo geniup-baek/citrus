@@ -3,6 +3,7 @@ import { computed, nextTick, reactive, ref } from 'vue'
 import { differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
+import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { confirm } from '../composables/useConfirm'
 import { searchFromFullCache } from '../services/pesticide.js'
 import { moaColor } from '../services/recommend.js'
@@ -11,6 +12,7 @@ import { useIsMobile } from '../composables/useIsMobile.js'
 
 const store      = useFarmStore()
 const localeStr  = useLocaleStore()
+const recSettingsStore = useRecommendSettingsStore()
 const t          = (key, p) => localeStr.t(key, p)
 
 const CATEGORY = '농약'
@@ -356,6 +358,79 @@ function downloadReport() {
   a.remove()
   URL.revokeObjectURL(url)
 }
+
+// ── PDF/인쇄 ────────────────────────────────────────────────────────────────
+// 외부 라이브러리 없이 브라우저 인쇄 → 'PDF로 저장'을 사용한다(한글 폰트 문제 없음).
+function htmlCell(value) {
+  return String(value ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
+}
+
+function rowClass(status) {
+  if (status === 'expired') return 'row-expired'
+  if (status === 'soon') return 'row-soon'
+  return ''
+}
+
+function printReport() {
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const items = [...displayedItems.value].sort((a, b) => a.name.localeCompare(b.name))
+  const headers = [
+    t('pesticideInventory.name'), t('pesticideInventory.pesticideType'),
+    t('pesticideInventory.actionGroup'), t('pesticideInventory.productName'),
+    t('inventory.volume'), t('inventory.expiryDate'),
+    t('inventory.amount'), t('inventory.reportStatus'), t('inventory.notes'),
+  ]
+
+  let bodyRows = ''
+  for (const item of items) {
+    const base = [item.name, item.pesticideType || '', item.actionGroup || '', item.productName || '']
+    const lots = lotsOf(item)
+    const cellsToRow = (cells, cls) => {
+      const tds = cells.map((c) => `<td>${htmlCell(c)}</td>`).join('')
+      return `<tr class="${cls}">${tds}</tr>`
+    }
+    if (lots.length) {
+      for (const lot of lots) {
+        const s = expiryStatus(lot.expiryDate)
+        bodyRows += cellsToRow(
+          [...base, lot.volume, lot.expiryDate || '—', lot.quantity, statusText(lot.expiryDate), item.notes || ''],
+          rowClass(s),
+        )
+      }
+    } else {
+      bodyRows += cellsToRow([...base, '', '—', 0, '', item.notes || ''], '')
+    }
+  }
+
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8" />
+<title>${htmlCell(t('pesticideInventory.reportTitle'))} ${today}</title>
+<style>
+  * { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
+  body { margin: 24px; color: #1a1a1a; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .meta { color: #666; font-size: 12px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border: 1px solid #ccc; padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; }
+  .row-expired td { color: #c0392b; font-weight: 700; }
+  .row-soon td { color: #d35400; }
+  @media print { body { margin: 0; } th { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style></head><body>
+<h1>${htmlCell(t('pesticideInventory.reportTitle'))}</h1>
+<p class="meta">${htmlCell(t('inventory.reportGeneratedAt', { date: today }))} · ${htmlCell(t('inventory.summaryTotal', { count: summary.total }))}${summary.expiring ? ' · ' + htmlCell(t('inventory.summaryExpiring', { count: summary.expiring })) : ''}</p>
+<table><thead><tr>${headers.map((h) => `<th>${htmlCell(h)}</th>`).join('')}</tr></thead>
+<tbody>${bodyRows}</tbody></table>
+</body></html>`
+
+  const win = window.open('', '_blank')
+  if (!win) return
+  win.document.write(html)
+  win.document.close()
+  win.focus()
+  if (recSettingsStore.settings.autoOpenPrintDialog) {
+    setTimeout(() => win.print(), 300)
+  }
+}
 </script>
 
 <template>
@@ -374,6 +449,7 @@ function downloadReport() {
             <option value="expiry">{{ t('inventory.sortExpiry') }}</option>
           </select>
           <button class="ghost compact-btn" type="button" @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'">{{ sortDir === 'asc' ? '↑' : '↓' }}</button>
+          <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="printReport">{{ t('inventory.printReport') }}</button>
           <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="downloadReport">{{ t('inventory.downloadReport') }}</button>
           <button v-if="!showForm" type="button" @click="openAdd">편집</button>
           <button v-else class="ghost" type="button" @click="closeForm">편집종료</button>
