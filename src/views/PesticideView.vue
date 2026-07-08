@@ -330,7 +330,8 @@ onMounted(() => {
   font-size: 0.82rem;
   padding: 0.28rem 0.72rem;
 }
-.type-btn-active {
+/* button.ghost(요소+클래스)보다 우선하도록 클래스 두 개를 겹쳐 특정도를 높인다 */
+.ghost.type-btn-active {
   background: var(--primary);
   color: var(--primary-ink);
   border-color: transparent;

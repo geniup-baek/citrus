@@ -350,21 +350,20 @@ onMounted(() => {
       </div>
 
       <!-- 주요 탭 -->
-      <div class="task-panel-tabs">
-        <div class="category-chip-row">
-          <button
-            v-for="tab in [
-              { key: 'search', label: localeStore.t('pest.tabSearch') },
-              { key: 'prediction', label: localeStore.t('pest.tabPrediction') },
-              { key: 'surveillance', label: localeStore.t('pest.tabSurveillance') },
-            ]"
-            :key="tab.key"
-            :class="['category-chip', { active: activeTab === tab.key }]"
-            @click="switchTab(tab.key)"
-          >
-            {{ tab.label }}
-          </button>
-        </div>
+      <div class="tab-bar">
+        <button
+          v-for="tab in [
+            { key: 'search', label: localeStore.t('pest.tabSearch') },
+            { key: 'prediction', label: localeStore.t('pest.tabPrediction') },
+            { key: 'surveillance', label: localeStore.t('pest.tabSurveillance') },
+          ]"
+          :key="tab.key"
+          class="tab-btn"
+          :class="{ active: activeTab === tab.key }"
+          @click="switchTab(tab.key)"
+        >
+          {{ tab.label }}
+        </button>
       </div>
 
       <!-- 오류 배너 -->
@@ -734,7 +733,8 @@ onMounted(() => {
   opacity: 0.75;
 }
 
-.pest-submode-active {
+/* button.ghost(요소+클래스)보다 우선하도록 클래스 두 개를 겹쳐 특정도를 높인다 */
+.ghost.pest-submode-active {
   background: var(--surface-strong);
   border-color: var(--primary);
   color: var(--primary);

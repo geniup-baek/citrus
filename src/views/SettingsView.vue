@@ -26,10 +26,12 @@ const activeTab = ref(farmsStore.isAdminMode ? 'categories' : 'storage')
 // ── 농장 관리 ────────────────────────────────────────────────────────────────
 const editingFarmId = ref(null)
 const farmEditName = ref('')
+const farmEditPin = ref('')
 
 function startEditFarm(farm) {
   editingFarmId.value = farm.id
   farmEditName.value = farm.name
+  farmEditPin.value = farm.pin || ''
 }
 
 function cancelEditFarm() {
@@ -39,6 +41,7 @@ function cancelEditFarm() {
 async function saveFarmName(id) {
   if (!farmEditName.value.trim()) return
   await farmsStore.renameFarm(id, farmEditName.value)
+  await farmsStore.updateFarmPin(id, farmEditPin.value)
   editingFarmId.value = null
 }
 
@@ -61,6 +64,7 @@ async function confirmDeleteFarm(farm) {
 const showNewFarmForm = ref(false)
 const newFarmName = ref('')
 const newFarmLogo = ref('')
+const newFarmPin = ref('')
 
 async function handleNewFarmLogoChange(event) {
   const file = event.target.files?.[0]
@@ -78,12 +82,13 @@ function cancelNewFarm() {
   showNewFarmForm.value = false
   newFarmName.value = ''
   newFarmLogo.value = ''
+  newFarmPin.value = ''
 }
 
 async function submitNewFarm() {
   const trimmed = newFarmName.value.trim()
   if (!trimmed) return
-  await farmsStore.createFarm({ name: trimmed, logo: newFarmLogo.value })
+  await farmsStore.createFarm({ name: trimmed, logo: newFarmLogo.value, pin: newFarmPin.value })
   cancelNewFarm()
 }
 
@@ -472,13 +477,14 @@ function saveEdit(key, i, isPair) {
     <div class="card">
       <h2>{{ localeStore.t('settings.title') }}</h2>
 
-      <div v-if="farmsStore.isAdminMode" class="inline-filters settings-tabs">
-        <button :class="{ ghost: activeTab !== 'farm' }" type="button" @click="activeTab = 'farm'">농장</button>
-        <button :class="{ ghost: activeTab !== 'categories' }" type="button" @click="activeTab = 'categories'">분류·항목</button>
-        <button :class="{ ghost: activeTab !== 'behavior' }" type="button" @click="activeTab = 'behavior'">동작</button>
-        <button :class="{ ghost: activeTab !== 'storage' }" type="button" @click="activeTab = 'storage'">저장·백업</button>
+      <div class="tab-bar">
+        <template v-if="farmsStore.isAdminMode">
+          <button class="tab-btn" :class="{ active: activeTab === 'farm' }" type="button" @click="activeTab = 'farm'">농장</button>
+          <button class="tab-btn" :class="{ active: activeTab === 'categories' }" type="button" @click="activeTab = 'categories'">분류·항목</button>
+        </template>
+        <button class="tab-btn" :class="{ active: activeTab === 'behavior' }" type="button" @click="activeTab = 'behavior'">동작</button>
+        <button class="tab-btn" :class="{ active: activeTab === 'storage' }" type="button" @click="activeTab = 'storage'">저장·백업</button>
       </div>
-      <p v-else class="muted settings-subtitle">농장 모드에서는 현재 농장의 저장공간·백업만 관리할 수 있습니다. 다른 설정은 시스템 관리 모드에서 관리합니다.</p>
 
       <!-- ═══ 농장 ═══════════════════════════════════════════════════════════ -->
       <template v-if="farmsStore.isAdminMode && activeTab === 'farm'">
@@ -495,7 +501,8 @@ function saveEdit(key, i, isPair) {
           <ul class="list clean">
             <li v-for="farm in farmsStore.farms" :key="farm.id" class="list-item settings-item farm-manage-item">
               <template v-if="editingFarmId === farm.id">
-                <input v-model="farmEditName" class="settings-edit-input" type="text" @keydown.enter.prevent="saveFarmName(farm.id)" @keydown.escape.prevent="cancelEditFarm" />
+                <input v-model="farmEditName" class="settings-edit-input" type="text" placeholder="농장 이름" @keydown.enter.prevent="saveFarmName(farm.id)" @keydown.escape.prevent="cancelEditFarm" />
+                <input v-model="farmEditPin" class="settings-edit-input" type="text" inputmode="numeric" placeholder="PIN (선택, 비우면 해제)" style="max-width: 11rem;" @keydown.enter.prevent="saveFarmName(farm.id)" @keydown.escape.prevent="cancelEditFarm" />
                 <label class="ghost compact-btn">
                   로고 변경
                   <input accept="image/*" type="file" hidden @change="(e) => handleFarmLogoChange(farm.id, e)" />
@@ -513,6 +520,7 @@ function saveEdit(key, i, isPair) {
                 <span class="settings-item-name">
                   {{ farm.name }}
                   <span v-if="farmsStore.activeFarm?.id === farm.id" class="pill">사용 중</span>
+                  <span v-if="farm.pin" class="pill" title="PIN이 설정된 농장">🔒 PIN</span>
                 </span>
                 <div class="row-actions settings-item-actions">
                   <button class="ghost icon-btn" type="button" title="수정" aria-label="수정" @click="startEditFarm(farm)">✎</button>
@@ -541,6 +549,9 @@ function saveEdit(key, i, isPair) {
                 <img :src="newFarmLogo" alt="" />
                 <button type="button" class="ghost" @click="removeNewFarmLogo">제거</button>
               </div>
+              <label>PIN (선택)
+                <input v-model="newFarmPin" type="text" inputmode="numeric" placeholder="설정하면 농장 선택 시 PIN 입력이 필요합니다" />
+              </label>
               <div class="row-actions">
                 <button type="submit" :disabled="!newFarmName.trim()">추가</button>
                 <button class="ghost" type="button" @click="cancelNewFarm">취소</button>
@@ -676,96 +687,102 @@ function saveEdit(key, i, isPair) {
       </template>
 
       <!-- ═══ 동작 ═══════════════════════════════════════════════════════════ -->
-      <template v-if="farmsStore.isAdminMode && activeTab === 'behavior'">
-        <div class="sub-card">
-          <div class="settings-group-head">
-            <h3>공공데이터 상세정보 가져오기</h3>
+      <template v-if="activeTab === 'behavior'">
+        <!-- 시스템 관리 모드: 기기/앱 전역 공통 동작 -->
+        <template v-if="farmsStore.isAdminMode">
+          <div class="sub-card">
+            <div class="settings-group-head">
+              <h3>공공데이터 상세정보 가져오기</h3>
+            </div>
+            <p class="muted settings-group-hint">농약검색 페이지의 "상세정보 전체 가져오기" 실행 방식을 설정합니다.</p>
+            <div class="inline-filters">
+              <button
+                type="button"
+                :class="{ ghost: !recSettingsStore.settings.skipCachedPesticideDetails }"
+                @click="recSettingsStore.settings.skipCachedPesticideDetails = true"
+              >이미 가져온 항목 건너뛰기</button>
+              <button
+                type="button"
+                :class="{ ghost: recSettingsStore.settings.skipCachedPesticideDetails }"
+                @click="recSettingsStore.settings.skipCachedPesticideDetails = false"
+              >전체 새로 가져오기</button>
+            </div>
+            <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
+              "전체 새로 가져오기"는 매번 API를 다시 다 호출하므로 시간이 오래 걸립니다. 데이터 구조가 바뀌었거나 잘못 저장된 캐시를 고쳐야 할 때만 선택하세요.
+            </p>
           </div>
-          <p class="muted settings-group-hint">농약검색 페이지의 "상세정보 전체 가져오기" 실행 방식을 설정합니다.</p>
-          <div class="inline-filters">
-            <button
-              type="button"
-              :class="{ ghost: !recSettingsStore.settings.skipCachedPesticideDetails }"
-              @click="recSettingsStore.settings.skipCachedPesticideDetails = true"
-            >이미 가져온 항목 건너뛰기</button>
-            <button
-              type="button"
-              :class="{ ghost: recSettingsStore.settings.skipCachedPesticideDetails }"
-              @click="recSettingsStore.settings.skipCachedPesticideDetails = false"
-            >전체 새로 가져오기</button>
-          </div>
-          <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
-            "전체 새로 가져오기"는 매번 API를 다시 다 호출하므로 시간이 오래 걸립니다. 데이터 구조가 바뀌었거나 잘못 저장된 캐시를 고쳐야 할 때만 선택하세요.
-          </p>
-        </div>
 
-        <div class="sub-card">
-          <div class="settings-group-head">
-            <h3>방제이력 전체 재연결</h3>
+          <div class="sub-card">
+            <div class="settings-group-head">
+              <h3>PDF 출력</h3>
+            </div>
+            <p class="muted settings-group-hint">비료·농약재고 현황의 "PDF 출력" 버튼 동작 방식을 설정합니다.</p>
+            <div class="inline-filters">
+              <button
+                type="button"
+                :class="{ ghost: recSettingsStore.settings.autoOpenPrintDialog }"
+                @click="recSettingsStore.settings.autoOpenPrintDialog = false"
+              >보고서만 열기</button>
+              <button
+                type="button"
+                :class="{ ghost: !recSettingsStore.settings.autoOpenPrintDialog }"
+                @click="recSettingsStore.settings.autoOpenPrintDialog = true"
+              >인쇄 대화상자 자동으로 열기</button>
+            </div>
+            <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
+              "보고서만 열기"는 보고서 화면만 새 창으로 열고 인쇄 대화상자는 자동으로 띄우지 않습니다(필요할 때 직접 Ctrl+P). "인쇄 대화상자 자동으로 열기"는 새 창을 열자마자 바로 인쇄 대화상자를 띄웁니다.
+            </p>
           </div>
-          <p class="muted settings-group-hint">방제이력 탭의 "전체 재연결" 실행 방식을 설정합니다. (모든 농장에 공통 적용됩니다)</p>
-          <div class="inline-filters">
-            <button
-              type="button"
-              :class="{ ghost: recSettingsStore.settings.overwriteLinkedTreatments }"
-              @click="recSettingsStore.settings.overwriteLinkedTreatments = false"
-            >미연결만 연결</button>
-            <button
-              type="button"
-              :class="{ ghost: !recSettingsStore.settings.overwriteLinkedTreatments }"
-              @click="recSettingsStore.settings.overwriteLinkedTreatments = true"
-            >이미 연결된 이력도 덮어쓰기</button>
-          </div>
-          <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
-            "미연결만 연결"은 아직 연결 안 된 이력만 연결합니다. "이미 연결된 이력도 덮어쓰기"는 이미 연결된 이력도 최신 정보로 다시 덮어씁니다.
-          </p>
-        </div>
+        </template>
 
-        <div class="sub-card">
-          <div class="settings-group-head">
-            <h3>붙여넣기 일괄추가 방식</h3>
+        <!-- 농장 모드: 이 농장에만 적용되는 정책 -->
+        <template v-else>
+          <div class="sub-card">
+            <div class="settings-group-head">
+              <h3>방제이력 전체 재연결</h3>
+            </div>
+            <p class="muted settings-group-hint">방제이력 탭의 "전체 재연결" 실행 방식을 설정합니다. (현재 농장에만 적용됩니다)</p>
+            <div class="inline-filters">
+              <button
+                type="button"
+                :class="{ ghost: recSettingsStore.settings.overwriteLinkedTreatments }"
+                @click="recSettingsStore.settings.overwriteLinkedTreatments = false"
+              >미연결만 연결</button>
+              <button
+                type="button"
+                :class="{ ghost: !recSettingsStore.settings.overwriteLinkedTreatments }"
+                @click="recSettingsStore.settings.overwriteLinkedTreatments = true"
+              >이미 연결된 이력도 덮어쓰기</button>
+            </div>
+            <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
+              "미연결만 연결"은 아직 연결 안 된 이력만 연결합니다. "이미 연결된 이력도 덮어쓰기"는 이미 연결된 이력도 최신 정보로 다시 덮어씁니다.
+            </p>
           </div>
-          <p class="muted settings-group-hint">
-            방제이력·농약재고·가용농약의 "붙여넣기 일괄추가" 실행 방식을 설정합니다. (모든 농장에 공통 적용됩니다)
-          </p>
-          <div class="inline-filters">
-            <button
-              type="button"
-              :class="{ ghost: recSettingsStore.settings.bulkImportMode !== 'append' }"
-              @click="recSettingsStore.settings.bulkImportMode = 'append'"
-            >기존 목록에 추가</button>
-            <button
-              type="button"
-              :class="{ ghost: recSettingsStore.settings.bulkImportMode !== 'replace' }"
-              @click="recSettingsStore.settings.bulkImportMode = 'replace'"
-            >전체 새로 작성</button>
-          </div>
-          <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
-            "기존 목록에 추가"는 붙여넣은 항목만 더합니다. "전체 새로 작성"은 붙여넣기 전 기존 목록(방제이력·농약재고는 전체 삭제, 가용농약은 구입가능농약 텍스트 전체)을 지우고 붙여넣은 내용으로 다시 만듭니다 — 되돌릴 수 없으니 주의하세요.
-          </p>
-        </div>
 
-        <div class="sub-card">
-          <div class="settings-group-head">
-            <h3>PDF 출력</h3>
+          <div class="sub-card">
+            <div class="settings-group-head">
+              <h3>붙여넣기 일괄추가 방식</h3>
+            </div>
+            <p class="muted settings-group-hint">
+              방제이력·농약재고·가용농약의 "붙여넣기 일괄추가" 실행 방식을 설정합니다. (현재 농장에만 적용됩니다)
+            </p>
+            <div class="inline-filters">
+              <button
+                type="button"
+                :class="{ ghost: recSettingsStore.settings.bulkImportMode !== 'append' }"
+                @click="recSettingsStore.settings.bulkImportMode = 'append'"
+              >기존 목록에 추가</button>
+              <button
+                type="button"
+                :class="{ ghost: recSettingsStore.settings.bulkImportMode !== 'replace' }"
+                @click="recSettingsStore.settings.bulkImportMode = 'replace'"
+              >전체 새로 작성</button>
+            </div>
+            <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
+              "기존 목록에 추가"는 붙여넣은 항목만 더합니다. "전체 새로 작성"은 붙여넣기 전 기존 목록(방제이력·농약재고는 전체 삭제, 가용농약은 구입가능농약 텍스트 전체)을 지우고 붙여넣은 내용으로 다시 만듭니다 — 되돌릴 수 없으니 주의하세요.
+            </p>
           </div>
-          <p class="muted settings-group-hint">비료·농약재고 현황의 "PDF 출력" 버튼 동작 방식을 설정합니다.</p>
-          <div class="inline-filters">
-            <button
-              type="button"
-              :class="{ ghost: recSettingsStore.settings.autoOpenPrintDialog }"
-              @click="recSettingsStore.settings.autoOpenPrintDialog = false"
-            >보고서만 열기</button>
-            <button
-              type="button"
-              :class="{ ghost: !recSettingsStore.settings.autoOpenPrintDialog }"
-              @click="recSettingsStore.settings.autoOpenPrintDialog = true"
-            >인쇄 대화상자 자동으로 열기</button>
-          </div>
-          <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
-            "보고서만 열기"는 보고서 화면만 새 창으로 열고 인쇄 대화상자는 자동으로 띄우지 않습니다(필요할 때 직접 Ctrl+P). "인쇄 대화상자 자동으로 열기"는 새 창을 열자마자 바로 인쇄 대화상자를 띄웁니다.
-          </p>
-        </div>
+        </template>
       </template>
 
       <!-- ═══ 저장·백업 ══════════════════════════════════════════════════════ -->

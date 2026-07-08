@@ -50,17 +50,21 @@ const histFormTarget = computed(() =>
 
 // ── 방제이력 연도별 필터 ────────────────────────────────────────────────────
 const histYear = ref('')
+const histUnmatchedOnly = ref(false)
 
 const histYears = computed(() =>
   [...new Set(treatStore.treatments.map(t => t.date?.slice(0, 4)).filter(Boolean))]
     .sort((a, b) => b.localeCompare(a)),
 )
 
-const filteredTreatments = computed(() =>
-  histYear.value
-    ? treatStore.treatments.filter(t => t.date?.startsWith(histYear.value))
-    : treatStore.treatments,
-)
+const histUnmatchedCount = computed(() => treatStore.treatments.filter(t => !t.moa).length)
+
+const filteredTreatments = computed(() => {
+  let list = treatStore.treatments
+  if (histYear.value) list = list.filter(t => t.date?.startsWith(histYear.value))
+  if (histUnmatchedOnly.value) list = list.filter(t => !t.moa)
+  return list
+})
 
 const formMode = ref('single') // 'single' | 'bulk'
 
@@ -145,22 +149,53 @@ function newHistoryEntry() {
   }
 }
 
+// ── 방제이력 농약정보 연결 (공공데이터 + 농약재고 통합 검색) ───────────────────────
+// 공공데이터에 없는 농약(예: 등록 안 된 자재)은 농약재고에 이미 연결해둔 정보로 대신 채울 수 있다.
+function findInventoryMatch(brandName) {
+  const q = brandName.trim().toLowerCase()
+  if (!q) return null
+  const list = inventoryPesticides.value
+  const exact = list.find(i => i.name.trim().toLowerCase() === q)
+  if (exact) return exact
+  return list.find(i => {
+    const n = i.name.trim().toLowerCase()
+    return n.length >= 2 && q.length >= 2 && (n.startsWith(q) || q.startsWith(n))
+  }) ?? null
+}
+
+function searchTreatmentLinkCandidates(query, pageSize = 10) {
+  const q = query.trim()
+  if (!q) return []
+  const apiResult = searchFromFullCache({ pestName: q, page: 1, pageSize })
+  const apiList = (apiResult?.list ?? []).map(r => ({ ...r, matchSourceType: 'api' }))
+  const ql = q.toLowerCase()
+  const invList = inventoryPesticides.value
+    .filter(i => i.name.toLowerCase().includes(ql))
+    .map(i => ({
+      brandName:      i.name,
+      pesticideType:  i.pesticideType || '',
+      modeOfAction:   i.actionGroup || '',
+      targetPest:     '',
+      pestiCode:      `inv-${i.id}`,
+      diseaseUseSeq:  '0',
+      matchSourceType: 'inventory',
+    }))
+  return [...apiList, ...invList]
+}
+
 // ── 방제이력 농약정보 연결 (폼) ────────────────────────────────────────────────
 const formLinkResults = ref([])
 
 function onFormBrandInput(val) {
   fMatchSource.value = null // 직접 입력 중이므로 자동 연결 표시 해제
-  const q = val.trim()
-  if (!q) { formLinkResults.value = []; return }
-  const result = searchFromFullCache({ pestName: q, page: 1, pageSize: 10 })
-  formLinkResults.value = result?.list ?? []
+  formLinkResults.value = searchTreatmentLinkCandidates(val)
 }
 
 function applyFormLink(apiItem) {
   fBrand.value = apiItem.brandName
   if (apiItem.pesticideType)                                 fCategory.value = normCat(apiItem.pesticideType)
   if (apiItem.modeOfAction && apiItem.modeOfAction !== '-')  fMoa.value      = apiItem.modeOfAction
-  fMatchSource.value = 'auto'
+  fMatchSource.value = apiItem.matchSourceType === 'inventory' ? 'inventory' : 'auto'
   formLinkResults.value = []
 }
 
@@ -182,9 +217,7 @@ function openHistLink(id) {
 }
 
 function searchHistLinkCandidates(query) {
-  if (!query.trim()) { histLinkResults.value = []; return }
-  const result = searchFromFullCache({ pestName: query.trim(), page: 1, pageSize: 12 })
-  histLinkResults.value = result?.list ?? []
+  histLinkResults.value = searchTreatmentLinkCandidates(query, 12)
 }
 
 async function applyHistLink(treatment, apiItem) {
@@ -197,7 +230,7 @@ async function applyHistLink(treatment, apiItem) {
     category,
     targetPest:  treatment.targetPest || '',
     memo:        treatment.memo || '',
-    matchSource: 'auto',
+    matchSource: apiItem.matchSourceType === 'inventory' ? 'inventory' : 'auto',
   })
   histLinkId.value      = null
   histLinkQuery.value   = ''
@@ -214,9 +247,19 @@ async function refreshAllTreatmentLinks() {
   for (const t of treatStore.treatments) {
     if (t.moa && !overwrite) continue
     const match = findBestMatchInCache(t.brandName)
-    if (!match) continue
-    const moa = (match.modeOfAction && match.modeOfAction !== '-') ? match.modeOfAction : ''
-    const category = normCat(match.pesticideType) || ''
+    let moa = '', category = '', matchSource = 'auto'
+    if (match) {
+      moa = (match.modeOfAction && match.modeOfAction !== '-') ? match.modeOfAction : ''
+      category = normCat(match.pesticideType) || ''
+    } else {
+      // 공공데이터에 없으면 농약재고에 연결해둔 정보로 대신 채운다.
+      const inv = findInventoryMatch(t.brandName)
+      if (inv?.actionGroup) {
+        moa = inv.actionGroup
+        category = normCat(inv.pesticideType) || ''
+        matchSource = 'inventory'
+      }
+    }
     if (!moa && !category) continue
     await treatStore.updateTreatment(t.id, {
       date:        t.date,
@@ -225,7 +268,7 @@ async function refreshAllTreatmentLinks() {
       category,
       targetPest:  t.targetPest || '',
       memo:        t.memo || '',
-      matchSource: 'auto',
+      matchSource,
     })
     updated++
   }
@@ -731,13 +774,19 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
               type="button"
               @click="histYear = y"
             >{{ y }}년</button>
+            <button
+              class="ghost ap-unmatched-btn"
+              :class="{ 'ap-unmatched-active': histUnmatchedOnly }"
+              type="button"
+              @click="histUnmatchedOnly = !histUnmatchedOnly"
+            >미연결만 ({{ histUnmatchedCount }})</button>
           </div>
           <div id="hist-form-top" class="mobile-form-slot"></div>
           <div v-if="treatStore.treatments.length === 0" class="empty-msg">
             {{ showHistoryForm ? '저장하면 목록에 표시됩니다.' : '기록된 방제 이력이 없습니다.' }}
           </div>
           <div v-else-if="filteredTreatments.length === 0" class="empty-msg">
-            {{ histYear }}년 방제 이력이 없습니다.
+            {{ histUnmatchedOnly ? '미연결 이력이 없습니다.' : `${histYear}년 방제 이력이 없습니다.` }}
           </div>
           <ul v-else class="list clean">
             <template v-for="(t, i) in filteredTreatments" :key="t.id">
@@ -751,6 +800,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                     <span v-if="t.category" class="cat-badge" :class="categoryClass(t.category)">{{ t.category }}</span>
                     <span v-if="t.moa" class="moa-badge" :style="{ background: moaColor(t.moa) }">{{ t.moa }}</span>
                     <span v-if="t.matchSource === 'auto'" class="match-badge match-ok">자동</span>
+                    <span v-if="t.matchSource === 'inventory'" class="match-badge match-ok">재고</span>
                   </div>
                   <p v-if="t.targetPest || t.memo" class="item-meta">
                     <span v-if="t.targetPest">{{ t.targetPest }}</span>
@@ -776,7 +826,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                     v-model="histLinkQuery"
                     type="text"
                     class="link-search-input"
-                    placeholder="농약명 검색 (공공데이터)"
+                    placeholder="농약명 검색 (공공데이터 + 농약재고)"
                     @input="searchHistLinkCandidates(histLinkQuery)"
                   />
                   <div v-if="histLinkResults.length" class="link-results">
@@ -789,11 +839,12 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                       <span class="link-result-brand">{{ r.brandName }}</span>
                       <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(normCat(r.pesticideType))">{{ normCat(r.pesticideType) }}</span>
                       <span v-if="r.modeOfAction && r.modeOfAction !== '-'" class="moa-badge" :style="{ background: moaColor(r.modeOfAction) }">{{ r.modeOfAction }}</span>
+                      <span v-if="r.matchSourceType === 'inventory'" class="match-badge match-ok">재고</span>
                       <span class="link-result-pest">{{ r.targetPest }}</span>
                     </div>
                   </div>
                   <p v-else-if="histLinkQuery.trim().length > 1" class="muted" style="font-size:0.82rem; padding:0.4rem 0.65rem;">
-                    검색 결과 없음 — 공공데이터 농약정보를 먼저 가져와야 합니다.
+                    검색 결과 없음 — 공공데이터에도 농약재고에도 없습니다. 먼저 정보를 가져오거나 재고에 등록해주세요.
                   </p>
                 </div>
                 <div :id="`hist-form-slot-${t.id}`" class="mobile-form-slot"></div>
@@ -846,7 +897,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
             <label>농약
               <input
                 v-model="fBrand"
-                placeholder="상표명 입력 (공공데이터 검색)"
+                placeholder="상표명 입력 (공공데이터 + 농약재고 검색)"
                 autocomplete="off"
                 @input="onFormBrandInput($event.target.value)"
               />
@@ -861,6 +912,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                 <span class="inv-api-brand">{{ r.brandName }}</span>
                 <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(normCat(r.pesticideType))">{{ normCat(r.pesticideType) }}</span>
                 <span v-if="r.modeOfAction && r.modeOfAction !== '-'" class="moa-badge" :style="{ background: moaColor(r.modeOfAction) }">{{ r.modeOfAction }}</span>
+                <span v-if="r.matchSourceType === 'inventory'" class="match-badge match-ok">재고</span>
                 <span class="inv-api-pest">{{ r.targetPest }}</span>
               </div>
             </div>
@@ -1401,27 +1453,6 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 .view-header { margin-bottom: 1.25rem; }
 .subtitle { margin: 0.2rem 0 0; font-size: 0.8rem; color: var(--muted); }
 
-/* ── Tabs ── */
-.tab-bar {
-  display: flex;
-  gap: 0.25rem;
-  margin-bottom: 1.25rem;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 0;
-}
-.tab-btn {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
-  color: var(--muted);
-  cursor: pointer;
-  margin-bottom: -1px;
-  border-radius: 0;
-}
-.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
-.tab-btn:hover:not(.active) { color: var(--text); }
 
 /* ── Form ── */
 .hist-form-info { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; padding: 0.15rem 0; }
@@ -1431,7 +1462,8 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 /* ── 농약정보 연결 ── */
 .link-btn-active { background: var(--primary) !important; color: var(--primary-ink) !important; border-color: var(--primary) !important; }
 
-.hist-year-active {
+/* button.ghost(요소+클래스)보다 우선하도록 클래스 두 개를 겹쳐 특정도를 높인다 */
+.ghost.hist-year-active {
   background: var(--surface-strong);
   border-color: var(--primary);
   color: var(--primary);
@@ -1650,18 +1682,6 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
   flex-wrap: wrap;
 }
 .ap-list-title { font-size: 0.9rem; font-weight: 700; }
-.ap-unmatched-btn {
-  font-size: 0.78rem;
-  border-radius: 999px;
-  padding: 0.22rem 0.7rem;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.ap-unmatched-active {
-  background: #fef2f2;
-  color: #b91c1c;
-  border-color: #fca5a5;
-}
 .ap-src-filter {
   display: flex;
   border: 1px solid var(--line);

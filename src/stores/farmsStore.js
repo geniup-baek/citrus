@@ -117,13 +117,14 @@ export const useFarmsStore = defineStore('farms', () => {
     })
   }
 
-  async function createFarm({ name, logo = '' }) {
+  async function createFarm({ name, logo = '', pin = '' }) {
     const trimmed = name.trim()
     if (!trimmed) return null
     const id = crypto.randomUUID()
     await setDoc(doc(db, 'farms', id), {
       name: trimmed,
       logo,
+      pin: pin.trim(),
       order: farms.value.length,
       createdAt: new Date().toISOString(),
     })
@@ -138,6 +139,12 @@ export const useFarmsStore = defineStore('farms', () => {
 
   async function updateFarmLogo(id, logo) {
     await setDoc(doc(db, 'farms', id), { logo: logo || '' }, { merge: true })
+  }
+
+  // PIN은 선택 항목이며 실제 인증이 아니라 실수로 다른 농장에 들어가는 것을 막는
+  // 가벼운 안전장치다(이 앱은 별도 로그인 없이 모두가 같은 Firestore를 공유한다).
+  async function updateFarmPin(id, pin) {
+    await setDoc(doc(db, 'farms', id), { pin: pin.trim() }, { merge: true })
   }
 
   async function deleteFarm(id) {
@@ -170,6 +177,6 @@ export const useFarmsStore = defineStore('farms', () => {
 
   return {
     farms, loading, migrationError, activeFarm, isAdminMode, needsFarmCreate, needsFarmSelect,
-    init, createFarm, renameFarm, updateFarmLogo, deleteFarm, selectFarm, enterAdminMode, exitToSelector,
+    init, createFarm, renameFarm, updateFarmLogo, updateFarmPin, deleteFarm, selectFarm, enterAdminMode, exitToSelector,
   }
 })

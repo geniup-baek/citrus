@@ -19,7 +19,8 @@ service cloud.firestore {
       allow read, write: if true;
     }
     match /shared/recommendPrefs {
-      // 농장에 속하지 않는 시스템 공통 정책(예: 방제이력 재연결 시 덮어쓰기 여부).
+      // 구버전 문서. 방제이력 재연결/붙여넣기 일괄추가 방식은 다시 농장별 정책
+      // (farms/{farmId}/data/recommendSettings)으로 옮겨져 더 이상 쓰지 않는다.
       allow read, write: if true;
     }
     match /farms/{farmId} {

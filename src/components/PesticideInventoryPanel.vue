@@ -40,6 +40,7 @@ const editingId    = ref('')
 const expandedId   = ref('')
 const sortBy       = ref('name')
 const sortDir      = ref('asc')
+const unmatchedOnly = ref(false)
 const EXPIRY_SOON  = 30
 
 const form = reactive({
@@ -180,6 +181,7 @@ function formatTxnDate(dateStr) {
 const displayedItems = computed(() => {
   const list = store.state.inventory
     .filter(i => i.category === CATEGORY)
+    .filter(i => !unmatchedOnly.value || !i.actionGroup)
     .sort((a, b) => {
       const va = sortBy.value === 'expiry' ? earliestExpiry(a) : a.name
       const vb = sortBy.value === 'expiry' ? earliestExpiry(b) : b.name
@@ -191,8 +193,9 @@ const displayedItems = computed(() => {
 const summary = computed(() => {
   const items = store.state.inventory.filter(i => i.category === CATEGORY)
   return {
-    total:    items.length,
-    expiring: items.reduce((s, i) => s + expiringLotCount(i), 0),
+    total:      items.length,
+    expiring:   items.reduce((s, i) => s + expiringLotCount(i), 0),
+    unmatched:  items.filter(i => !i.actionGroup).length,
   }
 })
 
@@ -527,6 +530,12 @@ function printReport() {
         <div class="pip-summary">
           <span class="summary-chip">{{ t('inventory.summaryTotal', { count: summary.total }) }}</span>
           <span v-if="summary.expiring" class="summary-chip chip-danger">{{ t('inventory.summaryExpiring', { count: summary.expiring }) }}</span>
+          <button
+            class="ghost ap-unmatched-btn"
+            :class="{ 'ap-unmatched-active': unmatchedOnly }"
+            type="button"
+            @click="unmatchedOnly = !unmatchedOnly"
+          >미연결만 ({{ summary.unmatched }})</button>
         </div>
         <div class="pip-actions">
           <select v-model="sortBy" class="compact-select">
@@ -544,7 +553,7 @@ function printReport() {
       <!-- 품목 목록 -->
       <div id="pip-form-top" class="mobile-form-slot"></div>
       <div v-if="displayedItems.length === 0" class="empty-msg">
-        {{ showForm ? '저장하면 목록에 표시됩니다.' : '농약 재고 품목이 없습니다. 추가 버튼으로 등록하세요.' }}
+        {{ unmatchedOnly ? '미연결 품목이 없습니다.' : (showForm ? '저장하면 목록에 표시됩니다.' : '농약 재고 품목이 없습니다. 추가 버튼으로 등록하세요.') }}
       </div>
       <ul v-else class="list clean">
         <li v-for="item in displayedItems" :key="item.id" class="list-item card-like">
