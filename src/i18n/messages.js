@@ -301,7 +301,7 @@ export const messages = {
     equipmentHint: '시설·장비에서 구분이 장비일 때 선택할 수 있는 종류입니다.',
     seedlingHint: '묘목 등록 시 선택할 수 있는 품종입니다.',
     rootstockHint: '묘목 대목으로 선택할 수 있는 종류입니다.',
-    pesticideHint: '표시명과 약어를 함께 등록합니다. OpenAPI 농약정보의 약어(살균, 살충 등)를 표시명(살균제, 살충제 등)으로 변환할 때 사용됩니다.',
+    pesticideHint: '표시명과 약어를 함께 등록합니다. 공공데이터 농약정보의 약어(살균, 살충 등)를 표시명(살균제, 살충제 등)으로 변환할 때 사용됩니다.',
     taskCategoryHint: '작업·반복 규칙에서 분류로 사용됩니다.',
     addPlaceholder: '새 항목 입력',
     add: '추가',

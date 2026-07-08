@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { watch } from 'vue'
 import DashboardView from '../views/DashboardView.vue'
 import FacilitiesView from '../views/FacilitiesView.vue'
 import AncillaryView from '../views/AncillaryView.vue'
@@ -34,11 +35,19 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const farmsStore = useFarmsStore()
-  // 농장 목록이 아직 로딩 중이면(모드 미확정) App.vue의 게이트 화면이 어차피 RouterView를
-  // 가리므로 통과시킨다. 모드가 확정된 뒤에만 관리자 모드 경로 제한을 적용한다.
-  if (farmsStore.loading) return true
+  // 농장/모드 판정이 끝날 때까지 기다린 뒤 결정한다. loading 중이라고 그냥 통과시키면,
+  // 예를 들어 방제이력 페이지를 보다가 "농장 전환 → 시스템 관리"로 들어와 새로고침되는
+  // 경우처럼 로딩이 끝나 관리자 모드로 확정된 뒤에도 다시 검사할 새 내비게이션이 없어
+  // 원래 있던(허용 안 되는) 경로가 그대로 남아있게 된다.
+  if (farmsStore.loading) {
+    await new Promise((resolve) => {
+      const unwatch = watch(() => farmsStore.loading, (loading) => {
+        if (!loading) { unwatch(); resolve() }
+      })
+    })
+  }
   if (farmsStore.isAdminMode && !ADMIN_MODE_ALLOWED_PATHS.has(to.path)) {
     return '/pest'
   }

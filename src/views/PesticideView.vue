@@ -451,16 +451,6 @@ onMounted(() => {
 }
 .toggle-arrow { font-size: 0.7rem; color: var(--muted); }
 
-.moa-badge {
-  display: inline-block;
-  color: #fff;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
-  letter-spacing: 0.02em;
-}
-
 .detail-panel {
   border-top: 1px solid var(--line);
   padding: 0.9rem 1rem;

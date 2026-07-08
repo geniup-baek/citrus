@@ -150,11 +150,13 @@ export const useFarmsStore = defineStore('farms', () => {
   function selectFarm(id) {
     localStorage.setItem(LS_ACTIVE, id)
     localStorage.setItem(LS_MODE, 'farm')
+    window.location.hash = '#/' // 선택한 농장의 대시보드로 진입
     window.location.reload()
   }
 
   function enterAdminMode() {
     localStorage.setItem(LS_MODE, 'admin')
+    window.location.hash = '#/settings'
     window.location.reload()
   }
 

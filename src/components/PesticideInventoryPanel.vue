@@ -5,7 +5,7 @@ import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { confirm } from '../composables/useConfirm'
-import { searchFromFullCache } from '../services/pesticide.js'
+import { searchFromFullCache, findBestMatchInCache } from '../services/pesticide.js'
 import { moaColor } from '../services/recommend.js'
 import { usePesticideTypes } from '../composables/usePesticideTypes.js'
 import { useIsMobile } from '../composables/useIsMobile.js'
@@ -35,6 +35,7 @@ function scrollToItem(slotId) {
 }
 
 const showForm     = ref(false)
+const formMode     = ref('single') // 'single' | 'bulk'
 const editingId    = ref('')
 const expandedId   = ref('')
 const sortBy       = ref('name')
@@ -203,7 +204,10 @@ function clearForm() {
     actionGroup: '', productName: '', notes: '',
   })
   editingId.value      = ''
+  formMode.value       = 'single'
   invMatchResults.value = []
+  bulkPasteText.value    = ''
+  bulkImportMessage.value = ''
 }
 
 function openAdd() { clearForm(); showForm.value = true }
@@ -226,6 +230,7 @@ function editItem(item) {
     notes:         item.notes        || '',
   })
   editingId.value  = item.id
+  formMode.value   = 'single'
   showForm.value   = true
   scrollToItem(`pip-form-slot-${item.id}`)
 }
@@ -250,6 +255,86 @@ async function saveItem() {
     notes:         form.notes,
   })
   clearForm()
+}
+
+// ── 붙여넣기 일괄추가 (상품명 / 용량 / 유효기간 / 수량 / 비고) ───────────────────
+const bulkPasteText = ref('')
+const bulkImporting = ref(false)
+const bulkImportMessage = ref('')
+
+// 유효기간은 YYYY-MM-DD, YYYY/MM/DD, YYYYMMDD 세 형식을 모두 허용한다.
+function parseBulkInventoryDate(raw) {
+  const s = raw.trim()
+  const compact = s.match(/^(\d{4})(\d{2})(\d{2})$/)
+  if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`
+  const separated = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/)
+  return separated ? `${separated[1]}-${separated[2]}-${separated[3]}` : ''
+}
+
+function parseBulkInventoryText(text) {
+  const rows = []
+  for (const line of text.split('\n')) {
+    const cols = line.replace(/\r$/, '').split('\t')
+    const name = (cols[0] || '').trim()
+    const volume = (cols[1] || '').trim()
+    const expiryDate = parseBulkInventoryDate(cols[2] || '')
+    const amount = Number((cols[3] || '').trim())
+    const note = (cols[4] || '').trim()
+    if (!name || !volume || !amount || amount <= 0) continue
+    rows.push({ name, volume, expiryDate, amount, note })
+  }
+  return rows
+}
+
+const bulkParsedRows = computed(() => parseBulkInventoryText(bulkPasteText.value))
+
+// 같은 상품명이 이미 목록에 있으면 그 품목에 새 로트(입고)만 추가하고,
+// 없으면 OpenAPI 캐시로 자동 연결을 시도하며 새 품목을 만든 뒤 입고를 기록한다.
+async function importBulkInventory() {
+  const rows = bulkParsedRows.value
+  if (!rows.length) return
+  bulkImporting.value = true
+  bulkImportMessage.value = ''
+  let addedItems = 0
+  try {
+    if (recSettingsStore.settings.bulkImportMode === 'replace') {
+      const existingIds = store.state.inventory.filter((i) => i.category === CATEGORY).map((i) => i.id)
+      for (const id of existingIds) {
+        await store.removeInventoryItem(id)
+      }
+    }
+    for (const row of rows) {
+      const existing = store.state.inventory.find((i) => i.category === CATEGORY && i.name === row.name)
+      let itemId = existing?.id
+      if (!itemId) {
+        itemId = crypto.randomUUID()
+        const match = findBestMatchInCache(row.name)
+        const mappedType = match ? resolveType(match.pesticideType) : ''
+        await store.upsertInventoryItem({
+          id: itemId,
+          name: row.name,
+          category: CATEGORY,
+          pesticideType: (mappedType && pesticideTypes.value.includes(mappedType)) ? mappedType : (pesticideTypes.value[0] ?? '살충제'),
+          actionGroup: (match?.modeOfAction && match.modeOfAction !== '-') ? match.modeOfAction : '',
+          productName: match?.name || '',
+          notes: row.note,
+        })
+        addedItems++
+      } else if (row.note && !existing.notes?.includes(row.note)) {
+        // 이미 있는 품목이면 비고와 같은 문구가 메모에 없을 때만 이어붙인다.
+        existing.notes = existing.notes ? `${existing.notes}\n${row.note}` : row.note
+        await store.upsertInventoryItem({ id: itemId, notes: existing.notes })
+      }
+      await store.addInventoryTxn(itemId, {
+        type: '입고', volume: row.volume, expiryDate: row.expiryDate, amount: row.amount, note: '',
+      })
+    }
+    const prefix = recSettingsStore.settings.bulkImportMode === 'replace' ? '전체 새로 작성됨: ' : ''
+    bulkImportMessage.value = `${prefix}${rows.length}건 입고 처리됨 (신규 품목 ${addedItems}개)`
+    bulkPasteText.value = ''
+  } finally {
+    bulkImporting.value = false
+  }
 }
 
 async function deleteItem(item) {
@@ -508,7 +593,7 @@ function printReport() {
               v-model="linkQuery"
               type="text"
               class="link-search-input"
-              placeholder="농약명 검색 (OpenAPI 데이터)"
+              placeholder="농약명 검색 (공공데이터)"
               @input="searchLinkCandidates(linkQuery)"
             />
             <div v-if="linkResults.length" class="link-results">
@@ -525,7 +610,7 @@ function printReport() {
               </div>
             </div>
             <p v-else-if="linkQuery.trim().length > 1" class="muted" style="font-size:0.82rem; padding:0.4rem 0;">
-              검색 결과 없음 — OpenAPI 농약정보를 먼저 가져와야 합니다.
+              검색 결과 없음 — 공공데이터 농약정보를 먼저 가져와야 합니다.
             </p>
           </div>
 
@@ -599,6 +684,40 @@ function printReport() {
     <!-- ── 폼 열 ──────────────────────────────────────────────── -->
     <Teleport v-if="showForm" :to="formTarget" :disabled="!isMobile">
     <article v-if="showForm" class="card">
+      <div v-if="!editingId" class="inline-filters" style="margin-bottom: 1rem;">
+        <button :class="{ ghost: formMode !== 'single' }" type="button" @click="formMode = 'single'">품목 추가</button>
+        <button :class="{ ghost: formMode !== 'bulk' }" type="button" @click="formMode = 'bulk'">붙여넣기 일괄추가</button>
+      </div>
+
+      <template v-if="formMode === 'bulk' && !editingId">
+        <h2>붙여넣기로 일괄 추가</h2>
+        <p class="ap-hint">
+          <code>상품명</code>, <code>용량</code>, <code>유효기간</code>, <code>수량</code>, <code>비고</code> 열을 탭으로 구분해 붙여넣으세요 (스프레드시트에서 복사). 유효기간은 <code>YYYY-MM-DD</code>, <code>YYYY/MM/DD</code>, <code>YYYYMMDD</code> 모두 가능합니다.<br>
+          같은 상품명이 이미 있으면 새 로트(입고)만 추가되고, 없으면 공공데이터 정보를 자동 연결해 새 품목을 만듭니다.
+          비고는 품목 메모에 들어가며, 이미 있는 품목이면 같은 문구가 메모에 없을 때만 이어붙입니다.<br>
+          현재 설정: <strong>{{ recSettingsStore.settings.bulkImportMode === 'replace' ? '전체 새로 작성' : '기존 목록에 추가' }}</strong>
+          <span v-if="recSettingsStore.settings.bulkImportMode === 'replace'" class="muted">(붙여넣는 내용으로 농약재고 전체를 대체합니다 — 설정페이지에서 변경 가능)</span>
+          <span v-else class="muted">(설정페이지에서 변경 가능)</span>
+        </p>
+        <textarea
+          v-model="bulkPasteText"
+          class="ap-textarea"
+          rows="8"
+          placeholder="근사미	300ml	2026-10-31	1	"
+        ></textarea>
+        <div class="ap-input-footer">
+          <span v-if="bulkParsedRows.length > 0" class="ap-parse-count">{{ bulkParsedRows.length }}개 항목 인식됨</span>
+          <span v-else class="ap-parse-count muted">입력 없음</span>
+        </div>
+        <div class="row-actions">
+          <button type="button" :disabled="bulkImporting || !bulkParsedRows.length" @click="importBulkInventory">
+            {{ bulkImporting ? '처리 중...' : (recSettingsStore.settings.bulkImportMode === 'replace' ? '전체 새로 작성' : '일괄 추가') }}
+          </button>
+        </div>
+        <p v-if="bulkImportMessage" class="muted" style="font-size:0.82rem; margin-top:0.5rem;">{{ bulkImportMessage }}</p>
+      </template>
+
+      <template v-else>
       <h2>{{ editingId ? t('inventory.editItem') : t('inventory.addItem') }}</h2>
       <form class="stack-form" @submit.prevent="saveItem">
         <label>{{ t('pesticideInventory.name') }}
@@ -637,6 +756,7 @@ function printReport() {
         </div>
       </form>
       <p class="muted" style="font-size: 0.8rem;">{{ t('inventory.inOut') }}로 규격·유효기간별 재고를 등록·관리합니다.</p>
+      </template>
     </article>
     </Teleport>
   </div>
@@ -660,13 +780,6 @@ function printReport() {
 .inv-api-item:last-child { border-bottom: none; }
 .inv-api-item:hover { background: var(--surface-strong); }
 .inv-api-brand { font-weight: 600; }
-.cat-badge {
-  font-size: 0.68rem; padding: 0.12rem 0.45rem; border-radius: 999px;
-  font-weight: 600; border: 1px solid; white-space: nowrap;
-}
-.cat-fungicide   { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
-.cat-insecticide { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
-.cat-miticide    { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
 .inv-api-pest { font-size: 0.76rem; color: var(--muted); margin-left: auto; }
 
 .empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; }
@@ -703,9 +816,5 @@ function printReport() {
 .link-result-item:last-child { border-bottom: none; }
 .link-result-item:hover { background: var(--surface-strong); }
 .link-result-brand { font-weight: 600; }
-.moa-badge {
-  display: inline-block; color: #fff; font-size: 0.7rem; font-weight: 700;
-  padding: 0.15rem 0.45rem; border-radius: 4px; letter-spacing: 0.02em; white-space: nowrap;
-}
 .link-result-pest { font-size: 0.76rem; color: var(--muted); margin-left: auto; }
 </style>

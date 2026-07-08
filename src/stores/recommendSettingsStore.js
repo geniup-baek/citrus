@@ -24,6 +24,7 @@ const FARM_POLICY_DEFAULTS = {
 // 시스템 공통 "정책" — 특정 농장에 속하지 않고 모든 농장에 동일하게 적용되며, Firestore로 동기화된다.
 const COMMON_SYNCED_DEFAULTS = {
   overwriteLinkedTreatments: false, // 방제이력 전체 재연결 시 이미 연결된 이력도 다시 연결할지 여부
+  bulkImportMode: 'append', // 'append' | 'replace' — 붙여넣기 일괄추가 시 기존 목록에 더할지, 전체를 새로 작성할지
 }
 
 // 순수 "동작" 설정 — 기기/앱 전역 동작이라 농장과 무관하며, 기기 로컬에만 저장한다(동기화 없음).
