@@ -30,13 +30,17 @@ import {
 } from '../data/defaults'
 import { db, firebaseEnabled } from '../services/firebase'
 
-const STORAGE_KEY = 'citrus-farm-shared-v1'
+const APP_SETTINGS_LS_KEY = 'citrus:app-settings' // 공통(농장 무관) 분류·항목 설정
 
-function createDefaultData() {
+function farmStorageKey(farmId) {
+  return `citrus-farm-${farmId}-v1`
+}
+
+// ── 농장별 데이터 (facilities…notifications) ─────────────────────────────────
+function createDefaultFarmData() {
   return {
     facilities: [...defaultFacilities],
     ancillaries: [...defaultAncillaries],
-    appSettings: { ...defaultAppSettings },
     seedlings: [...defaultSeedlings],
     tasks: [...defaultTasks],
     scheduleRules: [...defaultScheduleRules],
@@ -49,38 +53,12 @@ function createDefaultData() {
   }
 }
 
-function normalizeData(data) {
-  const defaults = createDefaultData()
+function normalizeFarmData(data) {
+  const defaults = createDefaultFarmData()
 
   return {
     facilities: Array.isArray(data?.facilities) ? data.facilities : defaults.facilities,
     ancillaries: Array.isArray(data?.ancillaries) ? data.ancillaries : defaults.ancillaries,
-    appSettings: (() => {
-      const stored = data?.appSettings && typeof data.appSettings === 'object' ? data.appSettings : {}
-      const merged = { ...defaults.appSettings, ...stored }
-      const storedCats = Array.isArray(stored.taskCategories) ? stored.taskCategories : []
-      merged.taskCategories = [...new Set([...defaults.appSettings.taskCategories, ...storedCats])]
-      const storedRootstocks = Array.isArray(stored.rootstockTypes) ? stored.rootstockTypes : []
-      merged.rootstockTypes = [...new Set([...defaults.appSettings.rootstockTypes, ...storedRootstocks])]
-      const storedEquipment = Array.isArray(stored.equipmentTypes) ? stored.equipmentTypes : []
-      merged.equipmentTypes = [...new Set([...defaults.appSettings.equipmentTypes, ...storedEquipment])]
-      // pesticideTypes: migrate old string[] → {name, abbr}[] and merge with defaults
-      const defPesti = defaults.appSettings.pesticideTypes
-      const normPesti = v => typeof v === 'string' ? { name: v, abbr: '' } : v
-      const storedPestiRaw = Array.isArray(stored.pesticideTypes) ? stored.pesticideTypes : []
-      const storedPesti = storedPestiRaw.map(normPesti)
-      if (storedPesti.length === 0) {
-        merged.pesticideTypes = defPesti
-      } else {
-        const defAbbrMap = new Map(defPesti.map(p => [p.name, p.abbr]))
-        const storedNames = new Set(storedPesti.map(p => p.name))
-        merged.pesticideTypes = [
-          ...storedPesti.map(p => ({ ...p, abbr: p.abbr || defAbbrMap.get(p.name) || '' })),
-          ...defPesti.filter(p => !storedNames.has(p.name)),
-        ]
-      }
-      return merged
-    })(),
     seedlings: Array.isArray(data?.seedlings) ? data.seedlings : defaults.seedlings,
     tasks: Array.isArray(data?.tasks) ? data.tasks : defaults.tasks,
     scheduleRules: Array.isArray(data?.scheduleRules)
@@ -99,6 +77,35 @@ function normalizeData(data) {
         : defaults.notifications,
     updatedAt: data?.updatedAt || defaults.updatedAt,
   }
+}
+
+// ── 공통(농장 무관) 분류·항목 설정 ─────────────────────────────────────────────
+function normalizeAppSettings(data) {
+  const defaults = { ...defaultAppSettings }
+  const stored = data && typeof data === 'object' ? data : {}
+  const merged = { ...defaults, ...stored }
+  const storedCats = Array.isArray(stored.taskCategories) ? stored.taskCategories : []
+  merged.taskCategories = [...new Set([...defaults.taskCategories, ...storedCats])]
+  const storedRootstocks = Array.isArray(stored.rootstockTypes) ? stored.rootstockTypes : []
+  merged.rootstockTypes = [...new Set([...defaults.rootstockTypes, ...storedRootstocks])]
+  const storedEquipment = Array.isArray(stored.equipmentTypes) ? stored.equipmentTypes : []
+  merged.equipmentTypes = [...new Set([...defaults.equipmentTypes, ...storedEquipment])]
+  // pesticideTypes: migrate old string[] → {name, abbr}[] and merge with defaults
+  const defPesti = defaults.pesticideTypes
+  const normPesti = v => typeof v === 'string' ? { name: v, abbr: '' } : v
+  const storedPestiRaw = Array.isArray(stored.pesticideTypes) ? stored.pesticideTypes : []
+  const storedPesti = storedPestiRaw.map(normPesti)
+  if (storedPesti.length === 0) {
+    merged.pesticideTypes = defPesti
+  } else {
+    const defAbbrMap = new Map(defPesti.map(p => [p.name, p.abbr]))
+    const storedNames = new Set(storedPesti.map(p => p.name))
+    merged.pesticideTypes = [
+      ...storedPesti.map(p => ({ ...p, abbr: p.abbr || defAbbrMap.get(p.name) || '' })),
+      ...defPesti.filter(p => !storedNames.has(p.name)),
+    ]
+  }
+  return merged
 }
 
 function normalizeIssue(issue) {
@@ -207,7 +214,7 @@ function scoreSimilarity(base, sample) {
     new Set(
       String(text || '')
         .toLowerCase()
-        .split(/[^a-z0-9\uac00-\ud7a3]+/)
+        .split(/[^a-z0-9가-힣]+/)
         .filter((token) => token.length > 2),
     )
 
@@ -243,7 +250,7 @@ function createPhotoTokenSet(photos = []) {
 
     source
       .toLowerCase()
-      .split(/[^a-z0-9\uac00-\ud7a3]+/)
+      .split(/[^a-z0-9가-힣]+/)
       .filter((token) => token.length > 1)
       .forEach((token) => tokens.push(token))
   })
@@ -268,8 +275,10 @@ function scoreTokenSetSimilarity(sourceSet, targetSet) {
 
 export const useFarmStore = defineStore('farm', () => {
   const initialized = ref(false)
-  const state = ref(createDefaultData())
+  const state = ref({ ...createDefaultFarmData(), appSettings: { ...defaultAppSettings } })
   const unsubscriber = ref(null)
+  let appSettingsUnsub = null
+  let activeFarmId = null
 
   const today = computed(() => new Date())
   const weekStart = computed(() => startOfWeek(today.value, { weekStartsOn: 1 }))
@@ -308,20 +317,38 @@ export const useFarmStore = defineStore('farm', () => {
   )
 
   function persistLocal() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.value))
+    if (!activeFarmId) return
+    const { appSettings, ...farmData } = state.value
+    localStorage.setItem(farmStorageKey(activeFarmId), JSON.stringify(farmData))
+    localStorage.setItem(APP_SETTINGS_LS_KEY, JSON.stringify(appSettings))
   }
 
   let firestoreDebounceTimer = null
 
   function scheduleFirestoreWrite() {
-    if (!firebaseEnabled || !db) return
+    if (!firebaseEnabled || !db || !activeFarmId) return
     clearTimeout(firestoreDebounceTimer)
     firestoreDebounceTimer = setTimeout(async () => {
       try {
-        const ref = doc(db, 'shared', 'farmData')
-        await setDoc(ref, state.value, { merge: true })
+        const { appSettings, ...farmData } = state.value
+        const ref = doc(db, 'farms', activeFarmId, 'data', 'farmData')
+        await setDoc(ref, farmData, { merge: true })
       } catch (e) {
         console.warn('[farmStore] Firestore write failed, will retry on next change.', e)
+      }
+    }, 500)
+  }
+
+  let appSettingsDebounceTimer = null
+
+  function scheduleAppSettingsWrite() {
+    if (!firebaseEnabled || !db) return
+    clearTimeout(appSettingsDebounceTimer)
+    appSettingsDebounceTimer = setTimeout(async () => {
+      try {
+        await setDoc(doc(db, 'shared', 'appSettings'), state.value.appSettings, { merge: true })
+      } catch (e) {
+        console.warn('[farmStore] appSettings Firestore write failed, will retry on next change.', e)
       }
     }, 500)
   }
@@ -334,41 +361,49 @@ export const useFarmStore = defineStore('farm', () => {
   }
 
   function loadLocal() {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) {
-      state.value = createDefaultData()
-      persistLocal()
-      return
-    }
+    const raw = localStorage.getItem(farmStorageKey(activeFarmId))
+    const rawSettings = localStorage.getItem(APP_SETTINGS_LS_KEY)
 
-    try {
-      state.value = normalizeData(JSON.parse(raw))
-    } catch {
-      state.value = createDefaultData()
-      persistLocal()
+    let farmData = null
+    try { farmData = raw ? JSON.parse(raw) : null } catch { farmData = null }
+    let appSettings = null
+    try { appSettings = rawSettings ? JSON.parse(rawSettings) : null } catch { appSettings = null }
+
+    state.value = {
+      ...normalizeFarmData(farmData),
+      appSettings: normalizeAppSettings(appSettings),
     }
+    if (!raw) persistLocal()
   }
 
-  async function init() {
+  // farmId: 활성 농장 id. farmsStore에서 결정되어 App.vue가 넘겨준다.
+  async function init(farmId) {
     if (initialized.value) {
       return
     }
+    activeFarmId = farmId
 
     if (firebaseEnabled && db) {
-      const ref = doc(db, 'shared', 'farmData')
+      const appSettingsRef = doc(db, 'shared', 'appSettings')
+      appSettingsUnsub = onSnapshot(appSettingsRef, (snapshot) => {
+        state.value.appSettings = normalizeAppSettings(snapshot.exists() ? snapshot.data() : null)
+      })
+
+      const ref = doc(db, 'farms', farmId, 'data', 'farmData')
 
       unsubscriber.value = onSnapshot(ref, async (snapshot) => {
         if (snapshot.exists()) {
-          state.value = normalizeData(snapshot.data())
-          state.value.scheduleRules = state.value.scheduleRules.map((rule) => normalizeRule(rule))
-          state.value.scheduleSettings = normalizeScheduleSettings(state.value.scheduleSettings)
-          state.value.issues = state.value.issues.map((issue) => normalizeIssue(issue))
-          state.value.inventory = state.value.inventory.map((item) => normalizeInventoryItem(item))
+          const normalized = normalizeFarmData(snapshot.data())
+          normalized.scheduleRules = normalized.scheduleRules.map((rule) => normalizeRule(rule))
+          normalized.scheduleSettings = normalizeScheduleSettings(normalized.scheduleSettings)
+          normalized.issues = normalized.issues.map((issue) => normalizeIssue(issue))
+          normalized.inventory = normalized.inventory.map((item) => normalizeInventoryItem(item))
+          state.value = { ...state.value, ...normalized }
           persistLocal()
           knownPhotoIds = currentReferencedPhotoIds()
           await migrateInlinePhotos()
         } else {
-          state.value = createDefaultData()
+          state.value = { ...state.value, ...createDefaultFarmData() }
           await persistAll()
         }
       })
@@ -394,9 +429,13 @@ export const useFarmStore = defineStore('farm', () => {
       unsubscriber.value()
       unsubscriber.value = null
     }
+    if (typeof appSettingsUnsub === 'function') {
+      appSettingsUnsub()
+      appSettingsUnsub = null
+    }
   }
 
-  // ── 사진 분산 저장 (Firestore 'photos' 컬렉션) ───────────────────────────────
+  // ── 사진 분산 저장 (Firestore 'photos' 컬렉션, 농장 무관 전역) ────────────────
   // 사진(base64)을 farmData 문서가 아닌 사진별 개별 문서에 저장해 문서 1 MiB 한도를 피한다.
   const photoCache = ref({}) // id -> dataUrl (메모리 캐시)
   const photoInflight = new Set()
@@ -532,6 +571,8 @@ export const useFarmStore = defineStore('farm', () => {
 
   // persistAll 직후 호출: 더 이상 참조되지 않는 사진 문서를 정리한다.
   // 폼 취소는 state를 바꾸지 않으므로 자연히 삭제 대상에서 제외된다.
+  // 사진은 전역 컬렉션이지만, 다른 농장이 참조하는 사진 id는 이 농장의 knownPhotoIds에
+  // 애초에 포함되지 않으므로(활성 농장 데이터만 추적) 다른 농장 사진을 지우지 않는다.
   function gcOrphanPhotos() {
     if (!firebaseEnabled || !db) return
     const current = currentReferencedPhotoIds()
@@ -987,7 +1028,8 @@ export const useFarmStore = defineStore('farm', () => {
 
   async function updateAppSettings(payload) {
     state.value.appSettings = { ...state.value.appSettings, ...payload }
-    await persistAll()
+    try { localStorage.setItem(APP_SETTINGS_LS_KEY, JSON.stringify(state.value.appSettings)) } catch {}
+    scheduleAppSettingsWrite()
   }
 
   async function reorderFacilities(newList) {
@@ -1184,12 +1226,16 @@ export const useFarmStore = defineStore('farm', () => {
       }
     })
 
-    const normalized = normalizeData(merged)
+    const { appSettings: mergedAppSettings, ...farmPart } = merged
+    const normalized = normalizeFarmData(farmPart)
     normalized.scheduleRules = normalized.scheduleRules.map((rule) => normalizeRule(rule))
     normalized.scheduleSettings = normalizeScheduleSettings(normalized.scheduleSettings)
     normalized.issues = normalized.issues.map((issue) => normalizeIssue(issue))
     normalized.inventory = normalized.inventory.map((item) => normalizeInventoryItem(item))
-    state.value = normalized
+    state.value = { ...normalized, appSettings: normalizeAppSettings(mergedAppSettings) }
+
+    try { localStorage.setItem(APP_SETTINGS_LS_KEY, JSON.stringify(state.value.appSettings)) } catch {}
+    scheduleAppSettingsWrite()
 
     // 신버전(v3) 백업: 사진 본문(base64) 복원
     const photosMap = payload.data?.photos

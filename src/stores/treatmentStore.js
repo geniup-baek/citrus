@@ -6,7 +6,9 @@ import {
   addDoc, deleteDoc, doc, updateDoc, Timestamp,
 } from 'firebase/firestore'
 
-const LS_KEY = 'citrus:treatments'
+function lsKey(farmId) {
+  return `citrus:treatments:${farmId}`
+}
 
 function sortDesc(arr) {
   return [...arr].sort((a, b) => {
@@ -15,21 +17,28 @@ function sortDesc(arr) {
   })
 }
 
-function saveLS(arr) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(arr)) } catch {}
-}
-
 export const useTreatmentStore = defineStore('treatment', () => {
   const treatments = ref([])
   const ready = ref(false)
   const initialized = ref(false)
+  let activeFarmId = null
 
-  function init() {
+  function saveLS(arr) {
+    if (!activeFarmId) return
+    try { localStorage.setItem(lsKey(activeFarmId), JSON.stringify(arr)) } catch {}
+  }
+
+  function collectionRef() {
+    return collection(db, 'farms', activeFarmId, 'treatments')
+  }
+
+  function init(farmId) {
     if (initialized.value) return
     initialized.value = true
+    activeFarmId = farmId
 
     if (firebaseEnabled && db) {
-      const q = query(collection(db, 'treatments'), orderBy('date', 'desc'))
+      const q = query(collectionRef(), orderBy('date', 'desc'))
       onSnapshot(q, (snap) => {
         treatments.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
         saveLS(treatments.value)
@@ -37,7 +46,7 @@ export const useTreatmentStore = defineStore('treatment', () => {
       })
     } else {
       try {
-        const raw = localStorage.getItem(LS_KEY)
+        const raw = localStorage.getItem(lsKey(activeFarmId))
         if (raw) treatments.value = sortDesc(JSON.parse(raw))
       } catch {}
       ready.value = true
@@ -46,7 +55,7 @@ export const useTreatmentStore = defineStore('treatment', () => {
 
   async function addTreatment(record) {
     if (firebaseEnabled && db) {
-      await addDoc(collection(db, 'treatments'), {
+      await addDoc(collectionRef(), {
         ...record,
         createdAt: Timestamp.now().toDate().toISOString(),
       })
@@ -63,7 +72,7 @@ export const useTreatmentStore = defineStore('treatment', () => {
 
   async function updateTreatment(id, record) {
     if (firebaseEnabled && db) {
-      await updateDoc(doc(db, 'treatments', id), record)
+      await updateDoc(doc(db, 'farms', activeFarmId, 'treatments', id), record)
     } else {
       treatments.value = sortDesc(
         treatments.value.map(t => t.id === id ? { ...t, ...record } : t),
@@ -75,11 +84,11 @@ export const useTreatmentStore = defineStore('treatment', () => {
   async function replaceAllTreatments(records) {
     if (firebaseEnabled && db) {
       for (const t of treatments.value) {
-        await deleteDoc(doc(db, 'treatments', t.id))
+        await deleteDoc(doc(db, 'farms', activeFarmId, 'treatments', t.id))
       }
       for (const r of records) {
         const data = Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'id'))
-        await addDoc(collection(db, 'treatments'), data)
+        await addDoc(collectionRef(), data)
       }
     } else {
       treatments.value = sortDesc(
@@ -91,7 +100,7 @@ export const useTreatmentStore = defineStore('treatment', () => {
 
   async function deleteTreatment(id) {
     if (firebaseEnabled && db) {
-      await deleteDoc(doc(db, 'treatments', id))
+      await deleteDoc(doc(db, 'farms', activeFarmId, 'treatments', id))
     } else {
       treatments.value = treatments.value.filter(t => t.id !== id)
       saveLS(treatments.value)

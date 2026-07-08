@@ -5,10 +5,15 @@ import { loadCache } from '../services/cache.js'
 import { db, firebaseEnabled } from '../services/firebase.js'
 import { getToxicityFromCache, getFishToxicFromCache } from '../services/pesticide.js'
 
-const LS_PURCHASE = 'citrus:ap:purchase-input'
-const LS_LIST     = 'citrus:ap:list'
-const LS_MATCHES  = 'citrus:ap:manual-matches'
 const FULL_KEY    = 'pesticide:all'
+
+function lsKeys(farmId) {
+  return {
+    purchase: `citrus:ap:${farmId}:purchase-input`,
+    list:     `citrus:ap:${farmId}:list`,
+    matches:  `citrus:ap:${farmId}:manual-matches`,
+  }
+}
 
 // "겔럭시(유)-200ml/올스타/오쏘도" 형식에서 개별 항목 파싱
 function parseSegment(seg) {
@@ -85,22 +90,25 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
   const availableList  = ref([])
   const manualMatches  = ref({})  // normName(brandName) → enrichment
   const initialized    = ref(false)
+  let activeFarmId = null
 
   function persistLocal() {
+    if (!activeFarmId) return
     try {
-      localStorage.setItem(LS_PURCHASE, purchaseInput.value)
-      localStorage.setItem(LS_LIST, JSON.stringify(availableList.value))
-      localStorage.setItem(LS_MATCHES, JSON.stringify(manualMatches.value))
+      const keys = lsKeys(activeFarmId)
+      localStorage.setItem(keys.purchase, purchaseInput.value)
+      localStorage.setItem(keys.list, JSON.stringify(availableList.value))
+      localStorage.setItem(keys.matches, JSON.stringify(manualMatches.value))
     } catch {}
   }
 
   let firestoreDebounceTimer = null
   function scheduleFirestoreWrite() {
-    if (!firebaseEnabled || !db) return
+    if (!firebaseEnabled || !db || !activeFarmId) return
     clearTimeout(firestoreDebounceTimer)
     firestoreDebounceTimer = setTimeout(async () => {
       try {
-        const ref = doc(db, 'shared', 'availablePesticide')
+        const ref = doc(db, 'farms', activeFarmId, 'data', 'availablePesticide')
         await setDoc(ref, {
           purchaseInput: purchaseInput.value,
           availableList: availableList.value,
@@ -119,20 +127,22 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
 
   function loadLocal() {
     try {
-      purchaseInput.value = localStorage.getItem(LS_PURCHASE) ?? ''
-      const savedList = localStorage.getItem(LS_LIST)
+      const keys = lsKeys(activeFarmId)
+      purchaseInput.value = localStorage.getItem(keys.purchase) ?? ''
+      const savedList = localStorage.getItem(keys.list)
       if (savedList) availableList.value = JSON.parse(savedList)
-      const savedMM = localStorage.getItem(LS_MATCHES)
+      const savedMM = localStorage.getItem(keys.matches)
       if (savedMM) manualMatches.value = JSON.parse(savedMM)
     } catch {}
   }
 
-  function init() {
+  function init(farmId) {
     if (initialized.value) return
     initialized.value = true
+    activeFarmId = farmId
 
     if (firebaseEnabled && db) {
-      const ref = doc(db, 'shared', 'availablePesticide')
+      const ref = doc(db, 'farms', activeFarmId, 'data', 'availablePesticide')
       onSnapshot(ref, (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data()

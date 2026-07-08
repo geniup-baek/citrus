@@ -238,7 +238,7 @@ export function findBestMatchInCache(brandName) {
 }
 
 // 전건 캐시에서 클라이언트 필터링
-export function searchFromFullCache({ pestName = '', targetPest = '', pesticideType = '', page = 1, pageSize = 20 } = {}) {
+export function searchFromFullCache({ pestName = '', targetPest = '', pesticideType = '', page = 1, pageSize = 20, sortBy = '' } = {}) {
   const cached = loadCache(FULL_CACHE_KEY)
   if (!cached) return null
   let list = cached.data
@@ -256,6 +256,10 @@ export function searchFromFullCache({ pestName = '', targetPest = '', pesticideT
   }
   if (pesticideType) {
     list = list.filter(p => p.pesticideType === pesticideType)
+  }
+  if (sortBy === 'brandName' || sortBy === 'name') {
+    const key = sortBy
+    list = [...list].sort((a, b) => (a[key] || '').localeCompare(b[key] || '', 'ko'))
   }
   const start = (page - 1) * pageSize
   return { total: list.length, list: list.slice(start, start + pageSize), fetchedAt: cached.fetchedAt }
