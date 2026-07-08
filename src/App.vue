@@ -1,23 +1,40 @@
 <script setup>
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
+import FarmSelectView from './components/FarmSelectView.vue'
 import { useFarmStore } from './stores/farmStore'
 import { useLocaleStore } from './stores/localeStore'
 import { useTreatmentStore } from './stores/treatmentStore'
 import { useAvailablePesticideStore } from './stores/availablePesticideStore'
+import { useRecommendSettingsStore } from './stores/recommendSettingsStore'
+import { useFarmsStore } from './stores/farmsStore'
 import { useTaskNotifier } from './composables/useTaskNotifier'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const treatStore = useTreatmentStore()
 const apStore = useAvailablePesticideStore()
+const recSettingsStore = useRecommendSettingsStore()
+const farmsStore = useFarmsStore()
 
-onMounted(async () => {
-  await store.init()
-  treatStore.init()
-  apStore.init()
+onMounted(() => {
+  farmsStore.init()
 })
+
+// 활성 농장이 (비동기로) 정해지는 시점에 딱 한 번 농장별 데이터 스토어를 초기화한다.
+// 농장 전환은 앱 새로고침으로 처리하므로 세션 중 activeFarm.id가 다시 바뀌는 일은 없다.
+watch(
+  () => farmsStore.activeFarm?.id,
+  (farmId) => {
+    if (!farmId) return
+    store.init(farmId)
+    treatStore.init(farmId)
+    apStore.init(farmId)
+    recSettingsStore.init(farmId)
+  },
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
   store.cleanup()
@@ -28,16 +45,33 @@ useTaskNotifier(store)
 
 <template>
   <div class="app-shell">
-    <AppHeader />
+    <p v-if="farmsStore.loading" class="muted farm-gate-loading">불러오는 중...</p>
 
-    <p v-if="!store.firebaseEnabled" class="sync-banner">
-      {{ localeStore.t('app.syncDisabled') }}
-    </p>
+    <div v-else-if="farmsStore.migrationError" class="farm-gate">
+      <div class="card farm-gate-card">
+        <h2>불러오기 실패</h2>
+        <p class="muted">
+          농장 데이터를 준비하는 중 문제가 발생했습니다. 기존 데이터는 안전하게 남아있습니다.
+          네트워크 연결을 확인한 뒤 새로고침해 다시 시도해 주세요.
+        </p>
+        <button type="button" @click="() => window.location.reload()">새로고침</button>
+      </div>
+    </div>
 
-    <main class="content">
-      <RouterView />
-    </main>
+    <FarmSelectView v-else-if="farmsStore.needsFarmCreate || farmsStore.needsFarmSelect" />
 
-    <ConfirmDialog />
+    <template v-else>
+      <AppHeader />
+
+      <p v-if="!store.firebaseEnabled" class="sync-banner">
+        {{ localeStore.t('app.syncDisabled') }}
+      </p>
+
+      <main class="content">
+        <RouterView />
+      </main>
+
+      <ConfirmDialog />
+    </template>
   </div>
 </template>

@@ -16,9 +16,11 @@ import {
   getSurveillanceFromCache,
 } from '../services/ncpms.js'
 import { useLocaleStore } from '../stores/localeStore'
+import { useFarmsStore } from '../stores/farmsStore.js'
 import { withCache, formatFetchedAt } from '../services/cache.js'
 
 const localeStore = useLocaleStore()
+const farmsStore = useFarmsStore()
 
 const activeTab = ref('search')
 const loading = ref(false)
@@ -376,7 +378,7 @@ onMounted(() => {
         <span class="cache-banner-icon">{{ cacheInfo.error ? '⚠' : 'ℹ' }}</span>
         <span v-if="cacheInfo.error" class="cache-banner-msg">API 오류 · </span>
         <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 데이터</span>
-        <button v-if="activeTab !== 'surveillance'" class="cache-refresh-btn" :disabled="loading" @click="currentFetchLatest()">
+        <button v-if="activeTab !== 'surveillance' && farmsStore.isAdminMode" class="cache-refresh-btn" :disabled="loading" @click="currentFetchLatest()">
           {{ loading ? '가져오는 중...' : '최신 정보 가져오기' }}
         </button>
       </div>
@@ -403,7 +405,7 @@ onMounted(() => {
         <!-- 검색탭 캐시 없을 때 새로고침 유도 -->
         <div v-if="!loading && !cacheInfo && !error" class="no-cache-state">
           <p>저장된 데이터가 없습니다.</p>
-          <button :disabled="loading" @click="fetchLatestSearch">최신 정보 가져오기</button>
+          <button v-if="farmsStore.isAdminMode" :disabled="loading" @click="fetchLatestSearch">최신 정보 가져오기</button>
         </div>
 
         <!-- 병 목록 (SVC01) + 상세 (SVC05) -->
@@ -550,7 +552,7 @@ onMounted(() => {
       <template v-if="activeTab === 'prediction'">
         <div v-if="!loading && !predItems.length && !error" class="no-cache-state">
           <p>저장된 예측 데이터가 없습니다.</p>
-          <button :disabled="loading" @click="fetchPrediction">최신 정보 가져오기</button>
+          <button v-if="farmsStore.isAdminMode" :disabled="loading" @click="fetchPrediction">최신 정보 가져오기</button>
         </div>
         <ul v-if="predItems.length" class="list clean">
           <li v-for="item in predItems" :key="item.code" class="list-item card-like">
@@ -578,7 +580,7 @@ onMounted(() => {
           <select v-model="survYear" class="compact-select">
             <option v-for="y in YEARS" :key="y" :value="y">{{ y }}년</option>
           </select>
-          <button class="compact-btn" :disabled="loading" @click="fetchSurveillance">
+          <button v-if="farmsStore.isAdminMode" class="compact-btn" :disabled="loading" @click="fetchSurveillance">
             {{ loading ? localeStore.t('pest.loading') : '최신 정보 가져오기' }}
           </button>
         </div>

@@ -2,19 +2,44 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /shared/farmData {
-      // Team-shared document for the citrus collaboration app.
+      // 구버전(단일 농장) 문서. 다중 농장 마이그레이션 후에는 더 이상 쓰지 않지만
+      // 안전을 위해 삭제하지 않고 남겨둔다.
       allow read, write: if true;
     }
     match /shared/availablePesticide {
-      // 가용농약 목록 (구입가능농약 입력, 수동 연결, 목록)
+      // 구버전(단일 농장) 문서. farms/{farmId}/data/availablePesticide로 대체됨.
+      allow read, write: if true;
+    }
+    match /shared/appSettings {
+      // 분류·항목 설정(작업 분류, 재배 품종, 농약 종류 등) — 모든 농장이 공유하는 공통 설정.
+      allow read, write: if true;
+    }
+    match /shared/appMeta {
+      // 다중 농장 마이그레이션 여부 등 시스템 메타데이터.
+      allow read, write: if true;
+    }
+    match /shared/recommendPrefs {
+      // 농장에 속하지 않는 시스템 공통 정책(예: 방제이력 재연결 시 덮어쓰기 여부).
+      allow read, write: if true;
+    }
+    match /farms/{farmId} {
+      // 농장 등록 정보(이름·로고) — 모든 기기에서 같은 농장 목록을 볼 수 있도록 공유.
+      allow read, write: if true;
+    }
+    match /farms/{farmId}/data/{docId} {
+      // 농장별 데이터: farmData(재배동·작업·재고 등), availablePesticide, recommendSettings.
+      allow read, write: if true;
+    }
+    match /farms/{farmId}/treatments/{treatmentId} {
+      // 농장별 방제 이력.
       allow read, write: if true;
     }
     match /photos/{photoId} {
-      // 사진(base64)을 사진별 개별 문서로 분산 저장한다.
+      // 사진(base64)을 사진별 개별 문서로 분산 저장한다. 농장 무관 전역 저장소.
       allow read, write: if true;
     }
     match /treatments/{treatmentId} {
-      // 농약 방제 이력
+      // 구버전(단일 농장) 컬렉션. farms/{farmId}/treatments로 대체됨.
       allow read, write: if true;
     }
     match /sharedCache/{key} {

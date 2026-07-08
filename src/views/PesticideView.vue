@@ -2,11 +2,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
+import { useFarmsStore } from '../stores/farmsStore.js'
 import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, searchFromFullCache, getTypesFromCache, formatPreHarvest, formatMaxApplications } from '../services/pesticide'
 import { withCache, formatFetchedAt } from '../services/cache.js'
 
 const localeStore = useLocaleStore()
 const settingsStore = useRecommendSettingsStore()
+const farmsStore = useFarmsStore()
 const t = (k) => localeStore.t(k)
 
 const pestNameInput = ref('')
@@ -39,6 +41,7 @@ function loadFromCache() {
     pesticideType: typeFilter.value === 'all' ? '' : typeFilter.value,
     page: page.value,
     pageSize: PAGE_SIZE,
+    sortBy: nameMode.value === 'brand' ? 'brandName' : 'name',
   }
   const local = searchFromFullCache(params)
   if (local) {
@@ -171,12 +174,12 @@ onMounted(() => {
         <button
           class="ghost type-btn"
           :class="{ 'type-btn-active': nameMode === 'brand' }"
-          @click="nameMode = 'brand'"
+          @click="nameMode = 'brand'; search()"
         >상표명</button>
         <button
           class="ghost type-btn"
           :class="{ 'type-btn-active': nameMode === 'product' }"
-          @click="nameMode = 'product'"
+          @click="nameMode = 'product'; search()"
         >품목명</button>
       </div>
     </div>
@@ -186,7 +189,7 @@ onMounted(() => {
       <span class="cache-banner-icon">{{ cacheInfo.error ? '⚠' : 'ℹ' }}</span>
       <span v-if="cacheInfo.error" class="cache-banner-msg">API 오류 · </span>
       <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 데이터</span>
-      <div class="cache-banner-actions">
+      <div v-if="farmsStore.isAdminMode" class="cache-banner-actions">
         <button class="cache-refresh-btn" :disabled="loading" @click="fetchLatest">
           {{ loading ? '가져오는 중...' : '최신 정보 가져오기' }}
         </button>
@@ -199,7 +202,7 @@ onMounted(() => {
     </div>
     <div v-if="!loading && !error && !cacheInfo && filteredItems.length === 0" class="no-cache-state">
       <p>저장된 데이터가 없습니다.</p>
-      <button :disabled="loading" @click="fetchLatest">최신 정보 가져오기</button>
+      <button v-if="farmsStore.isAdminMode" :disabled="loading" @click="fetchLatest">최신 정보 가져오기</button>
     </div>
     <p v-else-if="!loading && !error && cacheInfo && filteredItems.length === 0" class="empty-msg">{{ t('pest.noResults') }}</p>
 
