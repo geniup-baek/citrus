@@ -59,11 +59,21 @@ const histYears = computed(() =>
 
 const histUnmatchedCount = computed(() => treatStore.treatments.filter(t => !t.moa).length)
 
+const histIsFiltered = computed(() => !!histYear.value || histUnmatchedOnly.value)
+
 const filteredTreatments = computed(() => {
   let list = treatStore.treatments
   if (histYear.value) list = list.filter(t => t.date?.startsWith(histYear.value))
   if (histUnmatchedOnly.value) list = list.filter(t => !t.moa)
   return list
+})
+
+// 필터 변경으로 편집 중인 이력이 목록에서 사라지면 보이지 않는 항목을 계속 편집하는
+// 상태로 남기지 않고 새 기록 입력 폼으로 되돌린다.
+watch(filteredTreatments, (list) => {
+  if (editingId.value && !list.some(t => t.id === editingId.value)) {
+    resetForm()
+  }
 })
 
 const formMode = ref('single') // 'single' | 'bulk'
@@ -479,11 +489,12 @@ const apRefreshMessage = ref('')
 const manualEditItem = computed(() =>
   manualEditId.value ? apStore.availableList.find(p => p.id === manualEditId.value) ?? null : null,
 )
-const apFormTarget = computed(() =>
-  manualEditId.value && filteredApList.value.some(p => p.id === manualEditId.value)
-    ? `#ap-form-slot-${manualEditId.value}`
-    : '#ap-form-top',
-)
+const apFormTarget = computed(() => {
+  if (manualEditId.value && filteredApList.value.some(p => p.id === manualEditId.value)) {
+    return `#ap-form-slot-${manualEditId.value}`
+  }
+  return apStore.availableList.length > 0 ? '#ap-form-top-list' : '#ap-form-top-empty'
+})
 
 const apFormMode = ref('single') // 'single' | 'bulk'
 
@@ -550,6 +561,10 @@ const apStats = computed(() => {
   return { total, matched, unmatched: total - matched, manual }
 })
 
+const apIsFiltered = computed(() =>
+  apSourceFilter.value !== 'all' || apUnmatchedOnly.value || apManualOnly.value || !!apFilter.value.trim(),
+)
+
 // '재고'는 재고에 실제로 있는 항목 전체(구입가능 목록과 겹치는 'both' 포함),
 // '구입가능'은 구입 가능한 항목 전체('both' 포함) — 둘은 서로 배타적이지 않다.
 const apSourceCounts = computed(() => ({
@@ -571,6 +586,14 @@ const filteredApList = computed(() => {
     p.targetPests.some(t => t.toLowerCase().includes(q)),
   )
   return [...list].sort((a, b) => a.brandName.localeCompare(b.brandName, 'ko'))
+})
+
+// 필터 변경으로 직접 입력/수정 중인 항목이 목록에서 사라지면 보이지 않는 항목을 계속
+// 편집하는 상태로 남기지 않는다.
+watch(filteredApList, (list) => {
+  if (manualEditId.value && !list.some(p => p.id === manualEditId.value)) {
+    manualEditId.value = null
+  }
 })
 
 function matchLabel(src) {
@@ -745,21 +768,20 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
       <div :class="['page-grid', showHistoryForm ? 'two-columns' : '']">
 
         <!-- 목록 -->
-        <article class="card">
+        <article>
           <div class="pip-header">
-            <div class="pip-summary">
-              <span v-if="filteredTreatments.length" class="summary-chip">{{ filteredTreatments.length }}건</span>
-            </div>
             <div class="pip-actions">
               <button v-if="showHistoryForm && treatStore.treatments.length > 0" class="ghost" type="button" @click="refreshAllTreatmentLinks">
                 전체 재연결 ({{ settingsStore.settings.overwriteLinkedTreatments ? '기존 연결도 덮어쓰기' : '미연결만' }})
               </button>
-              <button v-if="!showHistoryForm" type="button" @click="showHistoryForm = true">편집</button>
-              <button v-else class="ghost" type="button" @click="resetForm(); showHistoryForm = false; histRefreshMessage = ''">편집종료</button>
+              <button v-if="!showHistoryForm" type="button" @click="showHistoryForm = true">{{ localeStore.t('common.edit') }}</button>
+              <button v-else class="ghost" type="button" @click="resetForm(); showHistoryForm = false; histRefreshMessage = ''">{{ localeStore.t('common.exitEdit') }}</button>
             </div>
           </div>
           <p v-if="histRefreshMessage" class="muted" style="font-size:0.82rem; margin: -0.4rem 0 0.6rem;">{{ histRefreshMessage }}</p>
           <div v-if="histYears.length" class="sort-filter-bar">
+            <span class="summary-chip">{{ histIsFiltered ? localeStore.t('common.filteredCount', { shown: filteredTreatments.length, total: treatStore.treatments.length }) : localeStore.t('common.totalCount', { n: filteredTreatments.length }) }}</span>
+            <span class="filter-sep">|</span>
             <button
               class="ghost compact-btn"
               :class="{ 'hist-year-active': histYear === '' }"
@@ -1045,18 +1067,15 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 
     <!-- ═══ 가용농약 ════════════════════════════════════════════════════════ -->
     <section v-if="activeTab === 'avail'" :class="['page-grid', apEditMode ? 'two-columns' : '']">
-      <article class="card">
+      <article>
 
       <div class="pip-header">
-        <div class="pip-summary">
-          <span v-if="apStats.total > 0" class="summary-chip">{{ apStats.total }}개</span>
-        </div>
         <div class="pip-actions">
           <button v-if="apEditMode && apStore.availableList.length > 0" class="ghost" type="button" @click="refreshAllPesticideInfo">
             전체 재연결
           </button>
-          <button v-if="!apEditMode" type="button" @click="apEditMode = true">편집</button>
-          <button v-else class="ghost" type="button" @click="closeApEdit">편집종료</button>
+          <button v-if="!apEditMode" type="button" @click="apEditMode = true">{{ localeStore.t('common.edit') }}</button>
+          <button v-else class="ghost" type="button" @click="closeApEdit">{{ localeStore.t('common.exitEdit') }}</button>
         </div>
       </div>
       <p v-if="apRefreshMessage" class="muted" style="font-size:0.82rem; margin: -0.4rem 0 0.6rem;">{{ apRefreshMessage }}</p>
@@ -1071,12 +1090,11 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
         </span>
       </div>
 
-      <div id="ap-form-top" class="mobile-form-slot"></div>
-
       <!-- 가용농약 목록 -->
       <template v-if="apStore.availableList.length > 0">
-        <div class="ap-list-header">
-          <span class="ap-list-title">가용농약 목록</span>
+        <div class="sort-filter-bar">
+          <span class="summary-chip">{{ apIsFiltered ? localeStore.t('common.filteredCount', { shown: filteredApList.length, total: apStats.total }) : localeStore.t('common.totalCount', { n: filteredApList.length }) }}</span>
+          <span class="filter-sep">|</span>
           <div class="ap-src-filter">
             <button class="ap-src-btn" :class="{ active: apSourceFilter === 'all' }"       @click="apSourceFilter = 'all'">전체 ({{ apStats.total }})</button>
             <button class="ap-src-btn" :class="{ active: apSourceFilter === 'purchase' }"  @click="apSourceFilter = 'purchase'">구입가능 ({{ apSourceCounts.purchase }})</button>
@@ -1099,6 +1117,8 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
             placeholder="필터 (농약명, 분류, 작용기작, 병해충)"
           />
         </div>
+
+        <div id="ap-form-top-list" class="mobile-form-slot"></div>
 
         <div class="ap-list">
           <div v-for="item in filteredApList" :key="item.id" class="ap-card">
@@ -1157,15 +1177,15 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                 @click="openManualMatch(item.id)"
               >{{ item.matchSource === 'manual' ? '연결 변경' : (item.matchSource ? '수동 재연결' : '수동 연결') }}</button>
               <button
-                class="ghost"
-                :class="{ 'link-btn-active': manualEditId === item.id }"
-                @click="openManualEdit(item)"
-              >{{ item.matchSource ? '정보 수정' : '직접 입력' }}</button>
-              <button
                 v-if="item.matchSource === 'manual'"
                 class="ghost"
                 @click="apStore.clearManualMatch(item.id)"
               >연결 해제</button>
+              <button
+                class="ghost"
+                :class="{ 'link-btn-active': manualEditId === item.id }"
+                @click="openManualEdit(item)"
+              >{{ item.matchSource ? '정보 수정' : '직접 입력' }}</button>
               <button class="danger" @click="confirmDeleteAp(item)">삭제</button>
             </div>
 
@@ -1204,6 +1224,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
       </template>
       <div v-else class="empty-msg">
         구입가능농약을 입력하거나 재고를 추가한 후 '목록 작성'을 눌러주세요.
+        <div id="ap-form-top-empty" class="mobile-form-slot"></div>
       </div>
 
       </article>
@@ -1674,14 +1695,6 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 }
 .ap-stats { font-size: 0.8rem; color: var(--muted); }
 
-.ap-list-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.6rem;
-  flex-wrap: wrap;
-}
-.ap-list-title { font-size: 0.9rem; font-weight: 700; }
 .ap-src-filter {
   display: flex;
   border: 1px solid var(--line);

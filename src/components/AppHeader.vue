@@ -9,8 +9,7 @@ const localeStore = useLocaleStore()
 const farmsStore = useFarmsStore()
 
 const ADMIN_LINKS = [
-  { to: '/pest', label: localeStore.t('nav.pest') },
-  { to: '/pesticide', label: localeStore.t('nav.pesticide') },
+  { to: '/resources', label: localeStore.t('nav.resources') },
   { to: '/settings', label: localeStore.t('settings.title') },
 ]
 
@@ -18,16 +17,11 @@ const links = computed(() => {
   if (farmsStore.isAdminMode) return ADMIN_LINKS
   return [
     { to: '/', label: localeStore.t('nav.dashboard') },
-    { to: '/facilities', label: localeStore.t('nav.facilities') },
-    { to: '/ancillary', label: localeStore.t('nav.ancillary') },
-    { to: '/seedlings', label: localeStore.t('nav.seedlings') },
+    { to: '/farm-status', label: localeStore.t('nav.farmStatus') },
+    { to: '/pesticide-recommend', label: localeStore.t('nav.pesticideRecommend') },
     { to: '/tasks', label: localeStore.t('nav.tasks') },
     { to: '/issues', label: localeStore.t('nav.issues') },
-    { to: '/inventory', label: localeStore.t('nav.inventory') },
-    { to: '/pesticide-recommend', label: localeStore.t('nav.pesticideRecommend') },
-    { to: '/knowledge', label: localeStore.t('nav.knowledge') },
-    { to: '/pest', label: localeStore.t('nav.pest') },
-    { to: '/pesticide', label: localeStore.t('nav.pesticide') },
+    { to: '/resources', label: localeStore.t('nav.resources') },
     { to: '/settings', label: localeStore.t('settings.title') },
   ]
 })

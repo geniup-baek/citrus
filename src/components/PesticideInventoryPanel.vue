@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
@@ -193,11 +193,14 @@ const displayedItems = computed(() => {
 const summary = computed(() => {
   const items = store.state.inventory.filter(i => i.category === CATEGORY)
   return {
-    total:      items.length,
-    expiring:   items.reduce((s, i) => s + expiringLotCount(i), 0),
-    unmatched:  items.filter(i => !i.actionGroup).length,
+    total:         displayedItems.value.length,
+    categoryTotal: items.length,
+    expiring:      displayedItems.value.reduce((s, i) => s + expiringLotCount(i), 0),
+    unmatched:     items.filter(i => !i.actionGroup).length,
   }
 })
+
+const isFiltered = computed(() => unmatchedOnly.value)
 
 // ── 폼 ───────────────────────────────────────────────────────────────────────
 function clearForm() {
@@ -212,6 +215,14 @@ function clearForm() {
   bulkPasteText.value    = ''
   bulkImportMessage.value = ''
 }
+
+// 필터 변경으로 편집 중인 품목이 목록에서 사라지면 보이지 않는 항목을 계속 편집하는
+// 상태로 남기지 않고 새 품목 입력 폼으로 되돌린다.
+watch(displayedItems, (list) => {
+  if (editingId.value && !list.some((i) => i.id === editingId.value)) {
+    clearForm()
+  }
+})
 
 function openAdd() { clearForm(); showForm.value = true }
 function newEntry() {
@@ -524,30 +535,35 @@ function printReport() {
 <template>
   <div :class="['page-grid', showForm ? 'two-columns' : '']">
     <!-- ── 목록 열 ─────────────────────────────────────────────── -->
-    <article class="card">
-      <!-- 헤더: 요약 + 액션 -->
+    <article>
+      <!-- 헤더: 액션 -->
       <div class="pip-header">
-        <div class="pip-summary">
-          <span class="summary-chip">{{ t('inventory.summaryTotal', { count: summary.total }) }}</span>
-          <span v-if="summary.expiring" class="summary-chip chip-danger">{{ t('inventory.summaryExpiring', { count: summary.expiring }) }}</span>
-          <button
-            class="ghost ap-unmatched-btn"
-            :class="{ 'ap-unmatched-active': unmatchedOnly }"
-            type="button"
-            @click="unmatchedOnly = !unmatchedOnly"
-          >미연결만 ({{ summary.unmatched }})</button>
-        </div>
         <div class="pip-actions">
-          <select v-model="sortBy" class="compact-select">
-            <option value="name">{{ t('pesticideInventory.sortName') }}</option>
-            <option value="expiry">{{ t('inventory.sortExpiry') }}</option>
-          </select>
-          <button class="ghost compact-btn" type="button" @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'">{{ sortDir === 'asc' ? '↑' : '↓' }}</button>
           <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="printReport">{{ t('inventory.printReport') }}</button>
           <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="downloadReport">{{ t('inventory.downloadReport') }}</button>
-          <button v-if="!showForm" type="button" @click="openAdd">편집</button>
-          <button v-else class="ghost" type="button" @click="closeForm">편집종료</button>
+          <button v-if="!showForm" type="button" @click="openAdd">{{ t('common.edit') }}</button>
+          <button v-else class="ghost" type="button" @click="closeForm">{{ t('common.exitEdit') }}</button>
         </div>
+      </div>
+
+      <!-- 요약 + 정렬 + 필터 -->
+      <div class="sort-filter-bar">
+        <span class="summary-chip">{{ isFiltered ? t('common.filteredCount', { shown: summary.total, total: summary.categoryTotal }) : t('common.totalCount', { n: summary.total }) }}</span>
+        <span v-if="summary.expiring" class="summary-chip chip-danger">{{ t('inventory.summaryExpiring', { count: summary.expiring }) }}</span>
+        <span class="filter-sep">|</span>
+        <span class="filter-label">{{ t('inventory.sortBy') }}</span>
+        <select v-model="sortBy" class="compact-select">
+          <option value="name">{{ t('pesticideInventory.sortName') }}</option>
+          <option value="expiry">{{ t('inventory.sortExpiry') }}</option>
+        </select>
+        <button class="ghost compact-btn" type="button" @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'">{{ sortDir === 'asc' ? '↑' : '↓' }}</button>
+        <span class="filter-sep">|</span>
+        <button
+          class="ghost ap-unmatched-btn"
+          :class="{ 'ap-unmatched-active': unmatchedOnly }"
+          type="button"
+          @click="unmatchedOnly = !unmatchedOnly"
+        >미연결만 ({{ summary.unmatched }})</button>
       </div>
 
       <!-- 품목 목록 -->

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import {
-  collection, doc, getDoc, getDocs, onSnapshot, setDoc, deleteDoc,
+  collection, doc, getDoc, getDocs, onSnapshot, setDoc, deleteDoc, deleteField,
 } from 'firebase/firestore'
 import { db, firebaseEnabled } from '../services/firebase.js'
 
@@ -56,10 +56,19 @@ async function migrateLegacyIfNeeded() {
 }
 
 export const useFarmsStore = defineStore('farms', () => {
-  const farms = ref([])
+  const allFarms = ref([]) // 삭제(휴지통 보관) 포함 전체 농장 문서
   const loading = ref(true)
   const initialized = ref(false)
   const migrationError = ref(null)
+
+  // 화면 전반(선택화면·헤더·라우터 등)에서 쓰는 목록은 삭제된 농장을 제외한다.
+  const farms = computed(() => allFarms.value.filter((f) => !f.deletedAt))
+  // 삭제(휴지통 보관)된 농장 — 최근 삭제 순으로 정렬. 설정의 "삭제된 농장" 섹션에서만 사용.
+  const deletedFarms = computed(() =>
+    allFarms.value
+      .filter((f) => f.deletedAt)
+      .sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || '')),
+  )
 
   // localStorage에 키가 아예 없으면(null) "한 번도 선택한 적 없음" — 기존 단일 농장
   // 사용자를 위한 최초 1회 자동 연속성 판단에 쓰인다. 이후로는 항상 명시적인 값('', 'farm', 'admin')을 갖는다.
@@ -84,7 +93,7 @@ export const useFarmsStore = defineStore('farms', () => {
     initialized.value = true
 
     if (!firebaseEnabled || !db) {
-      farms.value = [{ id: LOCAL_FARM_ID, name: '로컬 농장', logo: '' }]
+      allFarms.value = [{ id: LOCAL_FARM_ID, name: '로컬 농장', logo: '' }]
       activeFarmIdLocal.value = LOCAL_FARM_ID
       loading.value = false
       return
@@ -100,7 +109,7 @@ export const useFarmsStore = defineStore('farms', () => {
     }
 
     onSnapshot(collection(db, 'farms'), (snap) => {
-      farms.value = snap.docs
+      allFarms.value = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
@@ -147,11 +156,28 @@ export const useFarmsStore = defineStore('farms', () => {
     await setDoc(doc(db, 'farms', id), { pin: pin.trim() }, { merge: true })
   }
 
+  // 목록에서만 뺀다(휴지통 보관) — 실제 데이터(farms/{id}/data/*, treatments/*)는 그대로 남아
+  // 있어서 "삭제된 농장" 섹션에서 복원하거나 영구 삭제할 수 있다.
   async function deleteFarm(id) {
     if (farms.value.length <= 1) return false // 마지막 농장은 삭제 불가
     if (activeFarm.value?.id === id) return false // 사용 중인 농장은 다른 농장으로 전환 후 삭제
-    await deleteDoc(doc(db, 'farms', id))
+    await setDoc(doc(db, 'farms', id), { deletedAt: new Date().toISOString() }, { merge: true })
     return true
+  }
+
+  // 삭제된 농장을 목록으로 되돌린다.
+  async function restoreFarm(id) {
+    await setDoc(doc(db, 'farms', id), { deletedAt: deleteField() }, { merge: true })
+  }
+
+  // 삭제된 농장의 실제 데이터까지 완전히 지운다. 되돌릴 수 없다.
+  async function permanentlyDeleteFarm(id) {
+    const treatSnap = await getDocs(collection(db, 'farms', id, 'treatments'))
+    await Promise.all(treatSnap.docs.map((d) => deleteDoc(d.ref)))
+    await deleteDoc(doc(db, 'farms', id, 'data', 'farmData'))
+    await deleteDoc(doc(db, 'farms', id, 'data', 'availablePesticide'))
+    await deleteDoc(doc(db, 'farms', id, 'data', 'recommendSettings'))
+    await deleteDoc(doc(db, 'farms', id))
   }
 
   function selectFarm(id) {
@@ -176,7 +202,8 @@ export const useFarmsStore = defineStore('farms', () => {
   }
 
   return {
-    farms, loading, migrationError, activeFarm, isAdminMode, needsFarmCreate, needsFarmSelect,
-    init, createFarm, renameFarm, updateFarmLogo, updateFarmPin, deleteFarm, selectFarm, enterAdminMode, exitToSelector,
+    farms, deletedFarms, loading, migrationError, activeFarm, isAdminMode, needsFarmCreate, needsFarmSelect,
+    init, createFarm, renameFarm, updateFarmLogo, updateFarmPin, deleteFarm, restoreFarm, permanentlyDeleteFarm,
+    selectFarm, enterAdminMode, exitToSelector,
   }
 })

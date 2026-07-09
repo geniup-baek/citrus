@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import {
   format,
   isBefore,
@@ -65,7 +65,7 @@ const formTarget = computed(() => {
       return `#task-form-slot-${selectedTaskId.value}`
     }
   }
-  return '#task-form-top'
+  return viewMode.value === 'calendar' ? '#task-form-top-calendar' : '#task-form-top-list'
 })
 const templateResult = ref('')
 const deduplicateResult = ref('')
@@ -285,6 +285,16 @@ const selectedDayTasks = computed(() => {
   })
 })
 
+// 필터/보기모드 변경으로 상세를 보고 있던 작업이 목록에서 사라지면 보이지 않는 항목을
+// 계속 편집하는 상태로 남기지 않고 작업 추가 폼으로 되돌린다.
+watch([filteredTasks, selectedDayTasks, viewMode], () => {
+  if (rightPanel.value !== 'detail' || !selectedTaskId.value) return
+  const list = viewMode.value === 'calendar' ? selectedDayTasks.value : filteredTasks.value
+  if (!list.some((t) => t.id === selectedTaskId.value)) {
+    backToAdd()
+  }
+})
+
 // ── 헬퍼 함수 ──────────────────────────────────────────────────────────────
 function weekdayLabel(value) {
   return weekdayOptions.value.find((d) => d.value === value)?.label || value
@@ -385,7 +395,10 @@ function backToAdd() {
 function newEntry() {
   backToAdd()
   if (isMobile.value) {
-    nextTick(() => document.getElementById('task-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    nextTick(() => {
+      const id = viewMode.value === 'calendar' ? 'task-form-top-calendar' : 'task-form-top-list'
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
 }
 
@@ -688,8 +701,6 @@ clearSchedulerForm()
       </div>
       <p v-if="deduplicateResult" class="muted" style="margin-bottom: 0.5rem; font-size: 0.83rem;">{{ deduplicateResult }}</p>
 
-      <div id="task-form-top" class="mobile-form-slot"></div>
-
       <!-- ▸ 목록 뷰 -->
       <template v-if="viewMode === 'list'">
         <div class="sort-filter-bar">
@@ -716,6 +727,8 @@ clearSchedulerForm()
             <option value="완료">{{ localeStore.t('tasks.statusDone') }}</option>
           </select>
         </div>
+
+        <div id="task-form-top-list" class="mobile-form-slot"></div>
 
         <ul class="list clean">
           <li
@@ -844,6 +857,8 @@ clearSchedulerForm()
           <button class="ghost" @click="nextMonth">&#8250;</button>
           <button class="ghost" style="margin-left: auto;" @click="goToToday">오늘</button>
         </div>
+
+        <div id="task-form-top-calendar" class="mobile-form-slot"></div>
 
         <div class="cal-grid">
           <div v-for="d in DAY_HEADERS" :key="d" class="cal-header">{{ d }}</div>

@@ -184,7 +184,7 @@ async function saveFacility() {
   try {
     uploaded = await store.savePhotos(photoPreviews.value)
   } catch (e) {
-    console.error('[FacilitiesView] 사진 업로드 실패', e)
+    console.error('[FacilitiesPanel] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
     return
   }
@@ -203,12 +203,16 @@ async function saveFacility() {
     <img :src="store.photoSrc(lightboxPhoto)" :alt="localeStore.t('facilities.facilityPhoto')" />
   </div>
 
-  <section :class="['page-grid', showForm ? 'two-columns' : '']">
-    <article class="card">
-      <div class="row-actions align-start">
-        <h2>{{ localeStore.t('facilities.inventory') }}</h2>
-        <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
-        <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+  <div :class="['page-grid', showForm ? 'two-columns' : '']">
+    <article>
+      <div class="pip-header">
+        <div class="pip-actions">
+          <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
+          <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+        </div>
+      </div>
+      <div class="sort-filter-bar">
+        <span class="summary-chip">{{ localeStore.t('common.totalCount', { n: store.state.facilities.length }) }}</span>
       </div>
       <div id="fac-form-top" class="mobile-form-slot"></div>
       <ul class="list clean">
@@ -242,7 +246,7 @@ async function saveFacility() {
 
     <Teleport v-if="showForm" :to="formTarget" :disabled="!isMobile">
     <article v-if="showForm" class="card">
-      <h2>{{ editingId ? localeStore.t('facilities.editTitle') : localeStore.t('facilities.addTitle') }}</h2>
+      <h3>{{ editingId ? localeStore.t('facilities.editTitle') : localeStore.t('facilities.addTitle') }}</h3>
       <form class="stack-form" @submit.prevent="saveFacility">
         <label>
           {{ localeStore.t('facilities.name') }}
@@ -287,5 +291,5 @@ async function saveFacility() {
       </form>
     </article>
     </Teleport>
-  </section>
+  </div>
 </template>

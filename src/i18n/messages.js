@@ -5,6 +5,7 @@ export const messages = {
   },
   nav: {
     dashboard: '대시보드',
+    farmStatus: '농장 현황',
     facilities: '재배동',
     ancillary: '시설·장비',
     seedlings: '묘목',
@@ -14,6 +15,7 @@ export const messages = {
     knowledge: '지식',
     pest: '병해충',
     pesticide: '농약',
+    resources: '자료',
     pesticideRecommend: '방제',
     mainNavigation: '주요 메뉴',
   },
@@ -32,6 +34,8 @@ export const messages = {
     change: '변경',
     exitEdit: '편집종료',
     cancel: '취소',
+    totalCount: '총 {n}건',
+    filteredCount: '{shown} / {total}건',
   },
   app: {
     syncDisabled: '클라우드 동기화가 비활성화되었습니다. 팀 공유를 위해 Firebase 환경 변수를 설정하세요.',

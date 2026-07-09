@@ -55,10 +55,22 @@ async function handleFarmLogoChange(id, event) {
 
 async function confirmDeleteFarm(farm) {
   const ok = await confirm({
-    message: `"${farm.name}" 농장을 목록에서 삭제할까요? 해당 농장의 데이터 자체는 지워지지 않지만 더 이상 선택할 수 없게 됩니다.`,
+    message: `"${farm.name}" 농장을 목록에서 삭제할까요? 데이터는 지워지지 않고 '삭제된 농장'에 보관되며, 언제든 복원하거나 완전 삭제할 수 있습니다.`,
   })
   if (!ok) return
   await farmsStore.deleteFarm(farm.id)
+}
+
+async function restoreFarm(farm) {
+  await farmsStore.restoreFarm(farm.id)
+}
+
+async function confirmPermanentlyDeleteFarm(farm) {
+  const ok = await confirm({
+    message: `"${farm.name}" 농장의 데이터를 완전히 삭제할까요? 재배동·작업·재고·방제이력을 포함한 모든 데이터가 영구히 사라지며 되돌릴 수 없습니다.`,
+  })
+  if (!ok) return
+  await farmsStore.permanentlyDeleteFarm(farm.id)
 }
 
 const showNewFarmForm = ref(false)
@@ -130,7 +142,8 @@ async function refreshFirestoreUsage() {
   try {
     if (farmsStore.isAdminMode) {
       const breakdown = []
-      for (const farm of farmsStore.farms) {
+      // 삭제(휴지통 보관)된 농장도 실제로는 데이터가 그대로 남아 있어 용량을 차지하므로 함께 집계한다.
+      for (const farm of [...farmsStore.farms, ...farmsStore.deletedFarms]) {
         let farmBytes = 0
         for (const docPath of [
           ['farms', farm.id, 'data', 'farmData'],
@@ -142,7 +155,7 @@ async function refreshFirestoreUsage() {
         }
         const treatSnap = await getDocs(collection(db, 'farms', farm.id, 'treatments'))
         treatSnap.forEach((d) => { farmBytes += byteSize(d.data()) })
-        breakdown.push({ label: `농장: ${farm.name}`, bytes: farmBytes })
+        breakdown.push({ label: `농장: ${farm.name}${farm.deletedAt ? ' (삭제됨)' : ''}`, bytes: farmBytes })
       }
 
       for (const [label, docPath] of [
@@ -563,6 +576,31 @@ function saveEdit(key, i, isPair) {
           <p style="margin-top: 0.75rem;">
             <button class="ghost" type="button" @click="farmsStore.exitToSelector">관리 모드 종료 (농장 선택 화면으로)</button>
           </p>
+        </div>
+
+        <div v-if="farmsStore.deletedFarms.length" class="sub-card" style="margin-top: 1rem;">
+          <div class="settings-group-head">
+            <h3>삭제된 농장</h3>
+            <span class="pill">{{ farmsStore.deletedFarms.length }}개</span>
+          </div>
+          <p class="muted settings-group-hint">
+            목록에서 삭제된 농장입니다. 데이터는 그대로 남아 있어 복원하면 바로 다시 사용할 수 있습니다.
+            "완전 삭제"를 누르면 해당 농장의 모든 데이터가 되돌릴 수 없이 사라집니다.
+          </p>
+
+          <ul class="list clean">
+            <li v-for="farm in farmsStore.deletedFarms" :key="farm.id" class="list-item settings-item farm-manage-item">
+              <span class="farm-logo-mini" :class="{ 'farm-logo-mini-empty': !farm.logo }">
+                <img v-if="farm.logo" :src="farm.logo" alt="" />
+                <span v-else>{{ farm.name?.[0] ?? '?' }}</span>
+              </span>
+              <span class="settings-item-name">{{ farm.name }}</span>
+              <div class="row-actions settings-item-actions">
+                <button class="ghost compact-btn" type="button" @click="restoreFarm(farm)">복원</button>
+                <button class="danger compact-btn" type="button" @click="confirmPermanentlyDeleteFarm(farm)">완전 삭제</button>
+              </div>
+            </li>
+          </ul>
         </div>
       </template>
 

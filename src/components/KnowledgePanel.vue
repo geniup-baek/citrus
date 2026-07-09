@@ -237,12 +237,12 @@ const brixGuide = [
 </script>
 
 <template>
-  <section class="page-grid">
+  <section class="page-grid know-grid">
     <!-- ── 왼쪽 ─────────────────────────────────────── -->
     <div class="knowledge-left">
 
       <!-- 품종 탭 -->
-      <article class="card">
+      <article class="know-card">
         <div class="row-actions align-start" style="margin-bottom: 1rem;">
           <h2>품종 특성</h2>
           <div class="inline-filters">
@@ -287,9 +287,9 @@ const brixGuide = [
         </div>
 
         <ul class="trait-list">
-          <li v-for="t in varieties[selectedVariety].traits" :key="t.label" class="trait-item">
-            <span class="trait-key">{{ t.label }}</span>
-            <span class="trait-val">{{ t.value }}</span>
+          <li v-for="trait in varieties[selectedVariety].traits" :key="trait.label" class="trait-item">
+            <span class="trait-key">{{ trait.label }}</span>
+            <span class="trait-val">{{ trait.value }}</span>
           </li>
         </ul>
 
@@ -301,7 +301,7 @@ const brixGuide = [
       </article>
 
       <!-- 연간 생육 달력 -->
-      <article class="card" style="margin-top: 1rem;">
+      <article class="know-card" style="margin-top: 1rem;">
         <h2 style="margin-bottom: 1rem;">연간 생육 달력</h2>
         <div class="month-grid">
           <div
@@ -323,7 +323,7 @@ const brixGuide = [
       </article>
 
       <!-- 브릭스 추이 -->
-      <article class="card" style="margin-top: 1rem;">
+      <article class="know-card" style="margin-top: 1rem;">
         <h2 style="margin-bottom: 0.75rem;">브릭스(당도) 추이 기준표</h2>
         <p class="muted" style="margin-bottom: 0.75rem; font-size: 0.85rem;">수확 결정의 핵심 지표입니다. 대표 과실 5~10개 평균값을 주 1회 기록하세요.</p>
         <div class="brix-table-wrap">
@@ -353,7 +353,7 @@ const brixGuide = [
     <div class="knowledge-right">
 
       <!-- 병해충 방제 -->
-      <article class="card">
+      <article class="know-card">
         <h2 style="margin-bottom: 0.75rem;">병해충 · 환경 장해 관리</h2>
         <div v-for="group in pests" :key="group.category" class="pest-group">
           <p class="pest-category-label">{{ group.category }}</p>
@@ -371,7 +371,7 @@ const brixGuide = [
       </article>
 
       <!-- 시비 가이드 -->
-      <article class="card" style="margin-top: 1rem;">
+      <article class="know-card" style="margin-top: 1rem;">
         <h2 style="margin-bottom: 0.75rem;">시비 가이드 (성목 기준)</h2>
         <p class="muted" style="margin-bottom: 0.75rem; font-size: 0.85rem;">수세 · 토양 분석 결과에 따라 가감. 아래 수치는 10a(1,000m²) 기준 참고값입니다.</p>
         <ul class="list clean compact">
@@ -390,7 +390,7 @@ const brixGuide = [
       </article>
 
       <!-- 관수 가이드 -->
-      <article class="card" style="margin-top: 1rem;">
+      <article class="know-card" style="margin-top: 1rem;">
         <h2 style="margin-bottom: 0.75rem;">계절별 관수 가이드</h2>
         <ul class="list clean compact">
           <li v-for="irr in irrigation" :key="irr.period" class="list-item irr-item">
@@ -404,7 +404,7 @@ const brixGuide = [
       </article>
 
       <!-- 현장 체크리스트 -->
-      <article class="card" style="margin-top: 1rem;">
+      <article class="know-card" style="margin-top: 1rem;">
         <div class="row-actions align-start" style="margin-bottom: 0.75rem;">
           <h2>현장 체크리스트</h2>
           <div class="inline-filters">
@@ -428,11 +428,17 @@ const brixGuide = [
 </template>
 
 <style scoped>
-.page-grid {
+.know-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
   align-items: start;
+}
+.know-card {
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 1rem 1.1rem;
 }
 .knowledge-left,
 .knowledge-right {
@@ -441,7 +447,6 @@ const brixGuide = [
   gap: 0;
 }
 
-/* 품종 */
 .variety-hero { margin-bottom: 0.75rem; }
 .variety-title-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.75rem; }
 .variety-badge {
@@ -488,7 +493,6 @@ const brixGuide = [
   font-weight: 700;
 }
 
-/* 월별 달력 */
 .month-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -508,7 +512,6 @@ const brixGuide = [
 .month-tasks li::before { content: '·  '; color: var(--text-muted); }
 .month-alert { margin-top: 0.4rem; font-size: 0.75rem; color: var(--warning, #e67e22); font-weight: 600; }
 
-/* 브릭스 */
 .brix-table-wrap { overflow-x: auto; }
 .brix-table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
 .brix-table th {
@@ -523,7 +526,6 @@ const brixGuide = [
 .brix-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line); }
 .brix-val { font-weight: 600; color: var(--accent); }
 
-/* 병해충 */
 .pest-group { margin-bottom: 0.75rem; }
 .pest-category-label {
   font-size: 0.78rem;
@@ -536,7 +538,6 @@ const brixGuide = [
 .pest-item { flex-direction: column !important; align-items: flex-start !important; gap: 0.2rem; }
 .pest-name-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.1rem; }
 
-/* 시비 */
 .fert-item { flex-direction: column !important; align-items: flex-start !important; gap: 0.2rem; }
 .fert-header { display: flex; align-items: center; gap: 0.5rem; }
 .fert-meta {
@@ -547,19 +548,17 @@ const brixGuide = [
   font-size: 0.84rem;
 }
 
-/* 관수 */
 .irr-item { flex-direction: column; align-items: flex-start; gap: 0.15rem; padding: 0.55rem 0.65rem; }
 .irr-header { display: flex; align-items: center; gap: 0.6rem; }
 .irr-period { font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
 .irr-guide { color: var(--accent); font-size: 0.84rem; font-weight: 500; }
 
-/* 체크리스트 */
 .checklist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; }
 .checklist-item { display: flex; align-items: flex-start; gap: 0.6rem; font-size: 0.9rem; line-height: 1.4; }
 .check-box { color: var(--text-muted); flex-shrink: 0; font-size: 1rem; }
 
 @media (max-width: 900px) {
-  .page-grid { grid-template-columns: 1fr; }
+  .know-grid { grid-template-columns: 1fr; }
   .month-grid { grid-template-columns: repeat(2, 1fr); }
   .variety-meta-grid { grid-template-columns: 1fr; }
 }

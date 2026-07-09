@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { format } from 'date-fns'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
@@ -41,6 +41,15 @@ const sortBy = ref('greenhouse')
 const sortDir = ref('asc')
 const filterGreenhouseId = ref('')
 const filterVariety = ref('')
+
+const isFiltered = computed(() => !!filterGreenhouseId.value || !!filterVariety.value)
+
+function greenhouseName(greenhouseId) {
+  return (
+    store.state.facilities.find((f) => f.id === greenhouseId)?.name ||
+    localeStore.t('common.unknown')
+  )
+}
 
 const displayedSeedlings = computed(() => {
   let list = [...store.state.seedlings]
@@ -104,13 +113,6 @@ const batchCount = computed(() => {
   return span > 0 ? span * batch.cols.length : 0
 })
 
-function greenhouseName(greenhouseId) {
-  return (
-    store.state.facilities.find((f) => f.id === greenhouseId)?.name ||
-    localeStore.t('common.unknown')
-  )
-}
-
 async function confirmDeleteSeedling(seedling) {
   const logs = (seedling.growthLogs || []).length
   const ok = await confirm({
@@ -139,6 +141,14 @@ function clearForm() {
   editingId.value = ''
 }
 
+// 필터를 바꿔서 편집 중인 묘목이 목록에서 사라지면, 보이지 않는 항목을 계속 편집하는
+// 상태로 남기지 않고 새 묘목 입력 폼으로 되돌린다.
+watch(displayedSeedlings, (list) => {
+  if (editingId.value && !list.some((s) => s.id === editingId.value)) {
+    clearForm()
+  }
+})
+
 function openAdd() {
   clearForm()
   batchMode.value = false
@@ -165,12 +175,13 @@ function clearBatch() {
   batch.notes = ''
 }
 
-function openBatch() {
-  clearForm()
-  clearBatch()
-  batchMode.value = true
-  showForm.value = true
-  formOpen.value = true
+// 편집 패널 내부의 새 묘목 추가/일괄 추가 모드 전환 (편집 중인 기존 항목이 있을 때는 표시하지 않음)
+function switchMode(mode) {
+  const wantBatch = mode === 'batch'
+  if (wantBatch === batchMode.value) return
+  if (wantBatch) clearBatch()
+  else clearForm()
+  batchMode.value = wantBatch
 }
 
 function toggleBatchCol(col) {
@@ -343,7 +354,7 @@ async function recordLog(seedling) {
   try {
     photos = await store.savePhotos(logPhotoPreviews.value)
   } catch (e) {
-    console.error('[SeedlingsView] 사진 업로드 실패', e)
+    console.error('[SeedlingsPanel] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
     return
   }
@@ -390,7 +401,7 @@ async function saveEditLog(seedling) {
   try {
     uploaded = await store.savePhotos(editLogNewPreviews.value)
   } catch (e) {
-    console.error('[SeedlingsView] 사진 업로드 실패', e)
+    console.error('[SeedlingsPanel] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
     return
   }
@@ -415,18 +426,18 @@ clearForm()
     <img :src="store.photoSrc(lightboxPhoto)" :alt="localeStore.t('seedlings.growthPhoto')" />
   </div>
 
-  <section :class="['page-grid', showForm && formOpen ? 'two-columns' : '']">
-    <article class="card">
-      <div class="row-actions align-start">
-        <h2>{{ localeStore.t('seedlings.overview') }}</h2>
-        <div v-if="!showForm" class="row-actions">
-          <button class="ghost" @click="openBatch">{{ localeStore.t('seedlings.batchAdd') }}</button>
-          <button @click="openAdd">{{ localeStore.t('common.edit') }}</button>
+  <div :class="['page-grid', showForm && formOpen ? 'two-columns' : '']">
+    <article>
+      <div class="pip-header">
+        <div class="pip-actions">
+          <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
+          <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
         </div>
-        <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
       </div>
 
       <div class="sort-filter-bar">
+        <span class="summary-chip">{{ isFiltered ? localeStore.t('common.filteredCount', { shown: displayedSeedlings.length, total: store.state.seedlings.length }) : localeStore.t('common.totalCount', { n: displayedSeedlings.length }) }}</span>
+        <span class="filter-sep">|</span>
         <span class="filter-label">{{ localeStore.t('seedlings.sortBy') }}</span>
         <select v-model="sortBy" class="compact-select">
           <option value="greenhouse">{{ localeStore.t('seedlings.sortGreenhouse') }}</option>
@@ -566,8 +577,14 @@ clearForm()
     </article>
 
     <Teleport v-if="showForm && formOpen" :to="formTarget" :disabled="!isMobile">
-    <article v-if="showForm && formOpen && batchMode" class="card">
-      <h2>{{ localeStore.t('seedlings.batchTitle') }}</h2>
+    <article v-if="showForm && formOpen" class="card">
+      <div v-if="!editingId" class="inline-filters" style="margin-bottom: 1rem;">
+        <button type="button" :class="{ ghost: batchMode }" @click="switchMode('single')">{{ localeStore.t('seedlings.addTitle') }}</button>
+        <button type="button" :class="{ ghost: !batchMode }" @click="switchMode('batch')">{{ localeStore.t('seedlings.batchAdd') }}</button>
+      </div>
+
+      <template v-if="batchMode">
+      <h3>{{ localeStore.t('seedlings.batchTitle') }}</h3>
       <form class="stack-form" @submit.prevent="saveBatch">
         <label>
           {{ localeStore.t('seedlings.greenhouse') }}
@@ -626,10 +643,10 @@ clearForm()
           <button class="ghost" type="button" @click="clearBatch">{{ localeStore.t('common.reset') }}</button>
         </div>
       </form>
-    </article>
+      </template>
 
-    <article v-if="showForm && formOpen && !batchMode" class="card">
-      <h2>{{ editingId ? localeStore.t('seedlings.editTitle') : localeStore.t('seedlings.addTitle') }}</h2>
+      <template v-else>
+      <h3>{{ editingId ? localeStore.t('seedlings.editTitle') : localeStore.t('seedlings.addTitle') }}</h3>
       <form class="stack-form" @submit.prevent="saveSeedling">
         <label>
           {{ localeStore.t('seedlings.greenhouse') }}
@@ -682,7 +699,8 @@ clearForm()
           <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('seedlings.newEntry') }}</button>
         </div>
       </form>
+      </template>
     </article>
     </Teleport>
-  </section>
+  </div>
 </template>

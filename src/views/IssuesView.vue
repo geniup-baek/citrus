@@ -397,6 +397,9 @@ clearForm()
         <button v-if="!showForm" @click="showForm = true; formOpen = true">{{ localeStore.t('common.edit') }}</button>
         <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
       </div>
+      <div class="sort-filter-bar">
+        <span class="summary-chip">{{ localeStore.t('common.totalCount', { n: store.state.issues.length }) }}</span>
+      </div>
       <div id="issue-form-top" class="mobile-form-slot"></div>
       <ul class="list clean">
         <li v-for="issue in store.state.issues" :key="issue.id" class="list-item card-like">

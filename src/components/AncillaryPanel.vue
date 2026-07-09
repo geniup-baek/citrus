@@ -188,7 +188,7 @@ async function saveAncillary() {
   try {
     uploaded = await store.savePhotos(photoPreviews.value)
   } catch (e) {
-    console.error('[AncillaryView] 사진 업로드 실패', e)
+    console.error('[AncillaryPanel] 사진 업로드 실패', e)
     alert(localeStore.t('common.photoUploadFailed'))
     return
   }
@@ -209,12 +209,16 @@ async function saveAncillary() {
     <img :src="store.photoSrc(lightboxPhoto)" :alt="localeStore.t('ancillary.itemPhoto')" />
   </div>
 
-  <section :class="['page-grid', showForm ? 'two-columns' : '']">
-    <article class="card">
-      <div class="row-actions align-start">
-        <h2>{{ localeStore.t('ancillary.inventory') }}</h2>
-        <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
-        <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+  <div :class="['page-grid', showForm ? 'two-columns' : '']">
+    <article>
+      <div class="pip-header">
+        <div class="pip-actions">
+          <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
+          <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+        </div>
+      </div>
+      <div class="sort-filter-bar">
+        <span class="summary-chip">{{ localeStore.t('common.totalCount', { n: store.state.ancillaries.length }) }}</span>
       </div>
       <div id="anc-form-top" class="mobile-form-slot"></div>
       <ul class="list clean">
@@ -248,7 +252,7 @@ async function saveAncillary() {
 
     <Teleport v-if="showForm" :to="formTarget" :disabled="!isMobile">
     <article v-if="showForm" class="card">
-      <h2>{{ editingId ? localeStore.t('ancillary.editTitle') : localeStore.t('ancillary.addTitle') }}</h2>
+      <h3>{{ editingId ? localeStore.t('ancillary.editTitle') : localeStore.t('ancillary.addTitle') }}</h3>
       <form class="stack-form" @submit.prevent="saveAncillary">
         <label>
           {{ localeStore.t('ancillary.category') }}
@@ -306,5 +310,5 @@ async function saveAncillary() {
       </form>
     </article>
     </Teleport>
-  </section>
+  </div>
 </template>

@@ -75,13 +75,13 @@ function frequencyLabel(value) {
       <h2>{{ localeStore.t('dashboard.todayAtGlance') }}</h2>
       <div class="stats-grid">
         <StatCard
-          to="/facilities"
+          to="/farm-status?tab=facilities"
           :title="localeStore.t('dashboard.facilities')"
           :value="facilityCount"
           :helper="facilitiesHelper"
         />
         <StatCard
-          to="/seedlings"
+          to="/farm-status?tab=seedlings"
           :title="localeStore.t('dashboard.trees')"
           :value="treeCount"
           :helper="treesHelper"

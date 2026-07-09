@@ -44,15 +44,20 @@ function handleAdminClick() {
   pinError.value = ''
 }
 
-function submitPin() {
+const PIN_MAX_LENGTH = 6
+
+function onPinInput() {
+  pinError.value = ''
   const expected = pinPromptType.value === 'admin' ? ADMIN_PIN : pinPromptFarm.value?.pin
-  if (pinInput.value.trim() === expected) {
+  if (pinInput.value === expected) {
     if (pinPromptType.value === 'admin') farmsStore.enterAdminMode()
     else farmsStore.selectFarm(pinPromptFarm.value.id)
     return
   }
-  pinError.value = 'PIN이 올바르지 않습니다.'
-  pinInput.value = ''
+  if (pinInput.value.length >= PIN_MAX_LENGTH) {
+    pinError.value = 'PIN이 올바르지 않습니다.'
+    pinInput.value = ''
+  }
 }
 </script>
 
@@ -62,16 +67,23 @@ function submitPin() {
       <template v-if="pinPromptType">
         <h2>{{ pinPromptType === 'admin' ? '시스템 관리' : pinPromptFarm.name }}</h2>
         <p class="muted">PIN이 설정되어 있습니다. PIN을 입력하세요.</p>
-        <form class="stack-form" @submit.prevent="submitPin">
+        <div class="stack-form">
           <label>PIN
-            <input v-model="pinInput" type="password" inputmode="numeric" autofocus placeholder="PIN 입력" />
+            <input
+              v-model="pinInput"
+              type="password"
+              inputmode="numeric"
+              :maxlength="PIN_MAX_LENGTH"
+              autofocus
+              placeholder="PIN 입력"
+              @input="onPinInput"
+            />
           </label>
           <p v-if="pinError" class="settings-error">{{ pinError }}</p>
           <div class="row-actions">
-            <button type="submit" :disabled="!pinInput.trim()">확인</button>
             <button class="ghost" type="button" @click="resetPinPrompt">취소</button>
           </div>
-        </form>
+        </div>
       </template>
 
       <template v-else>

@@ -551,16 +551,15 @@ button.pill:hover {
   border-color: transparent;
 }
 
-/* ── 목록 헤더 (제목/카운트 + 액션 버튼) ────────────────── */
+/* ── 목록 헤더 (액션 버튼) ──────────────────────────────── */
 .pip-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
 }
-.pip-summary { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
 .pip-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
 
 /* ── 기한 초과 작업 카드 ───────────────────────────────── */
@@ -1160,6 +1159,64 @@ button.pill:hover {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ── 공공데이터 캐시 배너/오류 배너 (농약·병해충 검색·예측·예찰 패널 공용) ── */
+.cache-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  background: #e8f4fd;
+  border: 1px solid #90caf9;
+  color: #0d47a1;
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.85rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.83rem;
+}
+.cache-banner.cache-warn {
+  background: #fffbe6;
+  border-color: #f5d76e;
+  color: #7a5c00;
+}
+.cache-banner-icon { font-size: 0.9rem; }
+.cache-banner-time { font-size: 0.78rem; opacity: 0.8; white-space: nowrap; }
+.cache-banner-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.cache-refresh-btn {
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cache-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.no-cache-state {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--muted);
+}
+.no-cache-state p { margin: 0 0 0.75rem; font-size: 0.9rem; }
+.no-cache-state button { font-size: 0.85rem; }
+
+.pest-error {
+  background: #fde2dd;
+  border: 1px solid #efb3a9;
+  color: #8f1f13;
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.85rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.88rem;
+  display: grid;
+  gap: 0.25rem;
 }
 
 @media (max-width: 1080px) {
