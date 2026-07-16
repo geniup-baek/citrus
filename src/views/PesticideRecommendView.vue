@@ -32,7 +32,6 @@ const fDate     = ref(today())
 const fBrand    = ref('')
 const fMoa      = ref('')
 const fCategory = ref('')
-const fPest     = ref('')
 const fMemo     = ref('')
 const fMatchSource = ref(null) // 'auto' | null — OpenAPI 자동 연결로 채워졌는지
 const formError = ref('')
@@ -85,7 +84,6 @@ function resetForm() {
   fBrand.value    = ''
   fMoa.value      = ''
   fCategory.value = ''
-  fPest.value     = ''
   fMemo.value     = ''
   fMatchSource.value = null
   formError.value = ''
@@ -104,7 +102,6 @@ function startEdit(t) {
   fBrand.value          = t.brandName
   fMoa.value            = t.moa       ?? ''
   fCategory.value       = t.category  ?? ''
-  fPest.value           = t.targetPest ?? ''
   fMemo.value           = t.memo       ?? ''
   fMatchSource.value    = t.matchSource ?? null
   formError.value       = ''
@@ -127,7 +124,6 @@ async function submitTreatment() {
     brandName:   fBrand.value,
     moa:         fMoa.value,
     category:    fCategory.value,
-    targetPest:  fPest.value.trim(),
     memo:        fMemo.value.trim(),
     matchSource: fMatchSource.value,
   }
@@ -238,7 +234,6 @@ async function applyHistLink(treatment, apiItem) {
     brandName:   apiItem.brandName || treatment.brandName,
     moa,
     category,
-    targetPest:  treatment.targetPest || '',
     memo:        treatment.memo || '',
     matchSource: apiItem.matchSourceType === 'inventory' ? 'inventory' : 'auto',
   })
@@ -276,7 +271,6 @@ async function refreshAllTreatmentLinks() {
       brandName:   t.brandName,
       moa,
       category,
-      targetPest:  t.targetPest || '',
       memo:        t.memo || '',
       matchSource,
     })
@@ -341,7 +335,6 @@ function buildBulkTreatmentRecord(row) {
     brandName:   match?.brandName || brand,
     moa,
     category,
-    targetPest:  '',
     memo:        row.memo.trim(),
     matchSource: match ? 'auto' : null,
   }
@@ -824,11 +817,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                     <span v-if="t.matchSource === 'auto'" class="match-badge match-ok">자동</span>
                     <span v-if="t.matchSource === 'inventory'" class="match-badge match-ok">재고</span>
                   </div>
-                  <p v-if="t.targetPest || t.memo" class="item-meta">
-                    <span v-if="t.targetPest">{{ t.targetPest }}</span>
-                    <span v-if="t.targetPest && t.memo"> · </span>
-                    <span v-if="t.memo" class="muted">{{ t.memo }}</span>
-                  </p>
+                  <p v-if="t.memo" class="item-meta muted">{{ t.memo }}</p>
                 </div>
                 <div class="row-actions">
                   <template v-if="showHistoryForm">
@@ -942,12 +931,6 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
               <span class="moa-badge" :style="{ background: moaColor(fMoa) }">{{ fMoa }}</span>
               <span class="cat-badge" :class="categoryClass(fCategory)">{{ fCategory }}</span>
             </div>
-            <label>방제 대상
-              <input v-model="fPest" list="pest-list" placeholder="예: 귤굴나방" autocomplete="off" />
-              <datalist id="pest-list">
-                <option v-for="p in recPests" :key="p" :value="p" />
-              </datalist>
-            </label>
             <label>메모
               <input v-model="fMemo" placeholder="희석배수, 날씨, 구역 등 (선택)" />
             </label>
