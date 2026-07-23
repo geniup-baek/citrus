@@ -5,12 +5,14 @@ import { compressImageFile } from '../utils/imageProcessing'
 import { useLocaleStore } from '../stores/localeStore'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
+import { useLightboxBack } from '../composables/useLightboxBack'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const editingId = ref('')
 const showForm = ref(false)
 const lightboxPhoto = ref(null)
+useLightboxBack(lightboxPhoto)
 
 const { isMobile } = useIsMobile()
 const formOpen = ref(false) // 폼(추가/편집) 표시 여부 — 토글로 닫으면 추가 폼도 숨긴다

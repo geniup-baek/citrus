@@ -6,6 +6,7 @@ import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
+import { useLightboxBack } from '../composables/useLightboxBack'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -27,6 +28,7 @@ const logNote = ref('')
 const logPhotoPreviews = ref([])
 const logCompressionReport = ref('')
 const lightboxPhoto = ref(null)
+useLightboxBack(lightboxPhoto)
 
 // 성장 기록 편집
 const editingLogId = ref('')

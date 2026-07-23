@@ -5,6 +5,7 @@ import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
+import { useLightboxBack } from '../composables/useLightboxBack'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -30,6 +31,7 @@ const formPhotos = ref([]) // 편집 중 유지되는 기존 사진
 const photoPreviews = ref([]) // 새로 추가한 미리보기
 const compressionReport = ref('')
 const lightboxPhoto = ref(null)
+useLightboxBack(lightboxPhoto)
 
 function seedlingsByFacility(facilityId) {
   return store.state.seedlings.filter((s) => s.greenhouseId === facilityId)

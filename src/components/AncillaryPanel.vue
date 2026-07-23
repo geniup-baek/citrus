@@ -5,6 +5,7 @@ import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
+import { useLightboxBack } from '../composables/useLightboxBack'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -37,6 +38,7 @@ const formPhotos = ref([])
 const photoPreviews = ref([])
 const compressionReport = ref('')
 const lightboxPhoto = ref(null)
+useLightboxBack(lightboxPhoto)
 
 function moved(arr, i, dir) {
   const j = i + dir

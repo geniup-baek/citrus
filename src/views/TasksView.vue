@@ -22,6 +22,7 @@ import { useLocaleStore } from '../stores/localeStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
+import { useLightboxBack } from '../composables/useLightboxBack'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -74,6 +75,7 @@ const deduplicateResult = ref('')
 const logPhotoPreviews = ref([])
 const logCompressionReport = ref('')
 const lightboxPhoto = ref(null)
+useLightboxBack(lightboxPhoto)
 
 // 진행 기록 인라인 패널 (목록 항목의 '로그' 버튼)
 const expandedTaskId = ref('')
