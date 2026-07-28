@@ -38,6 +38,7 @@ const recommendationQuery = ref('')
 
 // 해결 기록 인라인 패널
 const expandedId = ref('')
+const showAddLog = ref(false)
 const stepNote = ref('')
 
 // 해결 기록 사진
@@ -284,11 +285,23 @@ function toggleLogPanel(issue) {
     if (editingId.value) clearForm() // 편집 폼과 상호 배타
     formOpen.value = false
     expandedId.value = issue.id
+    showAddLog.value = false
     stepNote.value = ''
     stepPhotoPreviews.value = []
     stepCompressionReport.value = ''
     cancelEditStep()
   }
+}
+
+function openAddLog() {
+  showAddLog.value = true
+}
+
+function cancelAddLog() {
+  showAddLog.value = false
+  stepNote.value = ''
+  stepPhotoPreviews.value = []
+  stepCompressionReport.value = ''
 }
 
 async function handleStepPhotoChange(event) {
@@ -313,6 +326,7 @@ async function recordStep(issue) {
     return
   }
   await store.addIssueResolutionStep(issue.id, stepNote.value, photos)
+  showAddLog.value = false
   stepNote.value = ''
   stepPhotoPreviews.value = []
   stepCompressionReport.value = ''
@@ -429,12 +443,17 @@ clearForm()
 
           <!-- 해결 기록 인라인 패널 -->
           <div v-if="expandedId === issue.id" class="log-panel">
-            <form class="log-panel-form" @submit.prevent="recordStep(issue)">
+            <div class="row-actions align-start log-history-label">
+              <p class="muted" style="margin: 0;">{{ localeStore.t('issues.steps') }}</p>
+              <button v-if="!showAddLog" class="ghost compact-btn" type="button" @click="openAddLog">{{ localeStore.t('issues.addStepTrigger') }}</button>
+            </div>
+
+            <form v-if="showAddLog" class="log-panel-form" @submit.prevent="recordStep(issue)">
               <input v-model="stepNote" type="text" :placeholder="localeStore.t('issues.newResolutionStep')" />
               <label class="step-photo-label">{{ localeStore.t('issues.attachPhotos') }}
                 <input accept="image/*" multiple type="file" @change="handleStepPhotoChange" />
               </label>
-              <p v-if="stepCompressionReport" class="muted" style="font-size: 0.78rem;">{{ stepCompressionReport }}</p>
+              <p v-if="stepCompressionReport" class="muted text-sm">{{ stepCompressionReport }}</p>
               <div v-if="stepPhotoPreviews.length" class="photo-grid">
                 <figure v-for="photo in stepPhotoPreviews" :key="photo.id" class="photo-card">
                   <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
@@ -443,10 +462,12 @@ clearForm()
                   <button type="button" class="danger photo-card-delete" @click="removeStepPreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                 </figure>
               </div>
-              <button type="submit">{{ localeStore.t('issues.addStep') }}</button>
+              <div class="row-actions">
+                <button type="submit">{{ localeStore.t('issues.addStep') }}</button>
+                <button class="ghost" type="button" @click="cancelAddLog">{{ localeStore.t('common.cancel') }}</button>
+              </div>
             </form>
 
-            <p class="muted log-history-label">{{ localeStore.t('issues.steps') }}</p>
             <ul class="list clean compact">
               <li v-for="step in issue.resolutionSteps" :key="stepKey(step)" class="list-item">
                 <template v-if="editingStepId !== stepKey(step)">
@@ -475,7 +496,7 @@ clearForm()
                     <textarea v-model="editStepNote" required rows="3" />
 
                     <template v-if="editStepPhotos.length">
-                      <p class="muted" style="font-size: 0.78rem;">{{ localeStore.t('issues.existingPhotos') }}</p>
+                      <p class="muted text-sm">{{ localeStore.t('issues.existingPhotos') }}</p>
                       <div class="photo-grid">
                         <figure v-for="photo in editStepPhotos" :key="photo.id" class="photo-card">
                           <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
@@ -489,7 +510,7 @@ clearForm()
                     <label class="step-photo-label">{{ localeStore.t('issues.attachPhotos') }}
                       <input accept="image/*" multiple type="file" @change="handleEditStepPhotoChange" />
                     </label>
-                    <p v-if="editStepCompressionReport" class="muted" style="font-size: 0.78rem;">{{ editStepCompressionReport }}</p>
+                    <p v-if="editStepCompressionReport" class="muted text-sm">{{ editStepCompressionReport }}</p>
                     <div v-if="editStepNewPreviews.length" class="photo-grid">
                       <figure v-for="photo in editStepNewPreviews" :key="photo.id" class="photo-card">
                         <button type="button" class="photo-card-btn" @click="openLightbox(photo)">

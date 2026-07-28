@@ -24,6 +24,7 @@ const formTarget = computed(() =>
 
 // ── 성장 기록 인라인 패널 ────────────────────────────────────────────────────
 const expandedId = ref('')
+const showAddLog = ref(false)
 const logNote = ref('')
 const logPhotoPreviews = ref([])
 const logCompressionReport = ref('')
@@ -115,6 +116,20 @@ const batchCount = computed(() => {
   return span > 0 ? span * batch.cols.length : 0
 })
 
+// 재배동+열+구역이 모두 지정된 경우에만 위치 중복으로 취급한다(위치 미지정 묘목끼리는 중복 아님)
+function isDuplicatePosition(greenhouseId, positionRow, positionCol, excludeId) {
+  if (!greenhouseId || positionRow === '' || positionRow == null || positionCol === '' || positionCol == null) {
+    return false
+  }
+  return store.state.seedlings.some(
+    (s) =>
+      s.id !== excludeId &&
+      s.greenhouseId === greenhouseId &&
+      String(s.positionRow) === String(positionRow) &&
+      s.positionCol === positionCol,
+  )
+}
+
 async function confirmDeleteSeedling(seedling) {
   const logs = (seedling.growthLogs || []).length
   const ok = await confirm({
@@ -198,8 +213,13 @@ async function saveBatch() {
   if (!batch.greenhouseId || from > to || !batch.cols.length) return
 
   const payloads = []
+  const skipped = []
   for (let row = from; row <= to; row += 1) {
     for (const col of colOptions.filter((c) => batch.cols.includes(c))) {
+      if (isDuplicatePosition(batch.greenhouseId, row, col)) {
+        skipped.push(`${row}${localeStore.t('seedlings.positionUnit')} ${col}`)
+        continue
+      }
       payloads.push({
         greenhouseId: batch.greenhouseId,
         positionRow: row,
@@ -212,7 +232,15 @@ async function saveBatch() {
     }
   }
 
-  await store.addSeedlingsBatch(payloads)
+  if (payloads.length) await store.addSeedlingsBatch(payloads)
+
+  if (skipped.length && !payloads.length) {
+    alert(localeStore.t('seedlings.duplicatePositionBatchAll'))
+    return
+  }
+  if (skipped.length) {
+    alert(localeStore.t('seedlings.duplicatePositionBatch', { count: skipped.length, positions: skipped.join(', ') }))
+  }
   closeForm()
 }
 
@@ -252,6 +280,10 @@ function closeForm() {
 }
 
 async function saveSeedling() {
+  if (isDuplicatePosition(form.greenhouseId, form.positionRow, form.positionCol, form.id)) {
+    alert(localeStore.t('seedlings.duplicatePosition'))
+    return
+  }
   await store.upsertSeedling({
     id: form.id,
     greenhouseId: form.greenhouseId,
@@ -333,10 +365,22 @@ function toggleLogPanel(seedling) {
   if (editingId.value) clearForm() // 편집 폼과 상호 배타
   formOpen.value = false
   expandedId.value = seedling.id
+  showAddLog.value = false
   logNote.value = ''
   logPhotoPreviews.value = []
   logCompressionReport.value = ''
   cancelEditLog()
+}
+
+function openAddLog() {
+  showAddLog.value = true
+}
+
+function cancelAddLog() {
+  showAddLog.value = false
+  logNote.value = ''
+  logPhotoPreviews.value = []
+  logCompressionReport.value = ''
 }
 
 async function handleLogPhotoChange(event) {
@@ -361,6 +405,7 @@ async function recordLog(seedling) {
     return
   }
   await store.addSeedlingLog(seedling.id, logNote.value, photos)
+  showAddLog.value = false
   logNote.value = ''
   logPhotoPreviews.value = []
   logCompressionReport.value = ''
@@ -487,15 +532,20 @@ clearForm()
 
           <!-- 성장 기록 인라인 패널 -->
           <div v-if="expandedId === seedling.id" class="log-panel">
-            <form class="stack-form" style="margin-bottom: 1rem;" @submit.prevent="recordLog(seedling)">
+            <div class="row-actions align-start log-history-label">
+              <p class="muted" style="margin: 0;">{{ localeStore.t('seedlings.growthHistory') }}</p>
+              <button v-if="!showAddLog" class="ghost compact-btn" type="button" @click="openAddLog">{{ localeStore.t('seedlings.addLogTrigger') }}</button>
+            </div>
+
+            <form v-if="showAddLog" class="stack-form" style="margin-bottom: 1rem;" @submit.prevent="recordLog(seedling)">
               <label>{{ localeStore.t('seedlings.growthNote') }}
                 <textarea v-model="logNote" required rows="3" />
               </label>
               <label class="step-photo-label">{{ localeStore.t('seedlings.attachPhotos') }}
                 <input accept="image/*" multiple type="file" @change="handleLogPhotoChange" />
               </label>
-              <p class="muted" style="font-size: 0.78rem;">{{ localeStore.t('seedlings.photoLimit') }}</p>
-              <p v-if="logCompressionReport" class="muted" style="font-size: 0.78rem;">{{ logCompressionReport }}</p>
+              <p class="muted text-sm">{{ localeStore.t('seedlings.photoLimit') }}</p>
+              <p v-if="logCompressionReport" class="muted text-sm">{{ logCompressionReport }}</p>
               <div v-if="logPhotoPreviews.length" class="photo-grid">
                 <figure v-for="photo in logPhotoPreviews" :key="photo.id" class="photo-card">
                   <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
@@ -504,10 +554,12 @@ clearForm()
                   <button type="button" class="danger photo-card-delete" @click="removeLogPreviewPhoto(photo.id)">{{ localeStore.t('common.delete') }}</button>
                 </figure>
               </div>
-              <button type="submit">{{ localeStore.t('seedlings.addGrowthLog') }}</button>
+              <div class="row-actions">
+                <button type="submit">{{ localeStore.t('seedlings.addGrowthLog') }}</button>
+                <button class="ghost" type="button" @click="cancelAddLog">{{ localeStore.t('common.cancel') }}</button>
+              </div>
             </form>
 
-            <p class="muted log-history-label">{{ localeStore.t('seedlings.growthHistory') }}</p>
             <ul class="list clean">
               <li v-for="log in (seedling.growthLogs || [])" :key="logKey(log)" class="list-item">
                 <!-- 표시 모드 -->
@@ -540,7 +592,7 @@ clearForm()
                       <textarea v-model="editLogNote" required rows="3" />
                     </label>
                     <template v-if="editLogPhotos.length">
-                      <p class="muted" style="font-size: 0.78rem;">{{ localeStore.t('seedlings.existingPhotos') }}</p>
+                      <p class="muted text-sm">{{ localeStore.t('seedlings.existingPhotos') }}</p>
                       <div class="photo-grid">
                         <figure v-for="photo in editLogPhotos" :key="photo.id" class="photo-card">
                           <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
@@ -553,7 +605,7 @@ clearForm()
                     <label class="step-photo-label">{{ localeStore.t('seedlings.attachPhotos') }}
                       <input accept="image/*" multiple type="file" @change="handleEditLogPhotoChange" />
                     </label>
-                    <p v-if="editLogCompressionReport" class="muted" style="font-size: 0.78rem;">{{ editLogCompressionReport }}</p>
+                    <p v-if="editLogCompressionReport" class="muted text-sm">{{ editLogCompressionReport }}</p>
                     <div v-if="editLogNewPreviews.length" class="photo-grid">
                       <figure v-for="photo in editLogNewPreviews" :key="photo.id" class="photo-card">
                         <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
@@ -569,7 +621,7 @@ clearForm()
                   </form>
                 </template>
               </li>
-              <li v-if="!seedling.growthLogs?.length" class="muted" style="font-size: 0.85rem;">{{ localeStore.t('seedlings.noGrowthLogs') }}</li>
+              <li v-if="!seedling.growthLogs?.length" class="muted text-sm">{{ localeStore.t('seedlings.noGrowthLogs') }}</li>
             </ul>
           </div>
           <div :id="`seed-form-slot-${seedling.id}`" class="mobile-form-slot"></div>

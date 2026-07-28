@@ -167,19 +167,18 @@ onMounted(() => {
     <li v-for="item in filteredSurvItems" :key="`${item._year}-${item.insectKey}`" class="list-item card-like">
       <div class="row-actions align-start">
         <p class="item-title">{{ item.predictnSpchcknNm ?? '-' }}</p>
-        <span class="pill" style="font-size: 0.75rem;">{{ item.examinSpchcknNm ?? '-' }}</span>
+        <span class="pill text-xs">{{ item.examinSpchcknNm ?? '-' }}</span>
       </div>
       <p class="item-meta">
         {{ item.kncrNm ?? '-' }}
         &nbsp;·&nbsp;{{ item.examinYear ?? item._year }}년
         &nbsp;·&nbsp;{{ item.examinTmrd != null ? item.examinTmrd + '회차' : '-' }}
       </p>
-      <p v-if="item.inputStdrDatetm" class="muted" style="font-size: 0.8rem;">
+      <p v-if="item.inputStdrDatetm" class="muted text-sm">
         조사기준일: {{ item.inputStdrDatetm }}
       </p>
       <button
-        class="ghost compact-btn"
-        style="margin-top: 0.35rem; width: fit-content;"
+        class="ghost compact-btn detail-toggle-btn"
         @click="toggleSurvDetail(item)"
       >
         {{ survExpandedKey === item.insectKey ? '▲ 시군구별 상세 닫기' : '▼ 제주 시군구별 상세 보기' }}
@@ -187,10 +186,10 @@ onMounted(() => {
 
       <!-- SVC53 시군구별 상세 패널 -->
       <div v-if="survExpandedKey === item.insectKey" class="surv-detail-panel">
-        <p v-if="survDetailLoading" class="muted" style="font-size: 0.82rem;">불러오는 중...</p>
-        <p v-else-if="survDetailError" class="muted" style="color: var(--danger); font-size: 0.82rem;">{{ survDetailError }}</p>
+        <p v-if="survDetailLoading" class="muted text-sm">불러오는 중...</p>
+        <p v-else-if="survDetailError" class="muted text-sm" style="color: var(--danger);">{{ survDetailError }}</p>
         <template v-else-if="survDetailItems.length">
-          <p class="muted" style="font-size: 0.78rem; margin-bottom: 0.6rem;">제주특별자치도 시군구별 발생 현황</p>
+          <p class="muted text-sm" style="margin-bottom: 0.6rem;">제주특별자치도 시군구별 발생 현황</p>
           <div
             v-for="group in groupBySigungu(survDetailItems)"
             :key="group.city"
@@ -213,34 +212,13 @@ onMounted(() => {
             </table>
           </div>
         </template>
-        <p v-else class="muted" style="font-size: 0.82rem;">제주 시군구 데이터가 없습니다.</p>
+        <p v-else class="muted text-sm">제주 시군구 데이터가 없습니다.</p>
       </div>
     </li>
   </ul>
 </template>
 
 <style scoped>
-.type-filter {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-}
-.type-btn {
-  border-radius: 999px;
-  font-size: 0.82rem;
-  padding: 0.28rem 0.72rem;
-}
-/* button.ghost(요소+클래스)보다 우선하도록 클래스 두 개를 겹쳐 특정도를 높인다 */
-.ghost.type-btn-active {
-  background: var(--primary);
-  color: var(--primary-ink);
-  border-color: transparent;
-}
-.result-count { font-size: 0.8rem; color: var(--muted); }
-.empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; }
-
 .surv-detail-panel {
   margin-top: 0.6rem;
   padding-top: 0.6rem;

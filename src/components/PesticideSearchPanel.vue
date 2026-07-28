@@ -299,29 +299,7 @@ onMounted(() => {
 }
 .search-bar input { flex: 1; min-width: 140px; }
 
-.type-filter {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-}
-.type-btn {
-  border-radius: 999px;
-  font-size: 0.82rem;
-  padding: 0.28rem 0.72rem;
-}
-/* button.ghost(요소+클래스)보다 우선하도록 클래스 두 개를 겹쳐 특정도를 높인다 */
-.ghost.type-btn-active {
-  background: var(--primary);
-  color: var(--primary-ink);
-  border-color: transparent;
-}
-.result-count { font-size: 0.8rem; color: var(--muted); }
 .name-mode-toggle { display: flex; gap: 0.25rem; margin-left: auto; }
-
-.error-msg { color: var(--danger); font-size: 0.875rem; }
-.empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; }
 
 .pest-list { display: flex; flex-direction: column; gap: 0.6rem; }
 
@@ -357,14 +335,14 @@ onMounted(() => {
 .brand-name { font-size: 0.75rem; color: var(--muted); }
 
 .type-tag {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   padding: 0.12rem 0.45rem;
   border-radius: 999px;
   font-weight: 600;
   border: 1px solid;
 }
-.type-tag.살균 { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
-.type-tag.살충 { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
+.type-tag.살균 { background: var(--tone-green-bg); color: var(--tone-green-text); border-color: var(--tone-green-border); }
+.type-tag.살충 { background: var(--tone-orange-bg); color: var(--tone-orange-text); border-color: var(--tone-orange-border); }
 
 .pest-meta {
   grid-area: meta;
@@ -403,13 +381,4 @@ onMounted(() => {
 .detail-no-cache { font-size: 0.82rem; color: var(--muted); padding: 0.25rem 0; }
 .moa-detail { display: flex; align-items: center; gap: 0.5rem; }
 
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 1.5rem;
-  font-size: 0.875rem;
-}
-.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

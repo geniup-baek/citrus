@@ -256,7 +256,7 @@ const brixGuide = [
             <span class="variety-badge" :style="{ background: varieties[selectedVariety].color }">
               {{ varieties[selectedVariety].name }}
             </span>
-            <span class="muted" style="font-size: 0.85rem;">{{ varieties[selectedVariety].nameEn }}</span>
+            <span class="muted text-sm">{{ varieties[selectedVariety].nameEn }}</span>
           </div>
           <div class="variety-meta-grid">
             <div class="variety-meta-item">
@@ -325,7 +325,7 @@ const brixGuide = [
       <!-- 브릭스 추이 -->
       <article class="know-card" style="margin-top: 1rem;">
         <h2 style="margin-bottom: 0.75rem;">브릭스(당도) 추이 기준표</h2>
-        <p class="muted" style="margin-bottom: 0.75rem; font-size: 0.85rem;">수확 결정의 핵심 지표입니다. 대표 과실 5~10개 평균값을 주 1회 기록하세요.</p>
+        <p class="muted text-sm" style="margin-bottom: 0.75rem;">수확 결정의 핵심 지표입니다. 대표 과실 5~10개 평균값을 주 1회 기록하세요.</p>
         <div class="brix-table-wrap">
           <table class="brix-table">
             <thead>
@@ -341,7 +341,7 @@ const brixGuide = [
                 <td>{{ row.stage }}</td>
                 <td class="brix-val">{{ row.hallabong }}</td>
                 <td class="brix-val">{{ row.karahyang }}</td>
-                <td class="muted" style="font-size: 0.83rem;">{{ row.note }}</td>
+                <td class="muted text-sm">{{ row.note }}</td>
               </tr>
             </tbody>
           </table>
@@ -361,9 +361,9 @@ const brixGuide = [
             <li v-for="pest in group.items" :key="pest.name" class="list-item card-like pest-item">
               <div class="pest-name-row">
                 <strong>{{ pest.name }}</strong>
-                <span class="pill" style="font-size: 0.73rem;">{{ pest.season }}</span>
+                <span class="pill text-xs">{{ pest.season }}</span>
               </div>
-              <p class="muted" style="font-size: 0.83rem;">방제 기준: {{ pest.threshold }}</p>
+              <p class="muted text-sm">방제 기준: {{ pest.threshold }}</p>
               <p style="font-size: 0.85rem;">{{ pest.action }}</p>
             </li>
           </ul>
@@ -373,18 +373,18 @@ const brixGuide = [
       <!-- 시비 가이드 -->
       <article class="know-card" style="margin-top: 1rem;">
         <h2 style="margin-bottom: 0.75rem;">시비 가이드 (성목 기준)</h2>
-        <p class="muted" style="margin-bottom: 0.75rem; font-size: 0.85rem;">수세 · 토양 분석 결과에 따라 가감. 아래 수치는 10a(1,000m²) 기준 참고값입니다.</p>
+        <p class="muted text-sm" style="margin-bottom: 0.75rem;">수세 · 토양 분석 결과에 따라 가감. 아래 수치는 10a(1,000m²) 기준 참고값입니다.</p>
         <ul class="list clean compact">
           <li v-for="fert in fertilization" :key="fert.timing" class="list-item card-like fert-item">
             <div class="fert-header">
               <strong>{{ fert.timing }}</strong>
-              <span class="pill" style="font-size: 0.73rem;">{{ fert.stage }}</span>
+              <span class="pill text-xs">{{ fert.stage }}</span>
             </div>
             <div class="fert-meta">
               <span class="meta-key">성분비</span><span>{{ fert.npk }}</span>
               <span class="meta-key">시용량</span><span>{{ fert.amount }}</span>
             </div>
-            <p class="muted" style="font-size: 0.83rem;">{{ fert.notes }}</p>
+            <p class="muted text-sm">{{ fert.notes }}</p>
           </li>
         </ul>
       </article>
@@ -398,7 +398,7 @@ const brixGuide = [
               <span class="irr-period">{{ irr.period }}</span>
               <span class="irr-guide">{{ irr.guide }}</span>
             </div>
-            <p class="muted" style="font-size: 0.83rem;">{{ irr.detail }}</p>
+            <p class="muted text-sm">{{ irr.detail }}</p>
           </li>
         </ul>
       </article>

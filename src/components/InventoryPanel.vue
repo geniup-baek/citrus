@@ -548,7 +548,7 @@ clearForm()
           <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('inventory.newEntry') }}</button>
         </div>
       </form>
-      <p class="muted" style="font-size: 0.8rem;">{{ localeStore.t('inventory.inOut') }}로 규격·유효기간별 재고를 등록·관리합니다.</p>
+      <p class="muted text-sm">{{ localeStore.t('inventory.inOut') }}로 규격·유효기간별 재고를 등록·관리합니다.</p>
     </article>
     </Teleport>
   </div>

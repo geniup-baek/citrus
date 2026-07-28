@@ -225,10 +225,9 @@ onMounted(() => {
           <img v-if="imgUrl(item.thumbImg)" :src="imgUrl(item.thumbImg)" :alt="item.sickNameKor" class="pest-thumb" />
           <div class="pest-item-body">
             <p class="item-title">{{ item.sickNameKor }}</p>
-            <p v-if="item.sickNameEng" class="muted" style="font-size:0.78rem; font-style:italic;">{{ item.sickNameEng }}</p>
+            <p v-if="item.sickNameEng" class="muted text-sm" style="font-style:italic;">{{ item.sickNameEng }}</p>
             <button
-              class="ghost compact-btn"
-              style="margin-top:0.35rem; width:fit-content;"
+              class="ghost compact-btn detail-toggle-btn"
               @click="toggleSearchDetail(item.sickKey, 'disease')"
             >
               {{ searchExpandedId === item.sickKey ? '▲ 닫기' : '▼ 상세보기' }}
@@ -236,8 +235,8 @@ onMounted(() => {
           </div>
         </div>
         <div v-if="searchExpandedId === item.sickKey" class="search-detail-panel">
-          <p v-if="searchDetailLoading" class="muted" style="font-size:0.82rem;">불러오는 중...</p>
-          <p v-else-if="searchDetailError" style="color:var(--danger);font-size:0.82rem;">{{ searchDetailError }}</p>
+          <p v-if="searchDetailLoading" class="muted text-sm">불러오는 중...</p>
+          <p v-else-if="searchDetailError" class="text-sm" style="color:var(--danger);">{{ searchDetailError }}</p>
           <template v-else-if="searchDetailData">
             <div v-if="searchDetailData.symptoms" class="detail-section">
               <p class="detail-label">병 증상</p>
@@ -255,9 +254,9 @@ onMounted(() => {
         </div>
       </li>
     </ul>
-    <div v-if="diseaseTotal > PAGE_SIZE" class="row-actions" style="margin-top:0.75rem; justify-content:center;">
+    <div v-if="diseaseTotal > PAGE_SIZE" class="pagination">
       <button class="ghost compact-btn" :disabled="diseasePage <= 1 || loading" @click="loadDiseases(diseasePage - 1)">이전</button>
-      <span class="muted" style="font-size:0.85rem;">{{ diseasePage }} / {{ totalPages(diseaseTotal) }}</span>
+      <span class="muted">{{ diseasePage }} / {{ totalPages(diseaseTotal) }}</span>
       <button class="ghost compact-btn" :disabled="diseasePage >= totalPages(diseaseTotal) || loading" @click="loadDiseases(diseasePage + 1)">다음</button>
     </div>
   </template>
@@ -271,12 +270,11 @@ onMounted(() => {
           <div class="pest-item-body">
             <p class="item-title">{{ item.virusName }}</p>
             <p class="item-meta">
-              <span class="pill" style="font-size:0.75rem;">{{ item.virusGroup }}</span>
+              <span class="pill text-xs">{{ item.virusGroup }}</span>
               &nbsp;{{ item.sickNameKor }}
             </p>
             <button
-              class="ghost compact-btn"
-              style="margin-top:0.35rem; width:fit-content;"
+              class="ghost compact-btn detail-toggle-btn"
               @click="toggleSearchDetail(item.virusKey, 'pathogen')"
             >
               {{ searchExpandedId === item.virusKey ? '▲ 닫기' : '▼ 상세보기' }}
@@ -284,8 +282,8 @@ onMounted(() => {
           </div>
         </div>
         <div v-if="searchExpandedId === item.virusKey" class="search-detail-panel">
-          <p v-if="searchDetailLoading" class="muted" style="font-size:0.82rem;">불러오는 중...</p>
-          <p v-else-if="searchDetailError" style="color:var(--danger);font-size:0.82rem;">{{ searchDetailError }}</p>
+          <p v-if="searchDetailLoading" class="muted text-sm">불러오는 중...</p>
+          <p v-else-if="searchDetailError" class="text-sm" style="color:var(--danger);">{{ searchDetailError }}</p>
           <template v-else-if="searchDetailData">
             <div v-if="searchDetailData.virusCharacteristic" class="detail-section">
               <p class="detail-label">병원체 특징</p>
@@ -303,9 +301,9 @@ onMounted(() => {
         </div>
       </li>
     </ul>
-    <div v-if="pathogenTotal > PAGE_SIZE" class="row-actions" style="margin-top:0.75rem; justify-content:center;">
+    <div v-if="pathogenTotal > PAGE_SIZE" class="pagination">
       <button class="ghost compact-btn" :disabled="pathogenPage <= 1 || loading" @click="loadPathogens(pathogenPage - 1)">이전</button>
-      <span class="muted" style="font-size:0.85rem;">{{ pathogenPage }} / {{ totalPages(pathogenTotal) }}</span>
+      <span class="muted">{{ pathogenPage }} / {{ totalPages(pathogenTotal) }}</span>
       <button class="ghost compact-btn" :disabled="pathogenPage >= totalPages(pathogenTotal) || loading" @click="loadPathogens(pathogenPage + 1)">다음</button>
     </div>
   </template>
@@ -318,10 +316,9 @@ onMounted(() => {
           <img v-if="imgUrl(item.thumbImg)" :src="imgUrl(item.thumbImg)" :alt="item.insectKorName" class="pest-thumb" />
           <div class="pest-item-body">
             <p class="item-title">{{ item.insectKorName }}</p>
-            <p v-if="item.speciesName" class="muted" style="font-size:0.78rem; font-style:italic;">{{ item.speciesName }}</p>
+            <p v-if="item.speciesName" class="muted text-sm" style="font-style:italic;">{{ item.speciesName }}</p>
             <button
-              class="ghost compact-btn"
-              style="margin-top:0.35rem; width:fit-content;"
+              class="ghost compact-btn detail-toggle-btn"
               @click="toggleSearchDetail(item.insectKey, 'insect')"
             >
               {{ searchExpandedId === item.insectKey ? '▲ 닫기' : '▼ 상세보기' }}
@@ -329,8 +326,8 @@ onMounted(() => {
           </div>
         </div>
         <div v-if="searchExpandedId === item.insectKey" class="search-detail-panel">
-          <p v-if="searchDetailLoading" class="muted" style="font-size:0.82rem;">불러오는 중...</p>
-          <p v-else-if="searchDetailError" style="color:var(--danger);font-size:0.82rem;">{{ searchDetailError }}</p>
+          <p v-if="searchDetailLoading" class="muted text-sm">불러오는 중...</p>
+          <p v-else-if="searchDetailError" class="text-sm" style="color:var(--danger);">{{ searchDetailError }}</p>
           <template v-else-if="searchDetailData">
             <div v-if="searchDetailData.damageInfo" class="detail-section">
               <p class="detail-label">피해정보</p>
@@ -348,9 +345,9 @@ onMounted(() => {
         </div>
       </li>
     </ul>
-    <div v-if="insectTotal > PAGE_SIZE" class="row-actions" style="margin-top:0.75rem; justify-content:center;">
+    <div v-if="insectTotal > PAGE_SIZE" class="pagination">
       <button class="ghost compact-btn" :disabled="insectPage <= 1 || loading" @click="loadInsects(insectPage - 1)">이전</button>
-      <span class="muted" style="font-size:0.85rem;">{{ insectPage }} / {{ totalPages(insectTotal) }}</span>
+      <span class="muted">{{ insectPage }} / {{ totalPages(insectTotal) }}</span>
       <button class="ghost compact-btn" :disabled="insectPage >= totalPages(insectTotal) || loading" @click="loadInsects(insectPage + 1)">다음</button>
     </div>
   </template>

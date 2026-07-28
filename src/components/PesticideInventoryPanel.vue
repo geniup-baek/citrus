@@ -634,7 +634,7 @@ function printReport() {
                 <span class="link-result-pest">{{ r.targetPest }}</span>
               </div>
             </div>
-            <p v-else-if="linkQuery.trim().length > 1" class="muted" style="font-size:0.82rem; padding:0.4rem 0;">
+            <p v-else-if="linkQuery.trim().length > 1" class="muted text-sm" style="padding:0.4rem 0;">
               검색 결과 없음 — 공공데이터 농약정보를 먼저 가져와야 합니다.
             </p>
           </div>
@@ -739,7 +739,7 @@ function printReport() {
             {{ bulkImporting ? '처리 중...' : (recSettingsStore.settings.bulkImportMode === 'replace' ? '전체 새로 작성' : '일괄 추가') }}
           </button>
         </div>
-        <p v-if="bulkImportMessage" class="muted" style="font-size:0.82rem; margin-top:0.5rem;">{{ bulkImportMessage }}</p>
+        <p v-if="bulkImportMessage" class="muted text-sm" style="margin-top:0.5rem;">{{ bulkImportMessage }}</p>
       </template>
 
       <template v-else>
@@ -780,7 +780,7 @@ function printReport() {
           <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ t('inventory.newEntry') }}</button>
         </div>
       </form>
-      <p class="muted" style="font-size: 0.8rem;">{{ t('inventory.inOut') }}로 규격·유효기간별 재고를 등록·관리합니다.</p>
+      <p class="muted text-sm">{{ t('inventory.inOut') }}로 규격·유효기간별 재고를 등록·관리합니다.</p>
       </template>
     </article>
     </Teleport>
@@ -806,8 +806,6 @@ function printReport() {
 .inv-api-item:hover { background: var(--surface-strong); }
 .inv-api-brand { font-weight: 600; }
 .inv-api-pest { font-size: 0.76rem; color: var(--muted); margin-left: auto; }
-
-.empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; }
 
 /* 농약정보 연결 버튼 */
 .link-btn-active { background: var(--primary) !important; color: var(--primary-ink) !important; border-color: var(--primary) !important; }
