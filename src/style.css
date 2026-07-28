@@ -8,10 +8,39 @@
   --line: #e3d5b8;
   --text: #2b2a2f;
   --muted: #6b6460;
+  --text-muted: #6b6460;
   --primary: #d15b1e;
   --primary-ink: #fffaf1;
+  --accent: #d15b1e;
   --danger: #b42318;
   --success: #0f7b4d;
+  --warning: #f39c12;
+
+  /* 모양 통일 토큰: 컨트롤(버튼·입력) / 패널(카드·배너) / 알약(pill·배지) */
+  --radius: 0.75rem;
+  --radius-control: 0.5rem;
+  --radius-panel: 0.75rem;
+  --radius-pill: 999px;
+
+  /* 상태 배지 색상 톤 (농약분류·독성등급·구매/재고출처 등 배지 공용) */
+  --tone-green-bg: #f0fdf4;
+  --tone-green-text: #166534;
+  --tone-green-border: #bbf7d0;
+  --tone-orange-bg: #fff7ed;
+  --tone-orange-text: #9a3412;
+  --tone-orange-border: #fed7aa;
+  --tone-red-bg: #fef2f2;
+  --tone-red-text: #991b1b;
+  --tone-red-border: #fecaca;
+  --tone-blue-bg: #eff6ff;
+  --tone-blue-text: #1e40af;
+  --tone-blue-border: #bfdbfe;
+  --tone-yellow-bg: #fefce8;
+  --tone-yellow-text: #854d0e;
+  --tone-yellow-border: #fde68a;
+  --tone-purple-bg: #faf5ff;
+  --tone-purple-text: #7e22ce;
+  --tone-purple-border: #d8b4fe;
 }
 
 * {
@@ -50,7 +79,7 @@ body {
   background: #fff1d3;
   border: 1px solid #f3cf84;
   color: #7d4c0e;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-panel);
   padding: 0.75rem 1rem;
 }
 
@@ -59,7 +88,7 @@ body {
   gap: 0.75rem;
   background: linear-gradient(145deg, rgba(255, 247, 232, 0.96), rgba(250, 235, 203, 0.95));
   border: 1px solid var(--line);
-  border-radius: 1.1rem;
+  border-radius: var(--radius-panel);
   padding: 1rem 1.1rem;
   position: relative;
 }
@@ -160,7 +189,7 @@ h2 {
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: var(--radius-panel);
   padding: 1rem;
   box-shadow: 0 10px 18px rgba(104, 68, 20, 0.08);
 }
@@ -174,7 +203,7 @@ h2 {
 .sub-card {
   margin-top: 1rem;
   border: 1px solid var(--line);
-  border-radius: 0.9rem;
+  border-radius: var(--radius-panel);
   background: var(--bg-soft);
   padding: 0.85rem;
 }
@@ -188,7 +217,7 @@ h2 {
 .stat-card {
   background: var(--surface-strong);
   border: 1px solid var(--line);
-  border-radius: 0.85rem;
+  border-radius: var(--radius-panel);
   padding: 0.7rem;
 }
 
@@ -252,16 +281,20 @@ select,
 textarea {
   border: 1px solid #ceb992;
   background: #fffdfa;
-  border-radius: 0.65rem;
-  padding: 0.52rem 0.65rem;
+  border-radius: var(--radius-control);
+  padding: 0.42rem 0.6rem;
+  /* 16px 미만이면 iOS Safari가 포커스 시 자동 확대하므로 1rem 유지 */
+  font-size: 1rem;
 }
 
+/* 버튼 기본 크기: 헤더의 '농장 전환' 버튼(.compact-btn) 높이를 앱 전체 기준으로 통일 */
 button {
   border: 0;
-  border-radius: 0.65rem;
+  border-radius: var(--radius-control);
   background: var(--primary);
   color: var(--primary-ink);
-  padding: 0.5rem 0.9rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.82rem;
   cursor: pointer;
 }
 
@@ -327,12 +360,12 @@ button.danger {
 .list-item.card-like {
   background: var(--bg-soft);
   border: 1px solid #e0d1b4;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-panel);
   padding: 0.65rem;
   margin-bottom: 0.55rem;
 }
 
-.list.compact .list-item {
+.list.compact .list-item:not(.card-like) {
   padding: 0.5rem 0;
 }
 
@@ -382,18 +415,18 @@ button.pill:hover {
 }
 
 .pill-ongoing {
-  background: #fff7ed;
-  color: #9a3412;
-  border-color: #fed7aa;
+  background: var(--tone-orange-bg);
+  color: var(--tone-orange-text);
+  border-color: var(--tone-orange-border);
   border-radius: 999px;
   font-size: 0.78rem;
   padding: 0.18rem 0.52rem;
 }
 
 .pill-done {
-  background: #f0fdf4;
-  color: #166534;
-  border-color: #bbf7d0;
+  background: var(--tone-green-bg);
+  color: var(--tone-green-text);
+  border-color: var(--tone-green-border);
   border-radius: 999px;
   font-size: 0.78rem;
   padding: 0.18rem 0.52rem;
@@ -436,7 +469,7 @@ button.pill:hover {
 .cal-cell {
   min-height: 72px;
   border: 1px solid var(--line);
-  border-radius: 0.4rem;
+  border-radius: var(--radius-control);
   padding: 0.3rem 0.4rem;
   cursor: pointer;
   background: var(--surface);
@@ -494,13 +527,13 @@ button.pill:hover {
 }
 
 .cal-chip.ongoing {
-  background: #fff7ed;
-  color: #9a3412;
+  background: var(--tone-orange-bg);
+  color: var(--tone-orange-text);
 }
 
 .cal-chip.done {
-  background: #f0fdf4;
-  color: #166534;
+  background: var(--tone-green-bg);
+  color: var(--tone-green-text);
 }
 
 .cal-chip.more {
@@ -648,6 +681,10 @@ button.pill:hover {
   color: var(--muted);
 }
 
+/* 곳곳에 흩어진 인라인 font-size(0.75~0.9rem대)를 대체하는 공용 텍스트 크기 */
+.text-xs { font-size: 0.72rem; }
+.text-sm { font-size: 0.82rem; }
+
 .section-title {
   margin: 1rem 0 0.55rem;
 }
@@ -732,9 +769,15 @@ button.pill:hover {
   gap: 0.25rem;
 }
 
+/* 목록 항목 아래 '상세보기' 토글 버튼 (병해충 검색/예찰 공용) */
+.detail-toggle-btn {
+  margin-top: 0.35rem;
+  width: fit-content;
+}
+
 .icon-btn {
   padding: 0.2rem 0.5rem;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   line-height: 1;
   min-width: 2rem;
 }
@@ -806,51 +849,51 @@ button.pill:hover {
 .moa-badge {
   display: inline-block;
   color: #fff;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 700;
   padding: 0.15rem 0.45rem;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
 .moa-faded { opacity: 0.55; }
 
 .cat-badge {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   padding: 0.12rem 0.45rem;
   border-radius: 999px;
   font-weight: 600;
   border: 1px solid;
   white-space: nowrap;
 }
-.cat-fungicide   { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
-.cat-insecticide { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
-.cat-miticide    { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+.cat-fungicide   { background: var(--tone-green-bg); color: var(--tone-green-text); border-color: var(--tone-green-border); }
+.cat-insecticide { background: var(--tone-orange-bg); color: var(--tone-orange-text); border-color: var(--tone-orange-border); }
+.cat-miticide    { background: var(--tone-blue-bg); color: var(--tone-blue-text); border-color: var(--tone-blue-border); }
 
 .toxic-badge {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   padding: 0.12rem 0.45rem;
   border-radius: 999px;
   font-weight: 600;
   border: 1px solid;
 }
-.toxic-low     { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
-.toxic-mid     { background: #fefce8; color: #854d0e; border-color: #fde68a; }
-.toxic-high    { background: #fff7ed; color: #9a3412; border-color: #fed7aa; }
-.toxic-extreme { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+.toxic-low     { background: var(--tone-green-bg); color: var(--tone-green-text); border-color: var(--tone-green-border); }
+.toxic-mid     { background: var(--tone-yellow-bg); color: var(--tone-yellow-text); border-color: var(--tone-yellow-border); }
+.toxic-high    { background: var(--tone-orange-bg); color: var(--tone-orange-text); border-color: var(--tone-orange-border); }
+.toxic-extreme { background: var(--tone-red-bg); color: var(--tone-red-text); border-color: var(--tone-red-border); }
 
-.fishtoxic-1 { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
-.fishtoxic-2 { background: #fefce8; color: #854d0e; border-color: #fde68a; }
-.fishtoxic-3 { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+.fishtoxic-1 { background: var(--tone-red-bg); color: var(--tone-red-text); border-color: var(--tone-red-border); }
+.fishtoxic-2 { background: var(--tone-yellow-bg); color: var(--tone-yellow-text); border-color: var(--tone-yellow-border); }
+.fishtoxic-3 { background: var(--tone-blue-bg); color: var(--tone-blue-text); border-color: var(--tone-blue-border); }
 
 .match-badge {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 600;
   padding: 0.1rem 0.4rem;
   border-radius: 999px;
   border: 1px solid;
 }
-.match-ok   { background: #fefce8; color: #854d0e; border-color: #fde68a; }
+.match-ok   { background: var(--tone-yellow-bg); color: var(--tone-yellow-text); border-color: var(--tone-yellow-border); }
 .match-none { background: #f9fafb; color: var(--muted); border-color: var(--line); }
 
 /* 미연결 필터 버튼 (방제이력·가용농약·농약재고 공용) */
@@ -994,7 +1037,7 @@ button.pill:hover {
   margin-top: 0.85rem;
   padding: 0.8rem;
   border: 1px solid var(--danger);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-panel);
   background: color-mix(in srgb, var(--danger) 6%, transparent);
 }
 
@@ -1075,7 +1118,7 @@ button.pill:hover {
 
 .lineage-node {
   border: 1px solid var(--line);
-  border-radius: 0.8rem;
+  border-radius: var(--radius-panel);
   padding: 0.75rem;
   background: linear-gradient(150deg, #fff9ee, #fff2d8);
 }
@@ -1092,7 +1135,7 @@ button.pill:hover {
 
 .photo-card {
   border: 1px solid var(--line);
-  border-radius: 0.7rem;
+  border-radius: var(--radius-panel);
   overflow: hidden;
   background: #fff9ee;
   text-decoration: none;
@@ -1170,10 +1213,10 @@ button.pill:hover {
   background: #e8f4fd;
   border: 1px solid #90caf9;
   color: #0d47a1;
-  border-radius: 0.65rem;
+  border-radius: var(--radius-panel);
   padding: 0.6rem 0.85rem;
   margin-bottom: 0.75rem;
-  font-size: 0.83rem;
+  font-size: 0.82rem;
 }
 .cache-banner.cache-warn {
   background: #fffbe6;
@@ -1192,13 +1235,24 @@ button.pill:hover {
   border: 1px solid currentColor;
   background: transparent;
   color: inherit;
-  font-size: 0.78rem;
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
+  font-size: 0.82rem;
+  padding: 0.28rem 0.6rem;
+  border-radius: var(--radius-control);
   cursor: pointer;
   white-space: nowrap;
 }
 .cache-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+/* ── 페이지네이션 (농약·병해충 검색 공용) ── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .no-cache-state {
   text-align: center;
   padding: 2rem 1rem;
@@ -1207,14 +1261,39 @@ button.pill:hover {
 .no-cache-state p { margin: 0 0 0.75rem; font-size: 0.9rem; }
 .no-cache-state button { font-size: 0.85rem; }
 
+/* ── 알약형 필터 버튼 (농약유형·조사연도 등 공용) ── */
+.type-filter {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.type-btn {
+  border-radius: var(--radius-pill);
+  font-size: 0.82rem;
+  padding: 0.28rem 0.72rem;
+}
+/* button.ghost(요소+클래스)보다 우선하도록 클래스 두 개를 겹쳐 특정도를 높인다 */
+.ghost.type-btn-active {
+  background: var(--primary);
+  color: var(--primary-ink);
+  border-color: transparent;
+}
+.result-count { font-size: 0.8rem; color: var(--muted); }
+
+/* ── 상태 메시지 공용 ── */
+.error-msg { color: var(--danger); font-size: 0.85rem; }
+.empty-msg { color: var(--muted); font-size: 0.85rem; text-align: center; padding: 2rem; }
+
 .pest-error {
   background: #fde2dd;
   border: 1px solid #efb3a9;
   color: #8f1f13;
-  border-radius: 0.65rem;
+  border-radius: var(--radius-panel);
   padding: 0.6rem 0.85rem;
   margin-bottom: 0.75rem;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   display: grid;
   gap: 0.25rem;
 }

@@ -745,7 +745,7 @@ function saveEdit(key, i, isPair) {
                 @click="recSettingsStore.settings.skipCachedPesticideDetails = false"
               >전체 새로 가져오기</button>
             </div>
-            <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
+            <p class="muted text-sm" style="margin-top: 0.5rem;">
               "전체 새로 가져오기"는 매번 API를 다시 다 호출하므로 시간이 오래 걸립니다. 데이터 구조가 바뀌었거나 잘못 저장된 캐시를 고쳐야 할 때만 선택하세요.
             </p>
           </div>
@@ -767,7 +767,7 @@ function saveEdit(key, i, isPair) {
                 @click="recSettingsStore.settings.autoOpenPrintDialog = true"
               >인쇄 대화상자 자동으로 열기</button>
             </div>
-            <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
+            <p class="muted text-sm" style="margin-top: 0.5rem;">
               "보고서만 열기"는 보고서 화면만 새 창으로 열고 인쇄 대화상자는 자동으로 띄우지 않습니다(필요할 때 직접 Ctrl+P). "인쇄 대화상자 자동으로 열기"는 새 창을 열자마자 바로 인쇄 대화상자를 띄웁니다.
             </p>
           </div>
@@ -792,7 +792,7 @@ function saveEdit(key, i, isPair) {
                 @click="recSettingsStore.settings.overwriteLinkedTreatments = true"
               >이미 연결된 이력도 덮어쓰기</button>
             </div>
-            <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
+            <p class="muted text-sm" style="margin-top: 0.5rem;">
               "미연결만 연결"은 아직 연결 안 된 이력만 연결합니다. "이미 연결된 이력도 덮어쓰기"는 이미 연결된 이력도 최신 정보로 다시 덮어씁니다.
             </p>
           </div>
@@ -816,7 +816,7 @@ function saveEdit(key, i, isPair) {
                 @click="recSettingsStore.settings.bulkImportMode = 'replace'"
               >전체 새로 작성</button>
             </div>
-            <p class="muted" style="font-size: 0.78rem; margin-top: 0.5rem;">
+            <p class="muted text-sm" style="margin-top: 0.5rem;">
               "기존 목록에 추가"는 붙여넣은 항목만 더합니다. "전체 새로 작성"은 붙여넣기 전 기존 목록(방제이력·농약재고는 전체 삭제, 가용농약은 구입가능농약 텍스트 전체)을 지우고 붙여넣은 내용으로 다시 만듭니다 — 되돌릴 수 없으니 주의하세요.
             </p>
           </div>
@@ -851,7 +851,7 @@ function saveEdit(key, i, isPair) {
             </div>
             <template v-if="firestoreUsage">
               <div class="storage-bar"><div class="storage-bar-fill" :style="{ width: firestorePercent + '%' }"></div></div>
-              <p class="muted" style="font-size:0.8rem; margin: 0.3rem 0 0.5rem;">
+              <p class="muted text-sm" style="margin: 0.3rem 0 0.5rem;">
                 {{ formatBytes(firestoreUsage.total) }} / 1GiB 사용 중 (무료 플랜 기준, 추정치)
               </p>
               <ul class="list clean compact storage-breakdown">
@@ -860,7 +860,7 @@ function saveEdit(key, i, isPair) {
                 </li>
               </ul>
             </template>
-            <p v-else class="muted" style="font-size:0.82rem;">확인 버튼을 누르면 조회합니다 (사진·캐시 데이터가 많으면 몇 초 걸릴 수 있습니다).</p>
+            <p v-else class="muted text-sm">확인 버튼을 누르면 조회합니다 (사진·캐시 데이터가 많으면 몇 초 걸릴 수 있습니다).</p>
           </div>
         </div>
 

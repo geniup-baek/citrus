@@ -88,7 +88,7 @@ onMounted(() => {
       <p v-if="item.currentStage?.desc" class="item-meta" style="margin-top: 0.2rem;">
         {{ item.currentStage.desc }}
       </p>
-      <p class="muted" style="font-size: 0.78rem; margin-top: 0.3rem;">
+      <p class="muted text-sm" style="margin-top: 0.3rem;">
         예측기간: {{ item.period }} · 최종갱신: {{ item.lastRun }}
       </p>
     </li>

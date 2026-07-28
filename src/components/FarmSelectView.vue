@@ -111,7 +111,7 @@ function onPinInput() {
 
         <div class="farm-admin-entry">
           <button class="ghost" type="button" @click="handleAdminClick">시스템 관리</button>
-          <p class="muted" style="font-size: 0.78rem;">농장 등록·관리, 병해충·농약 공통 정보 갱신, 분류·항목 설정, 전체 농장 백업/복원을 관리합니다.</p>
+          <p class="muted text-sm">농장 등록·관리, 병해충·농약 공통 정보 갱신, 분류·항목 설정, 전체 농장 백업/복원을 관리합니다.</p>
         </div>
       </template>
     </div>

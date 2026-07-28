@@ -771,7 +771,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
               <button v-else class="ghost" type="button" @click="resetForm(); showHistoryForm = false; histRefreshMessage = ''">{{ localeStore.t('common.exitEdit') }}</button>
             </div>
           </div>
-          <p v-if="histRefreshMessage" class="muted" style="font-size:0.82rem; margin: -0.4rem 0 0.6rem;">{{ histRefreshMessage }}</p>
+          <p v-if="histRefreshMessage" class="muted text-sm" style="margin: -0.4rem 0 0.6rem;">{{ histRefreshMessage }}</p>
           <div v-if="histYears.length" class="sort-filter-bar">
             <span class="summary-chip">{{ histIsFiltered ? localeStore.t('common.filteredCount', { shown: filteredTreatments.length, total: treatStore.treatments.length }) : localeStore.t('common.totalCount', { n: filteredTreatments.length }) }}</span>
             <span class="filter-sep">|</span>
@@ -854,7 +854,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                       <span class="link-result-pest">{{ r.targetPest }}</span>
                     </div>
                   </div>
-                  <p v-else-if="histLinkQuery.trim().length > 1" class="muted" style="font-size:0.82rem; padding:0.4rem 0.65rem;">
+                  <p v-else-if="histLinkQuery.trim().length > 1" class="muted text-sm" style="padding:0.4rem 0.65rem;">
                     검색 결과 없음 — 공공데이터에도 농약재고에도 없습니다. 먼저 정보를 가져오거나 재고에 등록해주세요.
                   </p>
                 </div>
@@ -896,7 +896,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                 {{ bulkImporting ? '처리 중...' : (settingsStore.settings.bulkImportMode === 'replace' ? '전체 새로 작성' : '일괄 추가') }}
               </button>
             </div>
-            <p v-if="bulkImportMessage" class="muted" style="font-size:0.82rem; margin-top:0.5rem;">{{ bulkImportMessage }}</p>
+            <p v-if="bulkImportMessage" class="muted text-sm" style="margin-top:0.5rem;">{{ bulkImportMessage }}</p>
           </template>
 
           <template v-else>
@@ -1061,13 +1061,13 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
           <button v-else class="ghost" type="button" @click="closeApEdit">{{ localeStore.t('common.exitEdit') }}</button>
         </div>
       </div>
-      <p v-if="apRefreshMessage" class="muted" style="font-size:0.82rem; margin: -0.4rem 0 0.6rem;">{{ apRefreshMessage }}</p>
+      <p v-if="apRefreshMessage" class="muted text-sm" style="margin: -0.4rem 0 0.6rem;">{{ apRefreshMessage }}</p>
 
       <!-- 재고농약 표시 -->
       <div class="ap-inv-row">
         <span class="ap-inv-label">재고농약</span>
         <span v-if="inventoryPesticides.length > 0" class="pill ap-inv-pill">{{ inventoryPesticides.length }}종</span>
-        <span v-else class="muted" style="font-size:0.8rem;">없음 (재고 메뉴에서 농약 카테고리 항목 추가)</span>
+        <span v-else class="muted text-sm">없음 (재고 메뉴에서 농약 카테고리 항목 추가)</span>
         <span v-if="inventoryPesticides.length > 0" class="ap-inv-names">
           {{ inventoryPesticides.map(i => i.name).slice(0, 5).join(' · ') }}{{ inventoryPesticides.length > 5 ? ' 외 ' + (inventoryPesticides.length - 5) + '종' : '' }}
         </span>
@@ -1194,7 +1194,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                   <span class="match-result-pest">{{ r.targetPest }}</span>
                 </div>
               </div>
-              <p v-else-if="matchQuery.trim().length > 1" class="muted" style="font-size:0.82rem; padding:0.5rem 0;">
+              <p v-else-if="matchQuery.trim().length > 1" class="muted text-sm" style="padding:0.5rem 0;">
                 검색 결과 없음 — 공공데이터가 없거나 농약정보를 먼저 가져와야 합니다.
               </p>
             </div>
@@ -1300,7 +1300,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
                 <button type="submit" :disabled="!newApBrand.trim()">추가</button>
               </div>
             </form>
-            <p v-if="newApMessage" class="muted" style="font-size:0.82rem; margin-top:0.5rem;">{{ newApMessage }}</p>
+            <p v-if="newApMessage" class="muted text-sm" style="margin-top:0.5rem;">{{ newApMessage }}</p>
           </template>
 
           <template v-else>
@@ -1494,7 +1494,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 .link-panel {
   margin-top: 0.5rem;
   border: 1px solid var(--primary);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 .link-search-input {
@@ -1523,7 +1523,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 .inv-api-panel {
   display: flex; flex-direction: column; gap: 0.2rem;
   max-height: 220px; overflow-y: auto;
-  border: 1px solid var(--primary); border-radius: 0.45rem;
+  border: 1px solid var(--primary); border-radius: var(--radius-control);
   background: var(--bg);
   margin-top: -0.25rem; margin-bottom: 0.25rem;
 }
@@ -1559,11 +1559,11 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 .rec-list { display: flex; flex-direction: column; gap: 0.5rem; }
 .rec-card {
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
+  border-radius: var(--radius-panel);
   padding: 0.65rem 0.9rem;
 }
-.rec-ok { background: #f0fdf4; border-color: #bbf7d0; }
-.rec-ng { background: #fef2f2; border-color: #fecaca; opacity: 0.85; }
+.rec-ok { background: var(--tone-green-bg); border-color: var(--tone-green-border); }
+.rec-ng { background: var(--tone-red-bg); border-color: var(--tone-red-border); opacity: 0.85; }
 
 .rec-top { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
 .rec-brand { font-weight: 600; font-size: 0.88rem; }
@@ -1576,7 +1576,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 .settings-card {
   background: var(--bg-soft);
   border: 1px solid var(--line);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-panel);
   padding: 1rem 1.1rem;
   display: flex;
   flex-direction: column;
@@ -1641,7 +1641,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
   margin: -0.25rem 0 0.75rem;
   padding: 0.75rem;
   background: var(--surface);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-panel);
 }
 .fish-toxic-info-row p { margin: 0.1rem 0; font-size: 0.78rem; }
 .fish-toxic-info-title { font-weight: 700; font-size: 0.85rem !important; }
@@ -1681,7 +1681,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 .ap-src-filter {
   display: flex;
   border: 1px solid var(--line);
-  border-radius: 0.4rem;
+  border-radius: var(--radius-control);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -1706,7 +1706,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
   font-size: 0.83rem;
   padding: 0.3rem 0.6rem;
   border: 1px solid var(--line);
-  border-radius: 0.45rem;
+  border-radius: var(--radius-control);
   background: var(--bg);
   color: var(--text);
 }
@@ -1716,7 +1716,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 .ap-card {
   background: var(--bg-soft);
   border: 1px solid var(--line);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-panel);
   padding: 0.7rem 0.9rem;
 }
 .ap-card-body { margin-bottom: 0.45rem; }
@@ -1750,9 +1750,9 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
   flex-wrap: wrap;
 }
 .ap-stock-lot {
-  background: #f0fdf4;
-  color: #166534;
-  border: 1px solid #bbf7d0;
+  background: var(--tone-green-bg);
+  color: var(--tone-green-text);
+  border: 1px solid var(--tone-green-border);
   border-radius: 999px;
   padding: 0.08rem 0.5rem;
   font-size: 0.72rem;
@@ -1766,15 +1766,15 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 }
 
 .source-badge {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 600;
   padding: 0.1rem 0.4rem;
   border-radius: 999px;
   border: 1px solid;
 }
-.src-purchase { background: #f0fdf4; color: #15803d; border-color: #86efac; }
-.src-inv      { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }
-.src-both     { background: #faf5ff; color: #7e22ce; border-color: #d8b4fe; }
+.src-purchase { background: var(--tone-green-bg); color: var(--tone-green-text); border-color: var(--tone-green-border); }
+.src-inv      { background: var(--tone-blue-bg); color: var(--tone-blue-text); border-color: var(--tone-blue-border); }
+.src-both     { background: var(--tone-purple-bg); color: var(--tone-purple-text); border-color: var(--tone-purple-border); }
 
 .match-panel {
   margin-top: 0.6rem;
@@ -1787,7 +1787,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
   font-size: 0.85rem;
   padding: 0.4rem 0.65rem;
   border: 1px solid var(--primary);
-  border-radius: 0.45rem;
+  border-radius: var(--radius-control);
   background: var(--bg);
   color: var(--text);
   margin-bottom: 0.4rem;
@@ -1806,7 +1806,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
   gap: 0.35rem;
   flex-wrap: wrap;
   padding: 0.35rem 0.5rem;
-  border-radius: 0.4rem;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 0.82rem;
   background: var(--bg);
@@ -1836,7 +1836,6 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 }
 
 /* ── Shared ── */
-.empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; line-height: 1.6; }
 .empty-msg.small { padding: 0.75rem; text-align: left; }
 .hint { font-size: 0.8rem; }
 </style>
