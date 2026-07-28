@@ -115,6 +115,20 @@ const batchCount = computed(() => {
   return span > 0 ? span * batch.cols.length : 0
 })
 
+// 재배동+열+구역이 모두 지정된 경우에만 위치 중복으로 취급한다(위치 미지정 묘목끼리는 중복 아님)
+function isDuplicatePosition(greenhouseId, positionRow, positionCol, excludeId) {
+  if (!greenhouseId || positionRow === '' || positionRow == null || positionCol === '' || positionCol == null) {
+    return false
+  }
+  return store.state.seedlings.some(
+    (s) =>
+      s.id !== excludeId &&
+      s.greenhouseId === greenhouseId &&
+      String(s.positionRow) === String(positionRow) &&
+      s.positionCol === positionCol,
+  )
+}
+
 async function confirmDeleteSeedling(seedling) {
   const logs = (seedling.growthLogs || []).length
   const ok = await confirm({
@@ -198,8 +212,13 @@ async function saveBatch() {
   if (!batch.greenhouseId || from > to || !batch.cols.length) return
 
   const payloads = []
+  const skipped = []
   for (let row = from; row <= to; row += 1) {
     for (const col of colOptions.filter((c) => batch.cols.includes(c))) {
+      if (isDuplicatePosition(batch.greenhouseId, row, col)) {
+        skipped.push(`${row}${localeStore.t('seedlings.positionUnit')} ${col}`)
+        continue
+      }
       payloads.push({
         greenhouseId: batch.greenhouseId,
         positionRow: row,
@@ -212,7 +231,15 @@ async function saveBatch() {
     }
   }
 
-  await store.addSeedlingsBatch(payloads)
+  if (payloads.length) await store.addSeedlingsBatch(payloads)
+
+  if (skipped.length && !payloads.length) {
+    alert(localeStore.t('seedlings.duplicatePositionBatchAll'))
+    return
+  }
+  if (skipped.length) {
+    alert(localeStore.t('seedlings.duplicatePositionBatch', { count: skipped.length, positions: skipped.join(', ') }))
+  }
   closeForm()
 }
 
@@ -252,6 +279,10 @@ function closeForm() {
 }
 
 async function saveSeedling() {
+  if (isDuplicatePosition(form.greenhouseId, form.positionRow, form.positionCol, form.id)) {
+    alert(localeStore.t('seedlings.duplicatePosition'))
+    return
+  }
   await store.upsertSeedling({
     id: form.id,
     greenhouseId: form.greenhouseId,
