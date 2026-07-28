@@ -28,7 +28,6 @@ function loadCachedPrediction() {
 async function fetchPrediction() {
   loading.value = true
   error.value = ''
-  cacheInfo.value = null
   try {
     const { result, fromCache, fetchedAt, cacheError } = await withCache(
       'pest:prediction',

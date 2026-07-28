@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import {
   getSurveillance,
   getSurveillanceDetailByGungu,
@@ -9,7 +9,7 @@ import {
 } from '../services/ncpms.js'
 import { useLocaleStore } from '../stores/localeStore'
 import { useFarmsStore } from '../stores/farmsStore.js'
-import { withCache, formatFetchedAt } from '../services/cache.js'
+import { withCache, formatFetchedAt, pullSharedCache } from '../services/cache.js'
 
 const localeStore = useLocaleStore()
 const farmsStore = useFarmsStore()
@@ -17,51 +17,68 @@ const farmsStore = useFarmsStore()
 const loading = ref(false)
 const error = ref('')
 const cacheInfo = ref(null) // { error, fetchedAt } | null
+const fetchProgress = ref(null) // { done, total } | null
 
-const survYear = ref(String(new Date().getFullYear()))
-const survItems = ref([])
+const YEARS = Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - i))
+
+const yearFilter = ref(String(new Date().getFullYear())) // '' = 전체
+const survItemsAll = ref([])
 const survExpandedKey = ref('')
 const survDetailItems = ref([])
 const survDetailLoading = ref(false)
 const survDetailError = ref('')
 
-const YEARS = Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - i))
+const filteredSurvItems = computed(() => {
+  if (!yearFilter.value) return survItemsAll.value
+  return survItemsAll.value.filter(item => item._year === yearFilter.value)
+})
 
-function loadCachedSurveillance() {
-  survExpandedKey.value = ''
-  survDetailItems.value = []
-  cacheInfo.value = null
-  const cached = getSurveillanceFromCache(survYear.value)
-  if (cached) {
-    survItems.value = normalizeList(cached.result)
-    cacheInfo.value = { error: null, fetchedAt: cached.fetchedAt }
-  } else {
-    survItems.value = []
+const availableYears = computed(() => YEARS.filter(y => survItemsAll.value.some(item => item._year === y)))
+
+function applyAllFromCache() {
+  const merged = []
+  let latestFetchedAt = null
+  for (const year of YEARS) {
+    const cached = getSurveillanceFromCache(year)
+    if (!cached) continue
+    merged.push(...normalizeList(cached.result).map(item => ({ ...item, _year: year })))
+    if (!latestFetchedAt || cached.fetchedAt > latestFetchedAt) latestFetchedAt = cached.fetchedAt
   }
+  survItemsAll.value = merged
+  cacheInfo.value = latestFetchedAt ? { error: null, fetchedAt: latestFetchedAt } : null
 }
 
-async function fetchSurveillance() {
+async function loadCachedSurveillance() {
+  applyAllFromCache()
+  // 다른 기기(관리자 PC 등)에서 미리 올려둔 Firestore 공유 캐시가 로컬보다 최신이면 반영
+  await Promise.all(YEARS.map(year => pullSharedCache(`pest:surveillance:${year}`)))
+  applyAllFromCache()
+}
+
+async function fetchAllSurveillance() {
   survExpandedKey.value = ''
   survDetailItems.value = []
-  survItems.value = []
   loading.value = true
   error.value = ''
-  cacheInfo.value = null
-  try {
-    const { result, fromCache, fetchedAt, cacheError } = await withCache(
-      `pest:surveillance:${survYear.value}`,
-      () => getSurveillance({ year: survYear.value }),
-    )
-    survItems.value = normalizeList(result)
-    cacheInfo.value = { error: fromCache ? cacheError : null, fetchedAt }
-  } catch (e) {
-    error.value = e.message
-  } finally {
-    loading.value = false
+  fetchProgress.value = { done: 0, total: YEARS.length }
+  const errors = []
+  for (const year of YEARS) {
+    try {
+      const { result } = await withCache(
+        `pest:surveillance:${year}`,
+        () => getSurveillance({ year }),
+      )
+      const items = normalizeList(result)
+      if (items.length > 0) await warmSurvDetails(year, items)
+    } catch (e) {
+      errors.push(`${year}년: ${e.message}`)
+    }
+    fetchProgress.value = { done: fetchProgress.value.done + 1, total: YEARS.length }
   }
-  if (!error.value && survItems.value.length > 0) {
-    warmSurvDetails(survYear.value, survItems.value)
-  }
+  error.value = errors.join('\n')
+  loading.value = false
+  fetchProgress.value = null
+  applyAllFromCache()
 }
 
 async function toggleSurvDetail(item) {
@@ -77,7 +94,7 @@ async function toggleSurvDetail(item) {
   survDetailLoading.value = true
   try {
     const { result } = await withCache(
-      `pest:surv:detail:${survYear.value}:${key}`,
+      `pest:surv:detail:${item._year}:${key}`,
       () => getSurveillanceDetailByGungu({ insectKey: key }),
     )
     survDetailItems.value = normalizeList(result)
@@ -99,8 +116,9 @@ function groupBySigungu(items) {
   return Object.entries(map).map(([city, list]) => ({ city, list }))
 }
 
-watch(survYear, () => {
-  loadCachedSurveillance()
+watch(yearFilter, () => {
+  survExpandedKey.value = ''
+  survDetailItems.value = []
 })
 
 onMounted(() => {
@@ -118,29 +136,42 @@ onMounted(() => {
     <span class="cache-banner-icon">{{ cacheInfo.error ? '⚠' : 'ℹ' }}</span>
     <span v-if="cacheInfo.error" class="cache-banner-msg">API 오류 · </span>
     <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 데이터</span>
+    <div v-if="farmsStore.isAdminMode" class="cache-banner-actions">
+      <button class="cache-refresh-btn" :disabled="loading" @click="fetchAllSurveillance">
+        {{ loading
+          ? `가져오는 중... (${fetchProgress?.done ?? 0}/${fetchProgress?.total ?? YEARS.length})`
+          : '최신 정보 가져오기' }}
+      </button>
+    </div>
+  </div>
+  <div v-if="!loading && !error && !cacheInfo" class="no-cache-state">
+    <p>저장된 예찰 데이터가 없습니다.</p>
+    <button v-if="farmsStore.isAdminMode" :disabled="loading" @click="fetchAllSurveillance">최신 정보 가져오기</button>
+  </div>
+  <p v-else-if="!loading && !error && cacheInfo && !filteredSurvItems.length" class="empty-msg">해당 연도의 예찰 데이터가 없습니다.</p>
+
+  <div v-if="cacheInfo" class="type-filter">
+    <button
+      v-for="y in ['', ...availableYears]"
+      :key="y || 'all'"
+      class="ghost type-btn"
+      :class="{ 'type-btn-active': yearFilter === y }"
+      @click="yearFilter = y"
+    >
+      {{ y === '' ? '전체' : `${y}년` }}
+    </button>
+    <span v-if="filteredSurvItems.length" class="result-count">총 {{ filteredSurvItems.length }}건</span>
   </div>
 
-  <div class="sort-filter-bar">
-    <span class="filter-label">조사연도</span>
-    <select v-model="survYear" class="compact-select">
-      <option v-for="y in YEARS" :key="y" :value="y">{{ y }}년</option>
-    </select>
-    <button v-if="farmsStore.isAdminMode" class="compact-btn" :disabled="loading" @click="fetchSurveillance">
-      {{ loading ? localeStore.t('pest.loading') : '최신 정보 가져오기' }}
-    </button>
-  </div>
-  <p v-if="!loading && !survItems.length && !error" class="muted" style="text-align:center; padding: 1.5rem 1rem;">
-    저장된 예찰 데이터가 없습니다.
-  </p>
-  <ul v-if="survItems.length" class="list clean">
-    <li v-for="item in survItems" :key="item.insectKey" class="list-item card-like">
+  <ul v-if="filteredSurvItems.length" class="list clean">
+    <li v-for="item in filteredSurvItems" :key="`${item._year}-${item.insectKey}`" class="list-item card-like">
       <div class="row-actions align-start">
         <p class="item-title">{{ item.predictnSpchcknNm ?? '-' }}</p>
         <span class="pill" style="font-size: 0.75rem;">{{ item.examinSpchcknNm ?? '-' }}</span>
       </div>
       <p class="item-meta">
         {{ item.kncrNm ?? '-' }}
-        &nbsp;·&nbsp;{{ item.examinYear ?? survYear }}년
+        &nbsp;·&nbsp;{{ item.examinYear ?? item._year }}년
         &nbsp;·&nbsp;{{ item.examinTmrd != null ? item.examinTmrd + '회차' : '-' }}
       </p>
       <p v-if="item.inputStdrDatetm" class="muted" style="font-size: 0.8rem;">
@@ -186,13 +217,30 @@ onMounted(() => {
       </div>
     </li>
   </ul>
-
-  <p v-if="loading" class="muted" style="margin-top: 0.75rem;">
-    {{ localeStore.t('pest.loading') }}
-  </p>
 </template>
 
 <style scoped>
+.type-filter {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.type-btn {
+  border-radius: 999px;
+  font-size: 0.82rem;
+  padding: 0.28rem 0.72rem;
+}
+/* button.ghost(요소+클래스)보다 우선하도록 클래스 두 개를 겹쳐 특정도를 높인다 */
+.ghost.type-btn-active {
+  background: var(--primary);
+  color: var(--primary-ink);
+  border-color: transparent;
+}
+.result-count { font-size: 0.8rem; color: var(--muted); }
+.empty-msg { color: var(--muted); font-size: 0.875rem; text-align: center; padding: 2rem; }
+
 .surv-detail-panel {
   margin-top: 0.6rem;
   padding-top: 0.6rem;

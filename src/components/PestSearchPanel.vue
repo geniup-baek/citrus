@@ -112,7 +112,6 @@ function loadSearchTab() {
 async function fetchLatestSearch() {
   loading.value = true
   error.value = ''
-  cacheInfo.value = null
   try {
     await warmFullPestCache(true)
     diseaseLoaded.value = false
