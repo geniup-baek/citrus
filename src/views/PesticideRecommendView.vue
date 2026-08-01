@@ -327,6 +327,7 @@ async function printTreatments() {
   if (!ok) return
 
   openPrintReport({
+    farmName: farmsStore.activeFarm?.name,
     title: '방제 이력 보고서',
     meta: `${localeStore.t('inventory.reportGeneratedAt', { date: today() })} · 총 ${shown}건${shown < total ? ` (전체 ${total}건 중 필터 적용)` : ''}`,
     headers: ['날짜', '농약명', '분류', '작용기작', '연결', '메모'],
@@ -759,6 +760,7 @@ async function printApList() {
 
   // 인쇄 지면이 좁아 CSV보다 열을 줄인다(형태·용량은 상표명에 붙이고, 주성분·제조사는 제외).
   openPrintReport({
+    farmName: farmsStore.activeFarm?.name,
     title: '가용농약 목록',
     meta: `${localeStore.t('inventory.reportGeneratedAt', { date: today() })} · 총 ${shown}종${shown < total ? ` (전체 ${total}종 중 필터 적용)` : ''}`,
     headers: ['농약명', '출처', '분류', '작용기작', '대상 병해충', '수확 전 일수', '최대 사용 횟수', '독성', '어독성'],

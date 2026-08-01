@@ -31,7 +31,9 @@ export function htmlCell(value) {
 }
 
 // rows: [값...] 배열, 또는 행 강조가 필요하면 { cells: [값...], cls: 'row-expired' }
-export function openPrintReport({ title, meta = '', headers, rows, autoPrint = false }) {
+// farmName을 넘기면 제목 앞에 붙어 인쇄물끼리 농장을 구분할 수 있다.
+export function openPrintReport({ farmName = '', title, meta = '', headers, rows, autoPrint = false }) {
+  const heading = [String(farmName).trim(), title].filter(Boolean).join(' ')
   const bodyRows = rows.map((row) => {
     const cells = Array.isArray(row) ? row : row.cells
     const cls = Array.isArray(row) ? '' : (row.cls || '')
@@ -39,7 +41,7 @@ export function openPrintReport({ title, meta = '', headers, rows, autoPrint = f
   }).join('')
 
   const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8" />
-<title>${htmlCell(title)}</title>
+<title>${htmlCell(heading)}</title>
 <style>
   * { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
   body { margin: 24px; color: #1a1a1a; }
@@ -52,7 +54,7 @@ export function openPrintReport({ title, meta = '', headers, rows, autoPrint = f
   .row-soon td { color: #d35400; }
   @media print { body { margin: 0; } th { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style></head><body>
-<h1>${htmlCell(title)}</h1>
+<h1>${htmlCell(heading)}</h1>
 <p class="meta">${htmlCell(meta)}</p>
 <table><thead><tr>${headers.map((h) => `<th>${htmlCell(h)}</th>`).join('')}</tr></thead>
 <tbody>${bodyRows}</tbody></table>

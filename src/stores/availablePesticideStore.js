@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { loadCache, pullSharedCache } from '../services/cache.js'
 import { db, firebaseEnabled } from '../services/firebase.js'
-import { detailCacheKey, findToxicityInCache } from '../services/pesticide.js'
+import { allPesticideRecords, detailCacheKey, findToxicityInCache } from '../services/pesticide.js'
 
 const FULL_KEY    = 'pesticide:all'
 
@@ -178,8 +178,7 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
   // 같은 상표명이 구입가능 목록과 재고 목록 양쪽에 있으면 source: 'both'로 표시하여
   // "재고" 필터에서 누락되지 않도록 한다 (첫 등장 소스만 남기던 이전 방식의 버그 수정).
   function buildList(inventoryPesticides = []) {
-    const cached = loadCache(FULL_KEY)
-    const cacheData = cached?.data ?? []
+    const cacheData = allPesticideRecords()
 
     const purchaseEntries = parsePurchaseText(purchaseInput.value)
 
@@ -251,8 +250,7 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     const key = normName(item.brandName)
 
     // 선택한 농약의 전체 레코드를 캐시에서 조회하여 병해충 통합
-    const cached = loadCache(FULL_KEY)
-    const cacheData = cached?.data ?? []
+    const cacheData = allPesticideRecords()
     const brandQ = normName(apiItem.brandName)
     const allMatches = cacheData.filter(p => normName(p.brandName) === brandQ)
 
@@ -277,11 +275,10 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     persistAll()
   }
 
-  // 목록의 모든 항목을 최신 OpenAPI 캐시 기준으로 다시 매칭한다.
+  // 목록의 모든 항목을 최신 농약정보(공공데이터 + 직접등록) 기준으로 다시 매칭한다.
   // 사용자가 직접 '수동 연결'해둔 항목(matchSource: 'manual')은 건드리지 않는다.
   function refreshAllFromCache() {
-    const cached = loadCache(FULL_KEY)
-    const cacheData = cached?.data ?? []
+    const cacheData = allPesticideRecords()
     let updated = 0
 
     for (const item of availableList.value) {
@@ -305,6 +302,7 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
   // 상세 캐시를 직접 끌어와 독성을 채운다.
   async function fillToxicityFromShared() {
     if (!firebaseEnabled || !db) return 0
+    // 직접등록 농약은 상세 API가 없어(독성을 레코드에 직접 담는다) 여기서는 공공데이터만 본다.
     const cacheData = loadCache(FULL_KEY)?.data ?? []
     if (!cacheData.length) return 0
 
@@ -372,9 +370,7 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     manualMatches.value = rest
 
     // 캐시에서 재매칭
-    const cached = loadCache(FULL_KEY)
-    const cacheData = cached?.data ?? []
-    const apiEnrich = findInCache(item.brandName, cacheData)
+    const apiEnrich = findInCache(item.brandName, allPesticideRecords())
     const reset = { matchSource: null, category: '', moa: '', targetPests: [], preHarvestDays: '', maxApplications: '', ingredient: '', manufacturer: '', pestiCode: '', toxicName: '', fishToxic: '' }
     Object.assign(item, apiEnrich || reset)
 

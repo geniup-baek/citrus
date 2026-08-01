@@ -358,6 +358,7 @@ function printReport() {
     : ''
 
   openPrintReport({
+    farmName: farmsStore.activeFarm?.name,
     title: localeStore.t('inventory.reportTitle'),
     meta: `${localeStore.t('inventory.reportGeneratedAt', { date: today })} · ${localeStore.t('common.totalCount', { n: summary.value.total })}${expiringText}`,
     headers,

@@ -532,6 +532,7 @@ async function printReport() {
     : ''
 
   openPrintReport({
+    farmName: farmsStore.activeFarm?.name,
     title: t('pesticideInventory.reportTitle'),
     meta: `${t('inventory.reportGeneratedAt', { date: today })} · ${t('inventory.summaryTotal', { count: summary.value.total })}${summaryText}`,
     headers,

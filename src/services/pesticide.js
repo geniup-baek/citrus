@@ -190,7 +190,8 @@ export async function deleteManualPesticide(id) {
 }
 
 // 공공데이터 전건 + 직접등록을 합친 검색 대상.
-function allPesticideRecords() {
+// 농약을 상표명으로 찾는 곳은 모두 이 함수를 거쳐야 직접등록분이 함께 걸린다.
+export function allPesticideRecords() {
   return [...(loadCache(FULL_CACHE_KEY)?.data ?? []), ...loadManualPesticides()]
 }
 
