@@ -7,6 +7,7 @@ import { useTreatmentStore } from '../stores/treatmentStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useAvailablePesticideStore } from '../stores/availablePesticideStore'
 import { useFarmsStore } from '../stores/farmsStore'
+import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { db, firebaseEnabled } from '../services/firebase'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
@@ -18,6 +19,7 @@ const treatStore = useTreatmentStore()
 const recSettingsStore = useRecommendSettingsStore()
 const apStore = useAvailablePesticideStore()
 const farmsStore = useFarmsStore()
+const policyStore = useAppPolicyStore()
 
 // ── 탭 ───────────────────────────────────────────────────────────────────────
 // 농장 모드에서는 저장·백업 탭만 사용할 수 있다(농장/분류·항목/동작은 시스템 관리 모드 전용).
@@ -769,6 +771,29 @@ function saveEdit(key, i, isPair) {
             </div>
             <p class="muted text-sm" style="margin-top: 0.5rem;">
               "보고서만 열기"는 보고서 화면만 새 창으로 열고 인쇄 대화상자는 자동으로 띄우지 않습니다(필요할 때 직접 Ctrl+P). "인쇄 대화상자 자동으로 열기"는 새 창을 열자마자 바로 인쇄 대화상자를 띄웁니다.
+            </p>
+          </div>
+
+          <div class="sub-card">
+            <div class="settings-group-head">
+              <h3>농약 직접등록 권한</h3>
+            </div>
+            <p class="muted settings-group-hint">자료 &gt; 농약의 "직접 추가"(공공데이터에 없는 농약 등록)를 누가 쓸 수 있게 할지 설정합니다.</p>
+            <div class="inline-filters">
+              <button
+                type="button"
+                :class="{ ghost: !policyStore.policy.allowManualPesticideForAll }"
+                @click="policyStore.policy.allowManualPesticideForAll = true"
+              >누구나</button>
+              <button
+                type="button"
+                :class="{ ghost: policyStore.policy.allowManualPesticideForAll }"
+                @click="policyStore.policy.allowManualPesticideForAll = false"
+              >시스템 관리 모드만</button>
+            </div>
+            <p class="muted text-sm" style="margin-top: 0.5rem;">
+              직접등록한 농약은 모든 농장이 함께 쓰는 자료입니다. "시스템 관리 모드만"으로 두면 농장 모드에서는 추가·수정·삭제 버튼이 보이지 않습니다(등록된 농약 검색·연결은 그대로 됩니다).
+              이 설정은 <strong>모든 기기에 함께 적용</strong>됩니다.
             </p>
           </div>
 

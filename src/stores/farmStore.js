@@ -137,6 +137,7 @@ function normalizeInventoryItem(item) {
     pesticideType: item?.pesticideType || '',
     actionGroup: item?.actionGroup || '',
     productName: item?.productName || '',
+    matchSource: item?.matchSource === 'auto' ? 'auto' : '', // 공공데이터로 연결된 품목 표시
     notes: item?.notes || '',
     txns,
   }

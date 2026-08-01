@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
-import { loadCache } from '../services/cache.js'
+import { loadCache, pullSharedCache } from '../services/cache.js'
 import { db, firebaseEnabled } from '../services/firebase.js'
-import { getToxicityFromCache, getFishToxicFromCache } from '../services/pesticide.js'
+import { detailCacheKey, findToxicityInCache } from '../services/pesticide.js'
 
 const FULL_KEY    = 'pesticide:all'
 
@@ -15,15 +15,21 @@ function lsKeys(farmId) {
   }
 }
 
+// 원본 자료에서 옮겨온 강조 표시(★)는 상표명의 일부가 아니므로 떼어낸다.
+// (남겨두면 농약정보 자동 연결이 상표명을 찾지 못한다)
+function stripBrandName(name) {
+  return name.replace(/★/g, '').trim()
+}
+
 // "겔럭시(유)-200ml/올스타/오쏘도" 형식에서 개별 항목 파싱
 function parseSegment(seg) {
   const s = seg.trim()
   if (!s) return null
   // 상표명(형태)-용량  /  상표명(형태)  /  상표명
   const m = s.match(/^([^(\-\/]+?)(?:\s*\(([^)]*)\))?(?:\s*[-–]\s*(.+))?$/)
-  if (!m) return { brandName: s, form: '', volume: '' }
+  if (!m) return { brandName: stripBrandName(s), form: '', volume: '' }
   return {
-    brandName: m[1].trim(),
+    brandName: stripBrandName(m[1]),
     form:   (m[2] ?? '').trim(),
     volume: (m[3] ?? '').trim(),
   }
@@ -65,24 +71,27 @@ function buildEnrichment(matches) {
     ingredient: first.ingredient || '',
     manufacturer: first.manufacturer || '',
     pestiCode: first.pestiCode || '',
-    toxicName: getToxicityFromCache(first.pestiCode, first.diseaseUseSeq),
-    fishToxic: getFishToxicFromCache(first.pestiCode, first.diseaseUseSeq),
+    // 독성은 제품 단위 정보라 상세조회가 되어 있는 레코드가 하나라도 있으면 그 값을 쓴다.
+    ...findToxicityInCache(matches),
   }
 }
 
-function findInCache(brandName, cacheData) {
-  if (!cacheData.length) return null
+// 전건 캐시에서 상표명이 일치하는 레코드(병해충별로 여러 건)를 모두 찾는다.
+function matchRecords(brandName, cacheData) {
+  if (!cacheData.length) return []
   const q = normName(brandName)
-  if (!q) return null
+  if (!q) return []
   const exact = cacheData.filter(p => normName(p.brandName) === q)
-  if (exact.length) return buildEnrichment(exact)
+  if (exact.length) return exact
   // 접두 일치 (짧은 이름이 긴 이름의 시작 부분)
-  const partial = cacheData.filter(p => {
+  return cacheData.filter(p => {
     const n = normName(p.brandName)
     return (n.length >= 2 && q.length >= 2) && (n.startsWith(q) || q.startsWith(n))
   })
-  if (partial.length) return buildEnrichment(partial)
-  return null
+}
+
+function findInCache(brandName, cacheData) {
+  return buildEnrichment(matchRecords(brandName, cacheData))
 }
 
 export const useAvailablePesticideStore = defineStore('availablePesticide', () => {
@@ -259,8 +268,7 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
           ingredient:     apiItem.ingredient || '',
           manufacturer:   apiItem.manufacturer || '',
           pestiCode:      apiItem.pestiCode || '',
-          toxicName:      getToxicityFromCache(apiItem.pestiCode, apiItem.diseaseUseSeq),
-          fishToxic:      getFishToxicFromCache(apiItem.pestiCode, apiItem.diseaseUseSeq),
+          ...findToxicityInCache([apiItem]),
         }
 
     manualMatches.value = { ...manualMatches.value, [key]: enrich }
@@ -289,6 +297,45 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
 
     if (updated > 0) persistAll()
     return updated
+  }
+
+  // 독성·어독성은 상세정보(SVC02)에만 있고, 배포 환경에서는 OpenAPI를 직접 호출할 수 없어
+  // "상세정보 전체 가져오기"로 Firestore에 올려둔 공유 캐시가 유일한 경로다. 그런데 공유 캐시는
+  // 농약검색에서 상세를 펼쳐본 항목만 기기로 내려오므로, 가용농약 목록을 만들 때 빠진 항목의
+  // 상세 캐시를 직접 끌어와 독성을 채운다.
+  async function fillToxicityFromShared() {
+    if (!firebaseEnabled || !db) return 0
+    const cacheData = loadCache(FULL_KEY)?.data ?? []
+    if (!cacheData.length) return 0
+
+    const targets = []
+    for (const item of availableList.value) {
+      if (item.toxicName || item.fishToxic) continue
+      if (manualMatches.value[normName(item.brandName)]) continue // 수동 입력값은 건드리지 않는다
+      const records = matchRecords(item.brandName, cacheData)
+      const first = records[0]
+      if (!first?.pestiCode || !first?.diseaseUseSeq) continue
+      // 같은 제품이면 어느 레코드든 독성 값이 같으므로 대표 레코드 하나만 내려받는다.
+      targets.push({ item, records, key: detailCacheKey(first.pestiCode, first.diseaseUseSeq) })
+    }
+
+    // 항목마다 Firestore 문서를 하나씩 읽으므로 몇 건씩 묶어 동시에 처리한다.
+    const CHUNK = 8
+    let filled = 0
+    for (let i = 0; i < targets.length; i += CHUNK) {
+      const chunk = targets.slice(i, i + CHUNK)
+      await Promise.all(chunk.map(t => pullSharedCache(t.key)))
+      for (const { item, records } of chunk) {
+        const toxicity = findToxicityInCache(records)
+        if (toxicity.toxicName || toxicity.fishToxic) {
+          Object.assign(item, toxicity)
+          filled++
+        }
+      }
+    }
+
+    if (filled > 0) persistAll()
+    return filled
   }
 
   // 사용자가 직접 입력/수정한 정보로 갱신 (미연결 항목의 수동 입력, 또는 기존 연결 정보의 수정)
@@ -366,6 +413,6 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
   return {
     purchaseInput, availableList, manualMatches,
     init, savePurchaseInput, buildList, applyManualMatch, updateManualInfo, clearManualMatch, removeFromList, clearAll,
-    refreshAllFromCache, exportData, restoreData,
+    refreshAllFromCache, fillToxicityFromShared, exportData, restoreData,
   }
 })

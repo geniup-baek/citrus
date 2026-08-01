@@ -6,8 +6,11 @@ import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
+import { useFarmsStore } from '../stores/farmsStore'
+import { downloadCsv, exportFileName, openPrintReport } from '../utils/dataExport.js'
 
 const store = useFarmStore()
+const farmsStore = useFarmsStore()
 const localeStore = useLocaleStore()
 const recSettingsStore = useRecommendSettingsStore()
 
@@ -278,11 +281,6 @@ function formatTxnDate(dateStr) {
 }
 
 // ── 재고 현황 보고서(CSV) 다운로드 ───────────────────────────────────────────
-function csvCell(value) {
-  const s = String(value ?? '')
-  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s
-}
-
 function statusText(dateStr) {
   const s = expiryStatus(dateStr)
   if (s === 'expired') return localeStore.t('inventory.expired')
@@ -313,26 +311,15 @@ function downloadReport() {
     }
   }
 
-  const BOM = String.fromCodePoint(0xfeff) // 엑셀에서 한글 깨짐 방지
-  const csv = BOM + rows.map((r) => r.map(csvCell).join(',')).join('\r\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
   const today = format(new Date(), 'yyyy-MM-dd')
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${localeStore.t('inventory.reportFileName')}-${today}.csv`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+  downloadCsv(rows, exportFileName({
+    farmName: farmsStore.activeFarm?.name,
+    label: localeStore.t('inventory.reportFileName'),
+    date: today,
+  }))
 }
 
 // ── 재고 현황 보고서(PDF/인쇄) ───────────────────────────────────────────────
-// 외부 라이브러리 없이 브라우저 인쇄 → 'PDF로 저장'을 사용한다(한글 폰트 문제 없음).
-function htmlCell(value) {
-  return String(value ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
-}
-
 function rowClass(status) {
   if (status === 'expired') return 'row-expired'
   if (status === 'soon') return 'row-soon'
@@ -351,54 +338,32 @@ function printReport() {
     localeStore.t('inventory.notes'),
   ]
 
-  let bodyRows = ''
+  const rows = []
   for (const item of items) {
     const lots = lotsOf(item)
-    const cellsToRow = (cells, cls) => {
-      const tds = cells.map((c) => `<td>${htmlCell(c)}</td>`).join('')
-      return `<tr class="${cls}">${tds}</tr>`
-    }
     if (lots.length) {
       for (const lot of lots) {
-        const s = expiryStatus(lot.expiryDate)
-        bodyRows += cellsToRow(
-          [item.name, lot.volume, lot.expiryDate || '—', lot.quantity, statusText(lot.expiryDate), item.notes || ''],
-          rowClass(s),
-        )
+        rows.push({
+          cells: [item.name, lot.volume, lot.expiryDate || '—', lot.quantity, statusText(lot.expiryDate), item.notes || ''],
+          cls: rowClass(expiryStatus(lot.expiryDate)),
+        })
       }
     } else {
-      bodyRows += cellsToRow([item.name, '', '—', 0, '', item.notes || ''], '')
+      rows.push([item.name, '', '—', 0, '', item.notes || ''])
     }
   }
 
-  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8" />
-<title>${htmlCell(localeStore.t('inventory.reportTitle'))} ${today}</title>
-<style>
-  * { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
-  body { margin: 24px; color: #1a1a1a; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  .meta { color: #666; font-size: 12px; margin-bottom: 16px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th, td { border: 1px solid #ccc; padding: 5px 7px; text-align: left; vertical-align: top; }
-  th { background: #f0f0f0; }
-  .row-expired td { color: #c0392b; font-weight: 700; }
-  .row-soon td { color: #d35400; }
-  @media print { body { margin: 0; } th { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-</style></head><body>
-<h1>${htmlCell(localeStore.t('inventory.reportTitle'))}</h1>
-<p class="meta">${htmlCell(localeStore.t('inventory.reportGeneratedAt', { date: today }))} · ${htmlCell(localeStore.t('common.totalCount', { n: summary.value.total }))}${summary.value.expiring ? ' · ' + htmlCell(localeStore.t('inventory.summaryExpiring', { count: summary.value.expiring })) : ''}</p>
-<table><thead><tr>${headers.map((h) => `<th>${htmlCell(h)}</th>`).join('')}</tr></thead>
-<tbody>${bodyRows}</tbody></table>
-</body></html>`
+  const expiringText = summary.value.expiring
+    ? ` · ${localeStore.t('inventory.summaryExpiring', { count: summary.value.expiring })}`
+    : ''
 
-  const win = window.open('', '_blank')
-  if (!win) return
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  if (recSettingsStore.settings.autoOpenPrintDialog) {
-    setTimeout(() => win.print(), 300)
-  }
+  openPrintReport({
+    title: localeStore.t('inventory.reportTitle'),
+    meta: `${localeStore.t('inventory.reportGeneratedAt', { date: today })} · ${localeStore.t('common.totalCount', { n: summary.value.total })}${expiringText}`,
+    headers,
+    rows,
+    autoPrint: recSettingsStore.settings.autoOpenPrintDialog,
+  })
 }
 
 clearForm()

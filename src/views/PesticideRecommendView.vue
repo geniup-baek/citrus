@@ -11,14 +11,17 @@ import { usePesticideTypes } from '../composables/usePesticideTypes.js'
 import { useIsMobile } from '../composables/useIsMobile.js'
 import { useLocaleStore } from '../stores/localeStore'
 import { confirm } from '../composables/useConfirm'
+import { useFarmsStore } from '../stores/farmsStore'
+import { confirmFilteredExport, downloadCsv, exportFileName, openPrintReport } from '../utils/dataExport.js'
 
 const treatStore    = useTreatmentStore()
 const settingsStore = useRecommendSettingsStore()
 const farmStore     = useFarmStore()
 const apStore       = useAvailablePesticideStore()
 const localeStore   = useLocaleStore()
+const farmsStore    = useFarmsStore()
 
-const activeTab = ref('history')
+const activeTab = ref('peststock') // 탭 순서와 맞춰 농약재고를 기본으로 연다
 
 // 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
 const showResetButton = computed(() =>
@@ -284,6 +287,56 @@ async function refreshAllTreatmentLinks() {
   histRefreshMessage.value = updated > 0 ? `${updated}건 정보를 연결했습니다.` : '연결할 항목이 없습니다 (이미 연결된 이력 제외).'
 }
 
+function histMatchLabel(t) {
+  if (t.matchSource === 'auto')      return '자동'
+  if (t.matchSource === 'inventory') return '재고'
+  return t.moa ? '직접입력' : '미연결'
+}
+
+// 현재 필터(연도·미연결)가 적용된 목록 그대로 CSV로 내려받는다.
+async function downloadTreatmentsCsv() {
+  const ok = await confirmFilteredExport({
+    filtered: histIsFiltered.value,
+    shown: filteredTreatments.value.length,
+    total: treatStore.treatments.length,
+  })
+  if (!ok) return
+
+  const rows = [['날짜', '농약명', '분류', '작용기작', '연결', '메모']]
+  for (const t of filteredTreatments.value) {
+    rows.push([
+      t.date,
+      t.brandName,
+      normCat(t.category) || '',
+      t.moa || '',
+      histMatchLabel(t),
+      t.memo || '',
+    ])
+  }
+  downloadCsv(rows, exportFileName({
+    farmName: farmsStore.activeFarm?.name,
+    label: '방제이력',
+    date: today(),
+  }))
+}
+
+async function printTreatments() {
+  const shown = filteredTreatments.value.length
+  const total = treatStore.treatments.length
+  const ok = await confirmFilteredExport({ filtered: histIsFiltered.value, shown, total, kind: 'pdf' })
+  if (!ok) return
+
+  openPrintReport({
+    title: '방제 이력 보고서',
+    meta: `${localeStore.t('inventory.reportGeneratedAt', { date: today() })} · 총 ${shown}건${shown < total ? ` (전체 ${total}건 중 필터 적용)` : ''}`,
+    headers: ['날짜', '농약명', '분류', '작용기작', '연결', '메모'],
+    rows: filteredTreatments.value.map(t => [
+      t.date, t.brandName, normCat(t.category) || '', t.moa || '', histMatchLabel(t), t.memo || '',
+    ]),
+    autoPrint: settingsStore.settings.autoOpenPrintDialog,
+  })
+}
+
 // 방제이력 전체 삭제 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
 async function resetAllTreatments() {
   const n = treatStore.treatments.length
@@ -485,8 +538,20 @@ const showFishToxicInfo = ref(false)
 const apInputText    = ref('')
 const apFilter        = ref('')
 const apSourceFilter  = ref('all')   // 'all' | 'purchase' | 'inventory'
+// '미연결'(matchSource 없음)과 '수동'(matchSource === 'manual')은 한 항목이 동시에 만족할 수
+// 없으므로, 함께 켜서 결과가 항상 0건이 되는 상태를 만들지 않는다(한쪽을 켜면 다른 쪽을 끈다).
 const apUnmatchedOnly = ref(false)
 const apManualOnly   = ref(false)
+
+function toggleApUnmatchedOnly() {
+  apUnmatchedOnly.value = !apUnmatchedOnly.value
+  if (apUnmatchedOnly.value) apManualOnly.value = false
+}
+
+function toggleApManualOnly() {
+  apManualOnly.value = !apManualOnly.value
+  if (apManualOnly.value) apUnmatchedOnly.value = false
+}
 const apEditMode     = ref(false)
 const matchingItemId = ref(null)   // 수동 연결 패널이 열린 아이템 id
 const matchQuery     = ref('')
@@ -527,9 +592,20 @@ function closeApEdit() {
   apBulkAppendText.value = ''
 }
 
-function refreshAllPesticideInfo() {
-  const updated = apStore.refreshAllFromCache()
-  apRefreshMessage.value = updated > 0 ? `${updated}개 항목 정보를 갱신했습니다.` : '갱신할 항목이 없습니다 (수동 연결 항목 제외).'
+async function refreshAllPesticideInfo() {
+  apBuilding.value = true
+  let updated = 0
+  let filled = 0
+  try {
+    updated = apStore.refreshAllFromCache()
+    filled = await apStore.fillToxicityFromShared()
+  } finally {
+    apBuilding.value = false
+  }
+  const parts = []
+  if (updated > 0) parts.push(`${updated}개 항목 정보를 갱신했습니다.`)
+  if (filled > 0) parts.push(`독성정보 ${filled}건을 추가로 가져왔습니다.`)
+  apRefreshMessage.value = parts.length ? parts.join(' ') : '갱신할 항목이 없습니다 (수동 연결 항목 제외).'
 }
 
 // 가용농약 전체 초기화 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
@@ -635,11 +711,85 @@ function matchLabel(src) {
   return '미연결'
 }
 
+const AP_SOURCE_LABEL = { purchase: '구입가능', inventory: '재고', both: '구입가능·재고' }
+
+// 현재 필터(출처·미연결·수동·검색어)가 적용된 목록 그대로 CSV로 내려받는다.
+async function downloadApListCsv() {
+  const ok = await confirmFilteredExport({
+    filtered: apIsFiltered.value,
+    shown: filteredApList.value.length,
+    total: apStats.value.total,
+  })
+  if (!ok) return
+
+  const rows = [[
+    '상표명', '형태', '용량', '출처', '연결', '분류', '작용기작',
+    '대상 병해충', '수확 전 일수', '최대 사용 횟수', '독성', '어독성', '주성분', '제조사',
+  ]]
+  for (const p of filteredApList.value) {
+    rows.push([
+      p.brandName,
+      p.form || '',
+      p.volume || '',
+      AP_SOURCE_LABEL[p.source] ?? '',
+      matchLabel(p.matchSource),
+      normCat(p.category) || '',
+      p.moa || '',
+      (p.targetPests || []).join(' / '),
+      formatPreHarvest(p.preHarvestDays),
+      formatMaxApplications(p.maxApplications),
+      p.toxicName || '',
+      formatFishToxic(p.fishToxic),
+      p.ingredient || '',
+      p.manufacturer || '',
+    ])
+  }
+  downloadCsv(rows, exportFileName({
+    farmName: farmsStore.activeFarm?.name,
+    label: '가용농약',
+    date: today(),
+  }))
+}
+
+async function printApList() {
+  const shown = filteredApList.value.length
+  const total = apStats.value.total
+  const ok = await confirmFilteredExport({ filtered: apIsFiltered.value, shown, total, kind: 'pdf' })
+  if (!ok) return
+
+  // 인쇄 지면이 좁아 CSV보다 열을 줄인다(형태·용량은 상표명에 붙이고, 주성분·제조사는 제외).
+  openPrintReport({
+    title: '가용농약 목록',
+    meta: `${localeStore.t('inventory.reportGeneratedAt', { date: today() })} · 총 ${shown}종${shown < total ? ` (전체 ${total}종 중 필터 적용)` : ''}`,
+    headers: ['농약명', '출처', '분류', '작용기작', '대상 병해충', '수확 전 일수', '최대 사용 횟수', '독성', '어독성'],
+    rows: filteredApList.value.map(p => [
+      [p.brandName, p.form ? `(${p.form})` : '', p.volume].filter(Boolean).join(' '),
+      AP_SOURCE_LABEL[p.source] ?? '',
+      normCat(p.category) || '',
+      p.moa || '',
+      (p.targetPests || []).join(', '),
+      formatPreHarvest(p.preHarvestDays),
+      formatMaxApplications(p.maxApplications),
+      p.toxicName || '',
+      formatFishToxic(p.fishToxic),
+    ]),
+    autoPrint: settingsStore.settings.autoOpenPrintDialog,
+  })
+}
+
 async function buildApList() {
   apStore.savePurchaseInput(apInputText.value)
   apBuilding.value = true
-  try { apStore.buildList(inventoryPesticides.value) }
-  finally { apBuilding.value = false }
+  try {
+    apStore.buildList(inventoryPesticides.value)
+    await fillApToxicity()
+  } finally { apBuilding.value = false }
+}
+
+// 목록을 만든 직후, 독성이 비어 있는 항목은 공유 캐시에서 상세정보를 끌어와 채운다.
+async function fillApToxicity() {
+  const filled = await apStore.fillToxicityFromShared()
+  apRefreshMessage.value = filled > 0 ? `독성정보 ${filled}건을 추가로 가져왔습니다.` : ''
 }
 
 // 붙여넣기 일괄추가(설정 > 동작 > 붙여넣기 일괄추가 방식): 'append'는 새로 입력한 내용만
@@ -655,6 +805,7 @@ async function buildApListAppend() {
   try {
     apStore.savePurchaseInput(merged)
     apStore.buildList(inventoryPesticides.value)
+    await fillApToxicity()
   } finally {
     apBuilding.value = false
   }
@@ -746,7 +897,8 @@ function openManualEdit(item) {
   }
   manualEditId.value = item.id
   manualEditForm.value = {
-    category:        item.category || '',
+    // 저장값은 OpenAPI 원본 표기('살균' 등)일 수 있어, 드롭다운 선택지와 같은 표시명으로 맞춘다.
+    category:        normCat(item.category) || '',
     moa:             item.moa || '',
     targetPests:     (item.targetPests || []).join(', '),
     preHarvestDays:  item.preHarvestDays || '',
@@ -788,12 +940,17 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 
     <!-- Tabs -->
     <div class="tab-bar">
-      <button class="tab-btn" :class="{ active: activeTab === 'history' }"   @click="activeTab = 'history'">방제 이력</button>
       <button class="tab-btn" :class="{ active: activeTab === 'peststock' }" @click="activeTab = 'peststock'">농약재고</button>
+      <button class="tab-btn" :class="{ active: activeTab === 'history' }"   @click="activeTab = 'history'">방제 이력</button>
       <button class="tab-btn" :class="{ active: activeTab === 'avail' }"     @click="activeTab = 'avail'">가용농약</button>
       <button class="tab-btn" :class="{ active: activeTab === 'settings' }"  @click="activeTab = 'settings'">추천 설정</button>
       <button class="tab-btn" :class="{ active: activeTab === 'recommend' }" @click="activeTab = 'recommend'">농약 추천</button>
     </div>
+
+    <!-- ═══ 농약재고 ════════════════════════════════════════════════════════ -->
+    <section v-if="activeTab === 'peststock'">
+      <PesticideInventoryPanel />
+    </section>
 
     <!-- ═══ 방제 이력 ═══════════════════════════════════════════════════════ -->
     <section v-if="activeTab === 'history'">
@@ -812,6 +969,18 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
               <button v-if="showHistoryForm && treatStore.treatments.length > 0" class="ghost" type="button" @click="refreshAllTreatmentLinks">
                 전체 재연결 ({{ settingsStore.settings.overwriteLinkedTreatments ? '기존 연결도 덮어쓰기' : '미연결만' }})
               </button>
+              <button
+                v-if="!showHistoryForm && treatStore.treatments.length > 0"
+                class="ghost"
+                type="button"
+                @click="printTreatments"
+              >{{ localeStore.t('inventory.printReport') }}</button>
+              <button
+                v-if="!showHistoryForm && treatStore.treatments.length > 0"
+                class="ghost"
+                type="button"
+                @click="downloadTreatmentsCsv"
+              >{{ localeStore.t('inventory.downloadReport') }}</button>
               <button v-if="!showHistoryForm" type="button" @click="showHistoryForm = true">{{ localeStore.t('common.edit') }}</button>
               <button v-else class="ghost" type="button" @click="resetForm(); showHistoryForm = false; histRefreshMessage = ''">{{ localeStore.t('common.exitEdit') }}</button>
             </div>
@@ -994,11 +1163,6 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
       </div>
     </section>
 
-    <!-- ═══ 농약재고 ════════════════════════════════════════════════════════ -->
-    <section v-if="activeTab === 'peststock'">
-      <PesticideInventoryPanel />
-    </section>
-
     <!-- ═══ 농약 추천 ═══════════════════════════════════════════════════════ -->
     <section v-if="activeTab === 'recommend'">
       <div class="rec-search">
@@ -1108,6 +1272,18 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
           <button v-if="apEditMode && apStore.availableList.length > 0" class="ghost" type="button" @click="refreshAllPesticideInfo">
             전체 재연결
           </button>
+          <button
+            v-if="!apEditMode && apStore.availableList.length > 0"
+            class="ghost"
+            type="button"
+            @click="printApList"
+          >{{ localeStore.t('inventory.printReport') }}</button>
+          <button
+            v-if="!apEditMode && apStore.availableList.length > 0"
+            class="ghost"
+            type="button"
+            @click="downloadApListCsv"
+          >{{ localeStore.t('inventory.downloadReport') }}</button>
           <button v-if="!apEditMode" type="button" @click="apEditMode = true">{{ localeStore.t('common.edit') }}</button>
           <button v-else class="ghost" type="button" @click="closeApEdit">{{ localeStore.t('common.exitEdit') }}</button>
         </div>
@@ -1137,12 +1313,12 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
           <button
             class="ghost ap-unmatched-btn"
             :class="{ 'ap-unmatched-active': apUnmatchedOnly }"
-            @click="apUnmatchedOnly = !apUnmatchedOnly"
+            @click="toggleApUnmatchedOnly"
           >미연결만 ({{ apStats.unmatched }})</button>
           <button
             class="ghost ap-unmatched-btn"
             :class="{ 'ap-unmatched-active': apManualOnly }"
-            @click="apManualOnly = !apManualOnly"
+            @click="toggleApManualOnly"
           >수동만 ({{ apStats.manual }})</button>
           <input
             v-model="apFilter"
@@ -1272,6 +1448,11 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
             <label>분류
               <select v-model="manualEditForm.category">
                 <option value="">선택 안 함</option>
+                <!-- 농장 분류 목록에 없는 값(공공데이터의 기타 용도 등)도 선택 상태가 유지되도록 함께 노출한다. -->
+                <option
+                  v-if="manualEditForm.category && !pesticideTypes.includes(manualEditForm.category)"
+                  :value="manualEditForm.category"
+                >{{ manualEditForm.category }}</option>
                 <option v-for="tp in pesticideTypes" :key="tp" :value="tp">{{ tp }}</option>
               </select>
             </label>

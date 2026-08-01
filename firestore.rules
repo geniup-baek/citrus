@@ -45,6 +45,9 @@ service cloud.firestore {
     }
     match /sharedCache/{key} {
       // 로컬 실행 환경에서 가져온 OpenAPI 전건 캐시(농약정보/병해충정보)를 공유한다.
+      // 캐시 외에 기기 간 공유가 필요한 공통 데이터도 이 경로를 쓴다:
+      //   pesticide:manual — 공공데이터에 없어 직접 등록한 농약 목록
+      //   app:policy       — 전 기기 공통 정책(농약 직접등록 권한 등)
       allow read, write: if true;
     }
   }

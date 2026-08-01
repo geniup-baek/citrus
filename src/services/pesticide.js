@@ -10,12 +10,15 @@
 // SVC02: 농약등록정보 상세
 //   필수: apiKey, serviceCode=SVC02, pestiCode, diseaseUseSeq (SVC01 응답에서 획득)
 
-import { saveCache, loadCache, pushSharedCache } from './cache.js'
+import { saveCache, loadCache, pushSharedCache, pullSharedCache } from './cache.js'
 
 const API_KEY = import.meta.env.VITE_AGRI_API_KEY
 const USE_MOCK = !API_KEY
 
 const FULL_CACHE_KEY = 'pesticide:all'
+// 공공데이터에 없어 직접 등록한 농약. 전건 캐시는 "최신 정보 가져오기"로 통째로 덮어써지므로
+// 따로 보관하고, 검색·연결 시에만 합쳐서 쓴다.
+export const MANUAL_CACHE_KEY = 'pesticide:manual'
 
 // 엔드포인트: http://psis.rda.go.kr/openApi/service.do
 // 개발: vite.config.js /agri-api → http://psis.rda.go.kr 프록시 (로컬 실행에서만 직접 호출 가능)
@@ -130,6 +133,67 @@ function normalizeListItem(item) {
   }
 }
 
+// ─── 직접등록 농약 ────────────────────────────────────────────────────────────
+// 목록(SVC01) 레코드와 같은 모양으로 맞춰 두어 검색·자동연결에서 그대로 함께 쓰인다.
+// 독성·어독성은 상세 API가 없으므로 레코드에 직접 담는다.
+function normalizeManualItem(entry) {
+  const id = entry.id || `m${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return {
+    id,
+    isManual: true,
+    pestiCode: `MANUAL-${id}`,
+    diseaseUseSeq: '1',
+    name: (entry.name ?? '').trim(),
+    brandName: (entry.brandName ?? '').trim(),
+    ingredient: (entry.ingredient ?? '').trim(),
+    targetPest: (entry.targetPest ?? '').trim(),
+    pesticideType: (entry.pesticideType ?? '').trim(),
+    modeOfAction: (entry.modeOfAction ?? '').trim() || '-',
+    manufacturer: (entry.manufacturer ?? '').trim(),
+    applicationMethod: (entry.applicationMethod ?? '').trim(),
+    dilution: (entry.dilution ?? '').trim(),
+    preHarvestDays: cleanPreHarvestDays((entry.preHarvestDays ?? '').trim()),
+    maxApplications: cleanMaxApplications((entry.maxApplications ?? '').trim()),
+    toxicName: (entry.toxicName ?? '').trim(),
+    fishToxic: (entry.fishToxic ?? '').trim(),
+    cropName: '감귤',
+    registDate: entry.registDate || new Date().toISOString().slice(0, 10),
+  }
+}
+
+export function loadManualPesticides() {
+  const data = loadCache(MANUAL_CACHE_KEY)?.data
+  return Array.isArray(data) ? data : []
+}
+
+// 다른 기기에서 등록한 항목을 덮어쓰지 않도록, 공유 캐시를 먼저 당겨와 병합한 뒤 저장한다.
+async function persistManualPesticides(mutate) {
+  await pullSharedCache(MANUAL_CACHE_KEY)
+  const list = mutate(loadManualPesticides())
+  saveCache(MANUAL_CACHE_KEY, list)
+  await pushSharedCache(MANUAL_CACHE_KEY, list)
+  return list
+}
+
+export async function saveManualPesticide(entry) {
+  const record = normalizeManualItem(entry)
+  await persistManualPesticides((list) => {
+    const index = list.findIndex(p => p.id === record.id)
+    if (index >= 0) return list.map((p, i) => (i === index ? record : p))
+    return [...list, record]
+  })
+  return record
+}
+
+export async function deleteManualPesticide(id) {
+  await persistManualPesticides(list => list.filter(p => p.id !== id))
+}
+
+// 공공데이터 전건 + 직접등록을 합친 검색 대상.
+function allPesticideRecords() {
+  return [...(loadCache(FULL_CACHE_KEY)?.data ?? []), ...loadManualPesticides()]
+}
+
 // SVC02 응답 → 상세 정보 정규화 (독성 등 추가 필드)
 function normalizeDetail(item) {
   return {
@@ -220,12 +284,11 @@ function normalizeBrandKey(name) {
   return name.toLowerCase().replace(/[\s\-()·.]/g, '')
 }
 
-// 전건 캐시에서 상표명이 정확히(우선) 또는 접두로 일치하는 항목 하나를 찾는다.
+// 전건 캐시(+직접등록)에서 상표명이 정확히(우선) 또는 접두로 일치하는 항목 하나를 찾는다.
 // (방제이력·가용농약 등에서 "전체 재연결" 시 브랜드명 기준으로 자동 매칭할 때 사용)
 export function findBestMatchInCache(brandName) {
   if (!brandName) return null
-  const cached = loadCache(FULL_CACHE_KEY)
-  const cacheData = cached?.data ?? []
+  const cacheData = allPesticideRecords()
   if (!cacheData.length) return null
   const q = normalizeBrandKey(brandName)
   if (!q) return null
@@ -237,14 +300,11 @@ export function findBestMatchInCache(brandName) {
   }) ?? null
 }
 
-// 전건 캐시에서 클라이언트 필터링
-export function searchFromFullCache({ pestName = '', targetPest = '', pesticideType = '', page = 1, pageSize = 20, sortBy = '' } = {}) {
-  const cached = loadCache(FULL_CACHE_KEY)
-  if (!cached) return null
-  let list = cached.data
+function filterFullCache(list, { pestName = '', targetPest = '', pesticideType = '' }) {
+  let out = list
   if (pestName) {
     const q = pestName.toLowerCase()
-    list = list.filter(p =>
+    out = out.filter(p =>
       p.name.toLowerCase().includes(q) ||
       p.brandName.toLowerCase().includes(q) ||
       p.ingredient.toLowerCase().includes(q),
@@ -252,17 +312,79 @@ export function searchFromFullCache({ pestName = '', targetPest = '', pesticideT
   }
   if (targetPest) {
     const q = targetPest.toLowerCase()
-    list = list.filter(p => p.targetPest.toLowerCase().includes(q))
+    out = out.filter(p => p.targetPest.toLowerCase().includes(q))
   }
   if (pesticideType) {
-    list = list.filter(p => p.pesticideType === pesticideType)
+    out = out.filter(p => p.pesticideType === pesticideType)
   }
+  return out
+}
+
+// 공공데이터 전건 캐시가 아직 없어도 직접등록 항목만으로 검색이 되도록 한다.
+function cacheFetchedAt() {
+  return loadCache(FULL_CACHE_KEY)?.fetchedAt ?? loadCache(MANUAL_CACHE_KEY)?.fetchedAt ?? ''
+}
+
+// 전건 캐시(+직접등록)에서 클라이언트 필터링
+export function searchFromFullCache({ pestName = '', targetPest = '', pesticideType = '', page = 1, pageSize = 20, sortBy = '' } = {}) {
+  const all = allPesticideRecords()
+  if (!all.length) return null
+  let list = filterFullCache(all, { pestName, targetPest, pesticideType })
   if (sortBy === 'brandName' || sortBy === 'name') {
     const key = sortBy
     list = [...list].sort((a, b) => (a[key] || '').localeCompare(b[key] || '', 'ko'))
   }
   const start = (page - 1) * pageSize
-  return { total: list.length, list: list.slice(start, start + pageSize), fetchedAt: cached.fetchedAt }
+  return { total: list.length, list: list.slice(start, start + pageSize), fetchedAt: cacheFetchedAt() }
+}
+
+export function splitTargetPests(raw) {
+  return (raw ?? '').split(/[,、]/).map(s => s.trim()).filter(Boolean)
+}
+
+// 목록(SVC01)은 같은 제품이라도 병해충마다 레코드가 나뉘어 있다.
+// 이를 상표명 기준으로 한 건씩 묶어서 돌려준다 (레코드 원본은 records에 그대로 담는다).
+export function searchGroupedFromFullCache({ pestName = '', targetPest = '', pesticideType = '', page = 1, pageSize = 20, sortBy = 'brandName' } = {}) {
+  const all = allPesticideRecords()
+  if (!all.length) return null
+  const list = filterFullCache(all, { pestName, targetPest, pesticideType })
+
+  const groups = new Map()
+  for (const item of list) {
+    const key = normalizeBrandKey(item.brandName || item.name) || `${item.pestiCode}`
+    let group = groups.get(key)
+    if (!group) {
+      group = {
+        key,
+        brandName: item.brandName,
+        name: item.name,
+        pesticideType: item.pesticideType,
+        ingredient: item.ingredient,
+        manufacturer: item.manufacturer,
+        modeOfActions: [],
+        targetPests: [],
+        records: [],
+      }
+      groups.set(key, group)
+    }
+    group.records.push(item)
+    if (item.modeOfAction && item.modeOfAction !== '-' && !group.modeOfActions.includes(item.modeOfAction)) {
+      group.modeOfActions.push(item.modeOfAction)
+    }
+    for (const pest of splitTargetPests(item.targetPest)) {
+      if (!group.targetPests.includes(pest)) group.targetPests.push(pest)
+    }
+  }
+
+  const sortKey = sortBy === 'name' ? 'name' : 'brandName'
+  const arr = [...groups.values()].sort((a, b) => (a[sortKey] || '').localeCompare(b[sortKey] || '', 'ko'))
+  const start = (page - 1) * pageSize
+  return {
+    total: arr.length,
+    recordTotal: list.length,
+    list: arr.slice(start, start + pageSize),
+    fetchedAt: cacheFetchedAt(),
+  }
 }
 
 // 독성 등급 (농약관리법 기준 4단계, 높은 순서)
@@ -330,10 +452,66 @@ export function getFishToxicFromCache(pestiCode, diseaseUseSeq) {
   return normalizeFishGrade(cached?.data?.fishToxic ?? '')
 }
 
-export function getTypesFromCache() {
+// 같은 상표명(제품)이라도 병해충마다 레코드(diseaseUseSeq)가 따로 있고 상세정보도 레코드 단위로
+// 캐시된다. 독성·어독성은 병해충이 아니라 제품 단위 정보이므로, 레코드 중 하나라도 상세조회가
+// 되어 있으면 그 값을 제품 전체의 값으로 쓴다.
+export function findToxicityInCache(records = []) {
+  for (const r of records) {
+    // 직접등록 농약은 상세 API가 없으므로 레코드에 적어둔 값을 그대로 쓴다.
+    if (r.isManual) {
+      if (r.toxicName || r.fishToxic) {
+        return { toxicName: r.toxicName || '', fishToxic: normalizeFishGrade(r.fishToxic || '') }
+      }
+      continue
+    }
+    const toxicName = getToxicityFromCache(r.pestiCode, r.diseaseUseSeq)
+    const fishToxic = getFishToxicFromCache(r.pestiCode, r.diseaseUseSeq)
+    if (toxicName || fishToxic) return { toxicName, fishToxic }
+  }
+  return { toxicName: '', fishToxic: '' }
+}
+
+export function detailCacheKey(pestiCode, diseaseUseSeq) {
+  return `pesticide:detail:${pestiCode}-${diseaseUseSeq}`
+}
+
+// 상세정보가 캐시된 레코드 id(pestiCode-diseaseUseSeq) 집합.
+// 개수만 세면 되므로 값은 파싱하지 않고 localStorage 키만 훑는다.
+function cachedDetailIds() {
+  const prefix = 'citrus:pesticide:detail:' // cache.js의 localStorage 접두사 + 상세 캐시 키
+  const ids = new Set()
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith(prefix)) ids.add(key.slice(prefix.length))
+    }
+  } catch {}
+  return ids
+}
+
+// 전건 캐시의 상표(제품) 수와, 그중 상세정보를 가져온 상표 수.
+// 상세는 병해충별 레코드 단위로 캐시되므로 한 레코드라도 있으면 그 상표는 가져온 것으로 센다.
+export function getDetailCoverage() {
   const cached = loadCache(FULL_CACHE_KEY)
-  if (!cached) return []
-  return [...new Set(cached.data.map(p => p.pesticideType).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'))
+  if (!cached) return { brands: 0, withDetail: 0 }
+  const ids = cachedDetailIds()
+  const byBrand = new Map() // 상표 키 → 상세 보유 여부
+  for (const item of cached.data) {
+    const key = normalizeBrandKey(item.brandName || item.name) || item.pestiCode
+    const has = byBrand.get(key) || ids.has(`${item.pestiCode}-${item.diseaseUseSeq}`)
+    byBrand.set(key, has)
+  }
+  let withDetail = 0
+  for (const has of byBrand.values()) {
+    if (has) withDetail++
+  }
+  return { brands: byBrand.size, withDetail }
+}
+
+export function getTypesFromCache() {
+  const all = allPesticideRecords()
+  if (!all.length) return []
+  return [...new Set(all.map(p => p.pesticideType).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'))
 }
 
 export async function getAvailableTypes() {
@@ -381,7 +559,7 @@ export async function warmAllDetails(force = false, onProgress = () => {}) {
     done++
     onProgress(done, list.length)
     if (!item.pestiCode || !item.diseaseUseSeq) continue
-    const key = `pesticide:detail:${item.pestiCode}-${item.diseaseUseSeq}`
+    const key = detailCacheKey(item.pestiCode, item.diseaseUseSeq)
     if (!force && loadCache(key)) continue
     try {
       const detail = await getPesticideDetail({ pestiCode: item.pestiCode, diseaseUseSeq: item.diseaseUseSeq })

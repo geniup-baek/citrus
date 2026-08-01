@@ -9,10 +9,13 @@ import { searchFromFullCache, findBestMatchInCache } from '../services/pesticide
 import { moaColor } from '../services/recommend.js'
 import { usePesticideTypes } from '../composables/usePesticideTypes.js'
 import { useIsMobile } from '../composables/useIsMobile.js'
+import { useFarmsStore } from '../stores/farmsStore'
+import { confirmFilteredExport, downloadCsv, exportFileName, openPrintReport } from '../utils/dataExport.js'
 
 const store      = useFarmStore()
 const localeStr  = useLocaleStore()
 const recSettingsStore = useRecommendSettingsStore()
+const farmsStore = useFarmsStore()
 const t          = (key, p) => localeStr.t(key, p)
 
 const CATEGORY = '농약'
@@ -51,6 +54,7 @@ const EXPIRY_SOON  = 30
 const form = reactive({
   id: '', name: '', pesticideType: '살충제',
   actionGroup: '', productName: '', notes: '',
+  matchSource: '', // 'auto' — 공공데이터에서 골라 채운 경우
 })
 
 const txnForm = reactive({
@@ -74,6 +78,7 @@ const categoryClass = (cat) => ({
 const invMatchResults = ref([])
 
 function onNameInput() {
+  form.matchSource = '' // 이름을 직접 고치는 중이므로 자동 연결 표시를 해제한다
   const q = form.name.trim()
   if (!q) { invMatchResults.value = []; return }
   const result = searchFromFullCache({ pestName: q, page: 1, pageSize: 10 })
@@ -88,6 +93,7 @@ function applyInvMatch(apiItem) {
   }
   if (apiItem.modeOfAction && apiItem.modeOfAction !== '-') form.actionGroup  = apiItem.modeOfAction
   if (apiItem.name)                                          form.productName  = apiItem.name
+  form.matchSource = 'auto'
   invMatchResults.value = []
 }
 
@@ -124,6 +130,7 @@ async function applyLink(item, apiItem) {
     pesticideType: pesticideTypes.value.includes(mappedType) ? mappedType : (item.pesticideType || ''),
     actionGroup:   (apiItem.modeOfAction && apiItem.modeOfAction !== '-') ? apiItem.modeOfAction : (item.actionGroup || ''),
     productName:   apiItem.name || item.productName || '',
+    matchSource:   'auto',
     notes:         item.notes || '',
   })
   linkingItemId.value = null
@@ -212,7 +219,7 @@ function clearForm() {
   Object.assign(form, {
     id: '', name: '',
     pesticideType: pesticideTypes.value[0] ?? '살충제',
-    actionGroup: '', productName: '', notes: '',
+    actionGroup: '', productName: '', notes: '', matchSource: '',
   })
   editingId.value      = ''
   formMode.value       = 'single'
@@ -247,6 +254,7 @@ function editItem(item) {
     actionGroup:   item.actionGroup  || '',
     productName:   item.productName  || '',
     notes:         item.notes        || '',
+    matchSource:   item.matchSource  || '',
   })
   editingId.value  = item.id
   formMode.value   = 'single'
@@ -271,6 +279,7 @@ async function saveItem() {
     pesticideType: form.pesticideType,
     actionGroup:   form.actionGroup,
     productName:   form.productName,
+    matchSource:   form.matchSource,
     notes:         form.notes,
   })
   clearForm()
@@ -336,6 +345,7 @@ async function importBulkInventory() {
           pesticideType: (mappedType && pesticideTypes.value.includes(mappedType)) ? mappedType : (pesticideTypes.value[0] ?? '살충제'),
           actionGroup: (match?.modeOfAction && match.modeOfAction !== '-') ? match.modeOfAction : '',
           productName: match?.name || '',
+          matchSource: match ? 'auto' : '',
           notes: row.note,
         })
         addedItems++
@@ -436,11 +446,6 @@ async function deleteTxn(item, txn) {
 }
 
 // ── CSV 다운로드 ──────────────────────────────────────────────────────────────
-function csvCell(value) {
-  const s = String(value ?? '')
-  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s
-}
-
 function statusText(dateStr) {
   const s = expiryStatus(dateStr)
   if (s === 'expired') return t('inventory.expired')
@@ -448,7 +453,15 @@ function statusText(dateStr) {
   return ''
 }
 
-function downloadReport() {
+async function downloadReport() {
+  const ok = await confirmFilteredExport({
+    filtered: isFiltered.value,
+    shown: summary.value.total,
+    total: summary.value.categoryTotal,
+    kind: 'csv',
+  })
+  if (!ok) return
+
   const headers = [
     t('pesticideInventory.name'), t('pesticideInventory.pesticideType'),
     t('pesticideInventory.actionGroup'), t('pesticideInventory.productName'),
@@ -466,32 +479,29 @@ function downloadReport() {
       rows.push([...base, '', '', 0, '', item.notes || ''])
     }
   }
-  const csv  = String.fromCodePoint(0xfeff) + rows.map(r => r.map(csvCell).join(',')).join('\r\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url  = URL.createObjectURL(blob)
-  const a    = Object.assign(document.createElement('a'), {
-    href:     url,
-    download: `농약재고-${format(new Date(), 'yyyy-MM-dd')}.csv`,
-  })
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+  downloadCsv(rows, exportFileName({
+    farmName: farmsStore.activeFarm?.name,
+    label: '농약재고',
+    date: format(new Date(), 'yyyy-MM-dd'),
+  }))
 }
 
 // ── PDF/인쇄 ────────────────────────────────────────────────────────────────
-// 외부 라이브러리 없이 브라우저 인쇄 → 'PDF로 저장'을 사용한다(한글 폰트 문제 없음).
-function htmlCell(value) {
-  return String(value ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
-}
-
 function rowClass(status) {
   if (status === 'expired') return 'row-expired'
   if (status === 'soon') return 'row-soon'
   return ''
 }
 
-function printReport() {
+async function printReport() {
+  const ok = await confirmFilteredExport({
+    filtered: isFiltered.value,
+    shown: summary.value.total,
+    total: summary.value.categoryTotal,
+    kind: 'pdf',
+  })
+  if (!ok) return
+
   const today = format(new Date(), 'yyyy-MM-dd')
   const items = [...displayedItems.value].sort((a, b) => a.name.localeCompare(b.name))
   const headers = [
@@ -501,55 +511,33 @@ function printReport() {
     t('inventory.amount'), t('inventory.reportStatus'), t('inventory.notes'),
   ]
 
-  let bodyRows = ''
+  const rows = []
   for (const item of items) {
     const base = [item.name, item.pesticideType || '', item.actionGroup || '', item.productName || '']
     const lots = lotsOf(item)
-    const cellsToRow = (cells, cls) => {
-      const tds = cells.map((c) => `<td>${htmlCell(c)}</td>`).join('')
-      return `<tr class="${cls}">${tds}</tr>`
-    }
     if (lots.length) {
       for (const lot of lots) {
-        const s = expiryStatus(lot.expiryDate)
-        bodyRows += cellsToRow(
-          [...base, lot.volume, lot.expiryDate || '—', lot.quantity, statusText(lot.expiryDate), item.notes || ''],
-          rowClass(s),
-        )
+        rows.push({
+          cells: [...base, lot.volume, lot.expiryDate || '—', lot.quantity, statusText(lot.expiryDate), item.notes || ''],
+          cls: rowClass(expiryStatus(lot.expiryDate)),
+        })
       }
     } else {
-      bodyRows += cellsToRow([...base, '', '—', 0, '', item.notes || ''], '')
+      rows.push([...base, '', '—', 0, '', item.notes || ''])
     }
   }
 
-  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8" />
-<title>${htmlCell(t('pesticideInventory.reportTitle'))} ${today}</title>
-<style>
-  * { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
-  body { margin: 24px; color: #1a1a1a; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  .meta { color: #666; font-size: 12px; margin-bottom: 16px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th, td { border: 1px solid #ccc; padding: 5px 7px; text-align: left; vertical-align: top; }
-  th { background: #f0f0f0; }
-  .row-expired td { color: #c0392b; font-weight: 700; }
-  .row-soon td { color: #d35400; }
-  @media print { body { margin: 0; } th { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-</style></head><body>
-<h1>${htmlCell(t('pesticideInventory.reportTitle'))}</h1>
-<p class="meta">${htmlCell(t('inventory.reportGeneratedAt', { date: today }))} · ${htmlCell(t('inventory.summaryTotal', { count: summary.total }))}${summary.expiring ? ' · ' + htmlCell(t('inventory.summaryExpiring', { count: summary.expiring })) : ''}</p>
-<table><thead><tr>${headers.map((h) => `<th>${htmlCell(h)}</th>`).join('')}</tr></thead>
-<tbody>${bodyRows}</tbody></table>
-</body></html>`
+  const summaryText = summary.value.expiring
+    ? ` · ${t('inventory.summaryExpiring', { count: summary.value.expiring })}`
+    : ''
 
-  const win = window.open('', '_blank')
-  if (!win) return
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  if (recSettingsStore.settings.autoOpenPrintDialog) {
-    setTimeout(() => win.print(), 300)
-  }
+  openPrintReport({
+    title: t('pesticideInventory.reportTitle'),
+    meta: `${t('inventory.reportGeneratedAt', { date: today })} · ${t('inventory.summaryTotal', { count: summary.value.total })}${summaryText}`,
+    headers,
+    rows,
+    autoPrint: recSettingsStore.settings.autoOpenPrintDialog,
+  })
 }
 </script>
 
@@ -607,6 +595,7 @@ function printReport() {
               <p class="item-title">{{ item.name }}</p>
               <span v-if="item.pesticideType" class="cat-badge" :class="categoryClass(item.pesticideType)">{{ item.pesticideType }}</span>
               <span v-if="item.actionGroup" class="moa-badge" :style="{ background: moaColor(item.actionGroup) }">{{ item.actionGroup }}</span>
+              <span v-if="item.matchSource === 'auto'" class="match-badge match-ok">자동</span>
             </div>
             <p v-if="item.productName" class="item-meta">{{ item.productName }}</p>
 

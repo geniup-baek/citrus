@@ -9,6 +9,7 @@ import { useTreatmentStore } from './stores/treatmentStore'
 import { useAvailablePesticideStore } from './stores/availablePesticideStore'
 import { useRecommendSettingsStore } from './stores/recommendSettingsStore'
 import { useFarmsStore } from './stores/farmsStore'
+import { useAppPolicyStore } from './stores/appPolicyStore'
 import { useTaskNotifier } from './composables/useTaskNotifier'
 
 const store = useFarmStore()
@@ -17,9 +18,12 @@ const treatStore = useTreatmentStore()
 const apStore = useAvailablePesticideStore()
 const recSettingsStore = useRecommendSettingsStore()
 const farmsStore = useFarmsStore()
+const policyStore = useAppPolicyStore()
 
 onMounted(() => {
   farmsStore.init()
+  // 전 기기 공통 정책은 농장 선택과 무관하므로 관리 모드에서도 바로 동기화한다.
+  policyStore.init()
 })
 
 // 활성 농장이 (비동기로) 정해지는 시점에 딱 한 번 농장별 데이터 스토어를 초기화한다.
