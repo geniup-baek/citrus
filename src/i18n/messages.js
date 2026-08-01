@@ -388,5 +388,9 @@ export const messages = {
     inventoryItem: "품목 '{name}'을(를) 삭제합니다.\n입출고 이력 {txns}건도 함께 삭제됩니다.",
     treatment: "{date} '{brandName}' 방제 기록을 삭제합니다.",
     availablePesticide: "가용농약 목록에서 '{brandName}'을(를) 삭제합니다.",
+    resetTitle: '초기화 확인',
+    resetTreatments: '방제이력 {n}건을 모두 삭제합니다.\n되돌릴 수 없습니다.',
+    resetPesticideInventory: '농약재고 품목 {n}개를 입출고 이력과 함께 모두 삭제합니다.\n되돌릴 수 없습니다.',
+    resetAvailablePesticides: '가용농약 목록 {n}건과 구입가능농약 입력·수동 연결 정보를 모두 삭제합니다.\n되돌릴 수 없습니다.',
   },
 }

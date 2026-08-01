@@ -20,6 +20,11 @@ const localeStore   = useLocaleStore()
 
 const activeTab = ref('history')
 
+// 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
+const showResetButton = computed(() =>
+  settingsStore.settings.enableResetFeature && settingsStore.settings.showResetButtons,
+)
+
 // ── 오늘 날짜 (YYYY-MM-DD) ─────────────────────────────────────────────────
 function today() {
   const d = new Date()
@@ -279,6 +284,21 @@ async function refreshAllTreatmentLinks() {
   histRefreshMessage.value = updated > 0 ? `${updated}건 정보를 연결했습니다.` : '연결할 항목이 없습니다 (이미 연결된 이력 제외).'
 }
 
+// 방제이력 전체 삭제 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
+async function resetAllTreatments() {
+  const n = treatStore.treatments.length
+  if (!n) return
+  const ok = await confirm({
+    title: localeStore.t('confirm.resetTitle'),
+    message: localeStore.t('confirm.resetTreatments', { n }),
+    confirmLabel: localeStore.t('common.reset'),
+  })
+  if (!ok) return
+  resetForm()
+  await treatStore.replaceAllTreatments([])
+  histRefreshMessage.value = `방제이력 ${n}건을 모두 삭제했습니다.`
+}
+
 // ── 방제이력 붙여넣기 일괄추가 ─────────────────────────────────────────────────
 // 스프레드시트에서 복사한 "날짜(YYYYMMDD)\t농약명\t비고" 형식 탭 구분 텍스트를 파싱한다.
 const bulkPasteText = ref('')
@@ -510,6 +530,25 @@ function closeApEdit() {
 function refreshAllPesticideInfo() {
   const updated = apStore.refreshAllFromCache()
   apRefreshMessage.value = updated > 0 ? `${updated}개 항목 정보를 갱신했습니다.` : '갱신할 항목이 없습니다 (수동 연결 항목 제외).'
+}
+
+// 가용농약 전체 초기화 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
+const apHasData = computed(() => apStore.availableList.length > 0 || !!apStore.purchaseInput)
+
+async function resetAvailablePesticides() {
+  if (!apHasData.value) return
+  const ok = await confirm({
+    title: localeStore.t('confirm.resetTitle'),
+    message: localeStore.t('confirm.resetAvailablePesticides', { n: apStore.availableList.length }),
+    confirmLabel: localeStore.t('common.reset'),
+  })
+  if (!ok) return
+  apStore.clearAll()
+  matchingItemId.value   = null
+  matchQuery.value       = ''
+  matchResults.value     = []
+  manualEditId.value     = null
+  apRefreshMessage.value = '가용농약 목록을 초기화했습니다.'
 }
 
 const inventoryPesticides = computed(() =>
@@ -764,6 +803,12 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
         <article>
           <div class="pip-header">
             <div class="pip-actions">
+              <button
+                v-if="showHistoryForm && showResetButton && treatStore.treatments.length > 0"
+                class="danger"
+                type="button"
+                @click="resetAllTreatments"
+              >{{ localeStore.t('common.reset') }}</button>
               <button v-if="showHistoryForm && treatStore.treatments.length > 0" class="ghost" type="button" @click="refreshAllTreatmentLinks">
                 전체 재연결 ({{ settingsStore.settings.overwriteLinkedTreatments ? '기존 연결도 덮어쓰기' : '미연결만' }})
               </button>
@@ -1054,6 +1099,12 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 
       <div class="pip-header">
         <div class="pip-actions">
+          <button
+            v-if="apEditMode && showResetButton && apHasData"
+            class="danger"
+            type="button"
+            @click="resetAvailablePesticides"
+          >{{ localeStore.t('common.reset') }}</button>
           <button v-if="apEditMode && apStore.availableList.length > 0" class="ghost" type="button" @click="refreshAllPesticideInfo">
             전체 재연결
           </button>

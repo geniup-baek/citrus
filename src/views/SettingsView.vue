@@ -771,6 +771,28 @@ function saveEdit(key, i, isPair) {
               "보고서만 열기"는 보고서 화면만 새 창으로 열고 인쇄 대화상자는 자동으로 띄우지 않습니다(필요할 때 직접 Ctrl+P). "인쇄 대화상자 자동으로 열기"는 새 창을 열자마자 바로 인쇄 대화상자를 띄웁니다.
             </p>
           </div>
+
+          <div class="sub-card">
+            <div class="settings-group-head">
+              <h3>초기화 기능</h3>
+            </div>
+            <p class="muted settings-group-hint">방제이력·농약재고·가용농약의 "초기화" 기능을 사용할지 설정합니다.</p>
+            <div class="inline-filters">
+              <button
+                type="button"
+                :class="{ ghost: recSettingsStore.settings.enableResetFeature }"
+                @click="recSettingsStore.settings.enableResetFeature = false"
+              >사용 안 함</button>
+              <button
+                type="button"
+                :class="{ ghost: !recSettingsStore.settings.enableResetFeature }"
+                @click="recSettingsStore.settings.enableResetFeature = true"
+              >사용</button>
+            </div>
+            <p class="muted text-sm" style="margin-top: 0.5rem;">
+              "초기화"는 해당 목록을 통째로 삭제하며 되돌릴 수 없습니다. "사용 안 함"이면 농장 설정의 "초기화 버튼 표시" 항목도 감춰지고 초기화 버튼은 어느 농장에서도 나타나지 않습니다.
+            </p>
+          </div>
         </template>
 
         <!-- 농장 모드: 이 농장에만 적용되는 정책 -->
@@ -818,6 +840,31 @@ function saveEdit(key, i, isPair) {
             </div>
             <p class="muted text-sm" style="margin-top: 0.5rem;">
               "기존 목록에 추가"는 붙여넣은 항목만 더합니다. "전체 새로 작성"은 붙여넣기 전 기존 목록(방제이력·농약재고는 전체 삭제, 가용농약은 구입가능농약 텍스트 전체)을 지우고 붙여넣은 내용으로 다시 만듭니다 — 되돌릴 수 없으니 주의하세요.
+            </p>
+          </div>
+
+          <!-- 초기화 기능은 시스템 관리 모드에서 켜 둔 경우에만 농장별로 표시 여부를 고를 수 있다. -->
+          <div v-if="recSettingsStore.settings.enableResetFeature" class="sub-card">
+            <div class="settings-group-head">
+              <h3>초기화 버튼 표시</h3>
+            </div>
+            <p class="muted settings-group-hint">
+              방제이력·농약재고·가용농약 편집모드에 "초기화" 버튼을 표시할지 설정합니다. (현재 농장에만 적용됩니다)
+            </p>
+            <div class="inline-filters">
+              <button
+                type="button"
+                :class="{ ghost: recSettingsStore.settings.showResetButtons }"
+                @click="recSettingsStore.settings.showResetButtons = false"
+              >표시 안 함</button>
+              <button
+                type="button"
+                :class="{ ghost: !recSettingsStore.settings.showResetButtons }"
+                @click="recSettingsStore.settings.showResetButtons = true"
+              >표시</button>
+            </div>
+            <p class="muted text-sm" style="margin-top: 0.5rem;">
+              "초기화"는 이 농장의 해당 목록을 통째로 삭제하며 되돌릴 수 없습니다. 평소에는 "표시 안 함"으로 두고, 데이터를 새로 만들어야 할 때만 잠시 켜세요.
             </p>
           </div>
         </template>

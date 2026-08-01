@@ -334,6 +334,14 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
     persistAll()
   }
 
+  // 가용농약 전체 초기화 — 구입가능농약 입력·목록·수동 연결 정보를 모두 비운다.
+  function clearAll() {
+    purchaseInput.value = ''
+    availableList.value = []
+    manualMatches.value = {}
+    persistAll()
+  }
+
   function removeFromList(id) {
     availableList.value = availableList.value.filter(p => p.id !== id)
     persistAll()
@@ -357,7 +365,7 @@ export const useAvailablePesticideStore = defineStore('availablePesticide', () =
 
   return {
     purchaseInput, availableList, manualMatches,
-    init, savePurchaseInput, buildList, applyManualMatch, updateManualInfo, clearManualMatch, removeFromList,
+    init, savePurchaseInput, buildList, applyManualMatch, updateManualInfo, clearManualMatch, removeFromList, clearAll,
     refreshAllFromCache, exportData, restoreData,
   }
 })

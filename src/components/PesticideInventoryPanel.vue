@@ -17,6 +17,11 @@ const t          = (key, p) => localeStr.t(key, p)
 
 const CATEGORY = '농약'
 
+// 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
+const showResetButton = computed(() =>
+  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+)
+
 const { typeNames: pesticideTypes, resolveType } = usePesticideTypes()
 const { isMobile } = useIsMobile()
 
@@ -351,6 +356,22 @@ async function importBulkInventory() {
   }
 }
 
+// 농약재고 전체 삭제 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
+async function resetAllItems() {
+  const ids = store.state.inventory.filter((i) => i.category === CATEGORY).map((i) => i.id)
+  if (!ids.length) return
+  const ok = await confirm({
+    title: t('confirm.resetTitle'),
+    message: t('confirm.resetPesticideInventory', { n: ids.length }),
+    confirmLabel: t('common.reset'),
+  })
+  if (!ok) return
+  for (const id of ids) {
+    await store.removeInventoryItem(id)
+  }
+  closeForm()
+}
+
 async function deleteItem(item) {
   const txns = (item.txns || []).length
   const ok = await confirm({ message: t('confirm.inventoryItem', { name: item.name, txns }) })
@@ -542,7 +563,15 @@ function printReport() {
           <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="printReport">{{ t('inventory.printReport') }}</button>
           <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="downloadReport">{{ t('inventory.downloadReport') }}</button>
           <button v-if="!showForm" type="button" @click="openAdd">{{ t('common.edit') }}</button>
-          <button v-else class="ghost" type="button" @click="closeForm">{{ t('common.exitEdit') }}</button>
+          <template v-else>
+            <button
+              v-if="showResetButton && summary.categoryTotal > 0"
+              class="danger"
+              type="button"
+              @click="resetAllItems"
+            >{{ t('common.reset') }}</button>
+            <button class="ghost" type="button" @click="closeForm">{{ t('common.exitEdit') }}</button>
+          </template>
         </div>
       </div>
 
