@@ -134,50 +134,99 @@ function normalizeListItem(item) {
 }
 
 // ─── 직접등록 농약 ────────────────────────────────────────────────────────────
-// 목록(SVC01) 레코드와 같은 모양으로 맞춰 두어 검색·자동연결에서 그대로 함께 쓰인다.
-// 독성·어독성은 상세 API가 없으므로 레코드에 직접 담는다.
-function normalizeManualItem(entry) {
+// 저장 형태: 제품 1건(entry) + 병해충별 사용기준 N건(usages).
+// 공공데이터(SVC01)도 병해충마다 레코드가 나뉘어 있으므로, 검색·연결에 쓸 때는
+// 사용기준 1건을 레코드 1건으로 펼쳐 같은 모양으로 맞춘다.
+// 독성·어독성은 상세 API가 없으므로 제품 단위로 entry에 담는다.
+export function blankManualUsage() {
+  return { targetPest: '', dilution: '', applicationMethod: '', preHarvestDays: '', maxApplications: '' }
+}
+
+function normalizeManualUsage(usage) {
+  return {
+    targetPest: (usage?.targetPest ?? '').trim(),
+    dilution: (usage?.dilution ?? '').trim(),
+    applicationMethod: (usage?.applicationMethod ?? '').trim(),
+    preHarvestDays: cleanPreHarvestDays((usage?.preHarvestDays ?? '').trim()),
+    maxApplications: cleanMaxApplications((usage?.maxApplications ?? '').trim()),
+  }
+}
+
+function hasUsageValue(usage) {
+  return Object.values(usage).some(Boolean)
+}
+
+function normalizeManualEntry(entry) {
   const id = entry.id || `m${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  // 사용기준을 한 줄만 담던 구버전 데이터는 그 값을 usages 1건으로 옮긴다.
+  const rawUsages = Array.isArray(entry.usages) && entry.usages.length
+    ? entry.usages
+    : [{
+        targetPest: entry.targetPest,
+        dilution: entry.dilution,
+        applicationMethod: entry.applicationMethod,
+        preHarvestDays: entry.preHarvestDays,
+        maxApplications: entry.maxApplications,
+      }]
   return {
     id,
-    isManual: true,
-    pestiCode: `MANUAL-${id}`,
-    diseaseUseSeq: '1',
-    name: (entry.name ?? '').trim(),
     brandName: (entry.brandName ?? '').trim(),
-    ingredient: (entry.ingredient ?? '').trim(),
-    targetPest: (entry.targetPest ?? '').trim(),
+    name: (entry.name ?? '').trim(),
     pesticideType: (entry.pesticideType ?? '').trim(),
-    modeOfAction: (entry.modeOfAction ?? '').trim() || '-',
+    modeOfAction: (entry.modeOfAction ?? '').trim(),
+    ingredient: (entry.ingredient ?? '').trim(),
     manufacturer: (entry.manufacturer ?? '').trim(),
-    applicationMethod: (entry.applicationMethod ?? '').trim(),
-    dilution: (entry.dilution ?? '').trim(),
-    preHarvestDays: cleanPreHarvestDays((entry.preHarvestDays ?? '').trim()),
-    maxApplications: cleanMaxApplications((entry.maxApplications ?? '').trim()),
     toxicName: (entry.toxicName ?? '').trim(),
     fishToxic: (entry.fishToxic ?? '').trim(),
-    cropName: '감귤',
+    usages: rawUsages.map(normalizeManualUsage).filter(hasUsageValue),
     registDate: entry.registDate || new Date().toISOString().slice(0, 10),
   }
 }
 
-export function loadManualPesticides() {
+// 등록·수정 화면에서 쓰는 원본 형태(제품 + 사용기준 목록).
+export function loadManualEntries() {
   const data = loadCache(MANUAL_CACHE_KEY)?.data
-  return Array.isArray(data) ? data : []
+  return Array.isArray(data) ? data.map(normalizeManualEntry) : []
+}
+
+function expandManualEntry(entry) {
+  const base = {
+    isManual: true,
+    id: entry.id,
+    pestiCode: `MANUAL-${entry.id}`,
+    name: entry.name,
+    brandName: entry.brandName,
+    ingredient: entry.ingredient,
+    pesticideType: entry.pesticideType,
+    modeOfAction: entry.modeOfAction || '-',
+    manufacturer: entry.manufacturer,
+    toxicName: entry.toxicName,
+    fishToxic: entry.fishToxic,
+    cropName: '감귤',
+    registDate: entry.registDate,
+  }
+  // 사용기준을 하나도 적지 않았어도 농약 자체는 검색·연결되어야 하므로 빈 레코드 1건은 남긴다.
+  const usages = entry.usages.length ? entry.usages : [blankManualUsage()]
+  return usages.map((usage, i) => ({ ...base, diseaseUseSeq: String(i + 1), ...usage }))
+}
+
+// 검색·연결용 — 사용기준 1건 = 레코드 1건으로 펼친 목록
+export function loadManualPesticides() {
+  return loadManualEntries().flatMap(expandManualEntry)
 }
 
 // 다른 기기에서 등록한 항목을 덮어쓰지 않도록, 공유 캐시를 먼저 당겨와 병합한 뒤 저장한다.
-async function persistManualPesticides(mutate) {
+async function persistManualEntries(mutate) {
   await pullSharedCache(MANUAL_CACHE_KEY)
-  const list = mutate(loadManualPesticides())
+  const list = mutate(loadManualEntries())
   saveCache(MANUAL_CACHE_KEY, list)
   await pushSharedCache(MANUAL_CACHE_KEY, list)
   return list
 }
 
 export async function saveManualPesticide(entry) {
-  const record = normalizeManualItem(entry)
-  await persistManualPesticides((list) => {
+  const record = normalizeManualEntry(entry)
+  await persistManualEntries((list) => {
     const index = list.findIndex(p => p.id === record.id)
     if (index >= 0) return list.map((p, i) => (i === index ? record : p))
     return [...list, record]
@@ -186,7 +235,7 @@ export async function saveManualPesticide(entry) {
 }
 
 export async function deleteManualPesticide(id) {
-  await persistManualPesticides(list => list.filter(p => p.id !== id))
+  await persistManualEntries(list => list.filter(p => p.id !== id))
 }
 
 // 공공데이터 전건 + 직접등록을 합친 검색 대상.
@@ -301,8 +350,8 @@ export function findBestMatchInCache(brandName) {
   }) ?? null
 }
 
-function filterFullCache(list, { pestName = '', targetPest = '', pesticideType = '' }) {
-  let out = list
+function filterFullCache(list, { pestName = '', targetPest = '', pesticideType = '', manualOnly = false }) {
+  let out = manualOnly ? list.filter(p => p.isManual) : list
   if (pestName) {
     const q = pestName.toLowerCase()
     out = out.filter(p =>
@@ -327,10 +376,10 @@ function cacheFetchedAt() {
 }
 
 // 전건 캐시(+직접등록)에서 클라이언트 필터링
-export function searchFromFullCache({ pestName = '', targetPest = '', pesticideType = '', page = 1, pageSize = 20, sortBy = '' } = {}) {
+export function searchFromFullCache({ pestName = '', targetPest = '', pesticideType = '', manualOnly = false, page = 1, pageSize = 20, sortBy = '' } = {}) {
   const all = allPesticideRecords()
   if (!all.length) return null
-  let list = filterFullCache(all, { pestName, targetPest, pesticideType })
+  let list = filterFullCache(all, { pestName, targetPest, pesticideType, manualOnly })
   if (sortBy === 'brandName' || sortBy === 'name') {
     const key = sortBy
     list = [...list].sort((a, b) => (a[key] || '').localeCompare(b[key] || '', 'ko'))
@@ -343,14 +392,24 @@ export function splitTargetPests(raw) {
   return (raw ?? '').split(/[,、]/).map(s => s.trim()).filter(Boolean)
 }
 
+// 사용기준으로 표시되는 값(병해충·희석배수·사용방법·안전사용기준)이 완전히 같은 레코드를
+// 판별하는 키. 원본에 같은 내용이 여러 건 등록돼 있어도(품목코드가 다른 동일 상표명 등)
+// 화면에는 구분할 근거가 없으므로 한 줄로 합친다.
+function usageKey(item) {
+  return [item.targetPest, item.dilution, item.applicationMethod, item.preHarvestDays, item.maxApplications]
+    .map(v => String(v ?? '').trim())
+    .join('|')
+}
+
 // 목록(SVC01)은 같은 제품이라도 병해충마다 레코드가 나뉘어 있다.
 // 이를 상표명 기준으로 한 건씩 묶어서 돌려준다 (레코드 원본은 records에 그대로 담는다).
-export function searchGroupedFromFullCache({ pestName = '', targetPest = '', pesticideType = '', page = 1, pageSize = 20, sortBy = 'brandName' } = {}) {
+export function searchGroupedFromFullCache({ pestName = '', targetPest = '', pesticideType = '', manualOnly = false, page = 1, pageSize = 20, sortBy = 'brandName' } = {}) {
   const all = allPesticideRecords()
   if (!all.length) return null
-  const list = filterFullCache(all, { pestName, targetPest, pesticideType })
+  const list = filterFullCache(all, { pestName, targetPest, pesticideType, manualOnly })
 
   const groups = new Map()
+  const seenUsages = new Map() // 그룹 키 → 이미 담은 사용기준 키 집합
   for (const item of list) {
     const key = normalizeBrandKey(item.brandName || item.name) || `${item.pestiCode}`
     let group = groups.get(key)
@@ -367,14 +426,19 @@ export function searchGroupedFromFullCache({ pestName = '', targetPest = '', pes
         records: [],
       }
       groups.set(key, group)
+      seenUsages.set(key, new Set())
     }
-    group.records.push(item)
+    // 작용기작·병해충 요약은 중복 레코드까지 모두 보고 모은다(합쳐지는 쪽이 값이 있을 수 있다).
     if (item.modeOfAction && item.modeOfAction !== '-' && !group.modeOfActions.includes(item.modeOfAction)) {
       group.modeOfActions.push(item.modeOfAction)
     }
     for (const pest of splitTargetPests(item.targetPest)) {
       if (!group.targetPests.includes(pest)) group.targetPests.push(pest)
     }
+    const usage = usageKey(item)
+    if (seenUsages.get(key).has(usage)) continue
+    seenUsages.get(key).add(usage)
+    group.records.push(item)
   }
 
   const sortKey = sortBy === 'name' ? 'name' : 'brandName'
@@ -382,7 +446,8 @@ export function searchGroupedFromFullCache({ pestName = '', targetPest = '', pes
   const start = (page - 1) * pageSize
   return {
     total: arr.length,
-    recordTotal: list.length,
+    // 중복을 합친 뒤의 레코드 수 — 화면에 실제로 보이는 줄 수와 맞춘다.
+    recordTotal: arr.reduce((sum, g) => sum + g.records.length, 0),
     list: arr.slice(start, start + pageSize),
     fetchedAt: cacheFetchedAt(),
   }

@@ -4,7 +4,7 @@ import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useFarmsStore } from '../stores/farmsStore.js'
 import { useAppPolicyStore } from '../stores/appPolicyStore.js'
-import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, searchFromFullCache, searchGroupedFromFullCache, splitTargetPests, getTypesFromCache, getDetailCoverage, formatPreHarvest, formatMaxApplications, saveManualPesticide, deleteManualPesticide, TOXIC_GRADES, FISH_TOXIC_GRADES } from '../services/pesticide'
+import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, searchFromFullCache, searchGroupedFromFullCache, splitTargetPests, getTypesFromCache, getDetailCoverage, formatPreHarvest, formatMaxApplications, saveManualPesticide, deleteManualPesticide, loadManualEntries, blankManualUsage, TOXIC_GRADES, FISH_TOXIC_GRADES } from '../services/pesticide'
 import { confirm } from '../composables/useConfirm'
 import { withCache, formatFetchedAt } from '../services/cache.js'
 
@@ -34,9 +34,12 @@ const availableTypes = ref([])
 const cacheInfo = ref(null) // { error, fetchedAt } | null
 // 전체 상표 수와 그중 상세정보를 가져온 상표 수
 const detailCoverage = ref({ brands: 0, withDetail: 0 })
+const manualCount = ref(0) // 직접등록 농약 수
+const manualOnly = ref(false)
 
-function refreshCoverage() {
+function refreshStats() {
   detailCoverage.value = getDetailCoverage()
+  manualCount.value = loadManualEntries().length
 }
 
 const expandedId = ref(null)
@@ -51,6 +54,7 @@ function loadFromCache() {
     pestName: pestNameInput.value.trim(),
     targetPest: targetPestInput.value.trim(),
     pesticideType: typeFilter.value === 'all' ? '' : typeFilter.value,
+    manualOnly: manualOnly.value,
     page: page.value,
     pageSize: PAGE_SIZE,
     sortBy: nameMode.value === 'brand' ? 'brandName' : 'name',
@@ -76,7 +80,7 @@ async function fetchLatest() {
     await warmFullCache(true)
     availableTypes.value = getTypesFromCache()
     loadFromCache()
-    refreshCoverage()
+    refreshStats()
   } catch (e) {
     error.value = e.message
     loadFromCache()
@@ -99,7 +103,7 @@ async function fetchAllDetails() {
   } finally {
     detailsWarming.value = false
     detailsProgress.value = null
-    refreshCoverage()
+    refreshStats()
   }
 }
 
@@ -166,7 +170,7 @@ async function toggleDetail(group) {
       () => getPesticideDetail({ pestiCode: rep.pestiCode, diseaseUseSeq: rep.diseaseUseSeq }),
     )
     detailMap.value[group.key] = result
-    refreshCoverage() // 이 상표의 상세를 새로 받아왔을 수 있다
+    refreshStats() // 이 상표의 상세를 새로 받아왔을 수 있다
   } catch {
     detailMap.value[group.key] = null
   } finally {
@@ -185,27 +189,44 @@ const canManageManual = computed(() =>
   farmsStore.isAdminMode || policyStore.policy.allowManualPesticideForAll,
 )
 
-const BLANK_MANUAL = {
-  id: '', brandName: '', name: '', pesticideType: '', modeOfAction: '',
-  ingredient: '', manufacturer: '', targetPest: '', dilution: '',
-  applicationMethod: '', preHarvestDays: '', maxApplications: '',
-  toxicName: '', fishToxic: '',
+function blankManualForm() {
+  return {
+    id: '', brandName: '', name: '', pesticideType: '', modeOfAction: '',
+    ingredient: '', manufacturer: '', toxicName: '', fishToxic: '',
+    usages: [blankManualUsage()], // 병해충별 사용기준
+  }
 }
-const manualForm = ref({ ...BLANK_MANUAL })
+const manualForm = ref(blankManualForm())
 const showManualForm = ref(false)
 const manualError = ref('')
 const manualSaving = ref(false)
 
 function openManualAdd() {
-  manualForm.value = { ...BLANK_MANUAL }
+  manualForm.value = blankManualForm()
   manualError.value = ''
   showManualForm.value = true
 }
 
+// 목록 카드는 펼쳐진 레코드라, 편집은 저장 원본(제품 + 사용기준 목록)을 다시 읽어서 한다.
 function openManualEdit(record) {
-  manualForm.value = { ...BLANK_MANUAL, ...record }
+  const entry = loadManualEntries().find(e => e.id === record.id)
+  if (!entry) return
+  manualForm.value = {
+    ...blankManualForm(),
+    ...entry,
+    usages: entry.usages.length ? entry.usages.map(u => ({ ...u })) : [blankManualUsage()],
+  }
   manualError.value = ''
   showManualForm.value = true
+}
+
+function addUsageRow() {
+  manualForm.value.usages.push(blankManualUsage())
+}
+
+function removeUsageRow(index) {
+  manualForm.value.usages.splice(index, 1)
+  if (!manualForm.value.usages.length) manualForm.value.usages.push(blankManualUsage())
 }
 
 function closeManualForm() {
@@ -224,6 +245,7 @@ async function submitManual() {
     showManualForm.value = false
     availableTypes.value = getTypesFromCache()
     loadFromCache()
+    refreshStats()
   } finally {
     manualSaving.value = false
   }
@@ -238,6 +260,7 @@ async function removeManual(record) {
   if (expandedId.value) expandedId.value = null
   availableTypes.value = getTypesFromCache()
   loadFromCache()
+  refreshStats()
 }
 
 // 묶인 카드 안에 직접등록 레코드가 있으면 그 레코드를 돌려준다(수정·삭제 대상).
@@ -248,7 +271,7 @@ function manualRecordOf(group) {
 onMounted(() => {
   availableTypes.value = getTypesFromCache()
   loadFromCache()
-  refreshCoverage()
+  refreshStats()
 })
 </script>
 
@@ -296,21 +319,6 @@ onMounted(() => {
       <label>제조사
         <input v-model="manualForm.manufacturer" type="text" />
       </label>
-      <label class="manual-wide">대상 병해충
-        <input v-model="manualForm.targetPest" type="text" placeholder="쉼표로 구분 (예: 귤굴나방, 진딧물)" />
-      </label>
-      <label>희석배수
-        <input v-model="manualForm.dilution" type="text" placeholder="예: 2000배" />
-      </label>
-      <label>사용방법
-        <input v-model="manualForm.applicationMethod" type="text" placeholder="예: 경엽처리" />
-      </label>
-      <label>수확 전 일수
-        <input v-model="manualForm.preHarvestDays" type="text" placeholder="예: 14" />
-      </label>
-      <label>최대 사용 횟수
-        <input v-model="manualForm.maxApplications" type="text" placeholder="예: 3" />
-      </label>
       <label>독성 등급
         <select v-model="manualForm.toxicName">
           <option value="">선택 안 함</option>
@@ -324,6 +332,47 @@ onMounted(() => {
         </select>
       </label>
     </div>
+
+    <!-- 병해충별 사용기준: 같은 농약도 병해충마다 희석배수·안전사용기준이 다르다. -->
+    <div class="usage-editor">
+      <div class="usage-editor-head">
+        <span>병해충별 사용기준</span>
+        <button class="ghost compact-btn" type="button" @click="addUsageRow">+ 병해충 추가</button>
+      </div>
+      <div class="usage-scroll">
+        <table class="usage-table usage-edit-table">
+          <thead>
+            <tr>
+              <th>대상 병해충</th>
+              <th>희석배수</th>
+              <th>사용방법</th>
+              <th>수확 전 일수</th>
+              <th>최대 사용 횟수</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(usage, i) in manualForm.usages" :key="i">
+              <td><input v-model="usage.targetPest" type="text" placeholder="예: 귤굴나방" /></td>
+              <td><input v-model="usage.dilution" type="text" placeholder="예: 2000배" /></td>
+              <td><input v-model="usage.applicationMethod" type="text" placeholder="예: 경엽처리" /></td>
+              <td><input v-model="usage.preHarvestDays" type="text" placeholder="예: 14" /></td>
+              <td><input v-model="usage.maxApplications" type="text" placeholder="예: 3" /></td>
+              <td>
+                <button
+                  class="ghost compact-btn"
+                  type="button"
+                  :disabled="manualForm.usages.length === 1"
+                  @click="removeUsageRow(i)"
+                >{{ t('common.delete') }}</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted text-sm">한 줄도 채우지 않으면 사용기준 없이 농약 정보만 등록됩니다.</p>
+    </div>
+
     <p v-if="manualError" class="error-msg">{{ manualError }}</p>
     <div class="row-actions">
       <button type="button" :disabled="manualSaving" @click="submitManual">{{ manualSaving ? '저장 중...' : '저장' }}</button>
@@ -341,6 +390,13 @@ onMounted(() => {
     >
       {{ opt === 'all' ? t('pesticide.typeAll') : opt }}
     </button>
+    <button
+      v-if="manualOnly || manualCount > 0"
+      class="ghost type-btn"
+      :class="{ 'type-btn-active': manualOnly }"
+      type="button"
+      @click="manualOnly = !manualOnly; search()"
+    >직접등록만 ({{ manualCount }})</button>
     <span v-if="total > 0" class="result-count">
       {{ t('pest.totalCount').replace('{count}', total) }}
       <span v-if="groupMode && recordTotal > total" class="muted">(병해충별 {{ recordTotal }}건)</span>
@@ -530,8 +586,20 @@ onMounted(() => {
   margin: 0.7rem 0;
 }
 .manual-grid label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem; color: var(--muted); }
-.manual-grid .manual-wide { grid-column: 1 / -1; }
 .manual-actions { margin-top: 0.7rem; }
+
+.usage-editor { margin-top: 0.3rem; }
+.usage-editor-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+.usage-edit-table th { white-space: nowrap; }
+.usage-edit-table td { padding: 0.2rem 0.3rem 0.2rem 0; }
+.usage-edit-table input { min-width: 7rem; font-size: 0.8rem; }
 
 .manual-tag {
   font-size: 0.7rem;

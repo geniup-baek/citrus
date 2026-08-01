@@ -11,10 +11,9 @@ import { db, firebaseEnabled } from '../services/firebase.js'
 // 규칙 배포 없이도 바로 동기화된다.
 const DOC_PATH = ['sharedCache', 'app:policy']
 const LS_KEY = 'citrus:app-policy'
-const LEGACY_PREF_LS_KEY = 'citrus:recommend-prefs' // 기기 로컬 설정이던 시절의 값 (1회 이전용)
 
 const DEFAULTS = {
-  allowManualPesticideForAll: true, // 농약 직접등록(자료 > 농약)을 농장 모드에서도 허용할지
+  allowManualPesticideForAll: false, // 농약 직접등록(자료 > 농약)을 농장 모드에서도 허용할지
 }
 
 const KEYS = Object.keys(DEFAULTS)
@@ -28,11 +27,9 @@ function pick(obj) {
 export const useAppPolicyStore = defineStore('appPolicy', () => {
   let saved = {}
   try { saved = JSON.parse(localStorage.getItem(LS_KEY) ?? '{}') } catch {}
-  let legacy = {}
-  try { legacy = JSON.parse(localStorage.getItem(LEGACY_PREF_LS_KEY) ?? '{}') } catch {}
 
   // 원격 값이 도착하기 전(오프라인 포함)에도 마지막으로 받은 값으로 동작한다.
-  const policy = reactive({ ...DEFAULTS, ...pick(legacy), ...pick(saved) })
+  const policy = reactive({ ...DEFAULTS, ...pick(saved) })
 
   let initialized = false
   let applyingRemote = false
@@ -67,15 +64,12 @@ export const useAppPolicyStore = defineStore('appPolicy', () => {
     initialized = true
     if (!firebaseEnabled || !db) return
 
+    // 공유 문서가 없으면(아직 아무도 정책을 바꾸지 않음) 기본값을 그대로 쓴다.
     onSnapshot(doc(db, ...DOC_PATH), (snapshot) => {
+      if (!snapshot.exists()) return
       applyingRemote = true
-      if (snapshot.exists()) {
-        Object.assign(policy, pick(snapshot.data()))
-        persistLocal()
-      } else if (Object.keys(pick(legacy)).length) {
-        // 기기 로컬 설정만 있던 시절의 값을 공유 문서로 1회 승격한다.
-        scheduleWrite()
-      }
+      Object.assign(policy, pick(snapshot.data()))
+      persistLocal()
       nextTick(() => { applyingRemote = false })
     })
   }

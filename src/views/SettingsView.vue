@@ -782,14 +782,14 @@ function saveEdit(key, i, isPair) {
             <div class="inline-filters">
               <button
                 type="button"
-                :class="{ ghost: !policyStore.policy.allowManualPesticideForAll }"
-                @click="policyStore.policy.allowManualPesticideForAll = true"
-              >누구나</button>
-              <button
-                type="button"
                 :class="{ ghost: policyStore.policy.allowManualPesticideForAll }"
                 @click="policyStore.policy.allowManualPesticideForAll = false"
               >시스템 관리 모드만</button>
+              <button
+                type="button"
+                :class="{ ghost: !policyStore.policy.allowManualPesticideForAll }"
+                @click="policyStore.policy.allowManualPesticideForAll = true"
+              >누구나</button>
             </div>
             <p class="muted text-sm" style="margin-top: 0.5rem;">
               직접등록한 농약은 모든 농장이 함께 쓰는 자료입니다. "시스템 관리 모드만"으로 두면 농장 모드에서는 추가·수정·삭제 버튼이 보이지 않습니다(등록된 농약 검색·연결은 그대로 됩니다).
