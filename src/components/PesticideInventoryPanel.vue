@@ -58,13 +58,29 @@ const form = reactive({
 })
 
 const txnForm = reactive({
-  type: '입고', volume: '', expiryDate: '', amount: '', note: '',
+  type: '입고', volume: '', expiryDate: '', amount: '', note: '', date: '',
 })
 
 const editingTxnId = ref('')
 const editTxnForm  = reactive({
-  type: '입고', volume: '', expiryDate: '', amount: '', note: '',
+  type: '입고', volume: '', expiryDate: '', amount: '', note: '', date: '',
 })
+
+// 입출고 일자는 <input type="date">(YYYY-MM-DD)로 다루고 저장은 ISO로 한다.
+// 정오로 만들어 두면 표준시가 달라도 같은 날짜로 되돌아온다.
+function todayInput() {
+  return format(new Date(), 'yyyy-MM-dd')
+}
+
+function toDateInput(iso) {
+  try { return format(new Date(iso), 'yyyy-MM-dd') } catch { return '' }
+}
+
+function toIsoDate(value) {
+  const [y, m, d] = String(value || '').split('-').map(Number)
+  if (!y || !m || !d) return ''
+  return new Date(y, m - 1, d, 12).toISOString()
+}
 
 // ── 농약 종류 뱃지 ────────────────────────────────────────────────────────────
 const categoryClass = (cat) => ({
@@ -158,6 +174,25 @@ function volumeOptions(item) {
   return [...new Set((item.txns || []).map(tx => tx.volume).filter(Boolean))]
 }
 
+// 재고가 하나도 없으면 '사용'으로 뺄 것이 없어 입력 자체가 의미 없다.
+function cannotRecordUse(item) {
+  return txnForm.type === '사용' && stockVolumeOptions(item).length === 0
+}
+
+// '사용'은 없는 재고에서 뺄 수 없으므로, 현재 남아 있는 로트에서만 고르게 한다.
+function stockVolumeOptions(item) {
+  return [...new Set(lotsOf(item).map(l => l.volume))]
+}
+
+function stockExpiryOptions(item, volume) {
+  return lotsOf(item).filter(l => l.volume === volume)
+}
+
+// 입력한 날짜가 뒤죽박죽이어도 이력은 최신순으로 보이게 한다.
+function sortedTxns(item) {
+  return [...(item.txns || [])].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+}
+
 function expiryStatus(dateStr) {
   if (!dateStr) return ''
   const d = parseISO(dateStr)
@@ -185,8 +220,9 @@ function lotText(lot) {
   })
 }
 
+// 입출고 일자는 사용자가 직접 지정할 수 있으므로 시각은 의미가 없어 날짜만 보여준다.
 function formatTxnDate(dateStr) {
-  try { return format(new Date(dateStr), 'MM/dd HH:mm') } catch { return dateStr }
+  try { return format(new Date(dateStr), 'yyyy-MM-dd') } catch { return dateStr }
 }
 
 // ── 목록 ─────────────────────────────────────────────────────────────────────
@@ -391,14 +427,38 @@ async function deleteItem(item) {
 }
 
 // ── 입출고 ───────────────────────────────────────────────────────────────────
+// 입출고 패널을 열어도 편집모드(showForm)는 유지한다 — 그래야 목록의 '입·출고' 버튼이 남아
+// 다시 눌러 닫을 수 있다. 대신 품목 추가/수정 폼 열은 패널이 열려 있는 동안 감춘다.
 function toggleExpand(item) {
   if (expandedId.value === item.id) { expandedId.value = ''; return }
   if (editingId.value) clearForm()
-  showForm.value      = false
   linkingItemId.value = null
   expandedId.value    = item.id
-  Object.assign(txnForm, { type: '입고', volume: '', expiryDate: '', amount: '', note: '' })
+  Object.assign(txnForm, { type: '입고', volume: '', expiryDate: '', amount: '', note: '', date: todayInput() })
   cancelEditTxn()
+}
+
+function closeTxnPanel() {
+  expandedId.value = ''
+  cancelEditTxn()
+}
+
+// 입고↔사용 전환 시 규격·유효기간 입력 방식이 바뀌므로(자유 입력 ↔ 재고 선택) 값을 다시 잡는다.
+function setTxnType(item, type) {
+  if (txnForm.type === type) return
+  txnForm.type = type
+  txnForm.volume = ''
+  txnForm.expiryDate = ''
+  if (type === '사용') {
+    const [firstVolume] = stockVolumeOptions(item)
+    if (firstVolume) selectTxnVolume(item, firstVolume)
+  }
+}
+
+// 규격을 고르면 그 규격에 남아 있는 유효기간만 남으므로 첫 로트를 기본으로 잡아준다.
+function selectTxnVolume(item, volume) {
+  txnForm.volume = volume
+  txnForm.expiryDate = stockExpiryOptions(item, volume)[0]?.expiryDate ?? ''
 }
 
 async function recordTxn(item) {
@@ -407,6 +467,7 @@ async function recordTxn(item) {
   await store.addInventoryTxn(item.id, {
     type: txnForm.type, volume: txnForm.volume.trim(),
     expiryDate: txnForm.expiryDate, amount, note: txnForm.note,
+    date: toIsoDate(txnForm.date),
   })
   txnForm.amount = ''
   txnForm.note   = ''
@@ -422,20 +483,23 @@ function startEditTxn(txn) {
     expiryDate: txn.expiryDate || '',
     amount:     txn.amount,
     note:       txn.note       || '',
+    date:       toDateInput(txn.date) || todayInput(),
   })
 }
 
 function cancelEditTxn() {
   editingTxnId.value = ''
-  Object.assign(editTxnForm, { volume: '', expiryDate: '', amount: '', note: '' })
+  Object.assign(editTxnForm, { volume: '', expiryDate: '', amount: '', note: '', date: '' })
 }
 
 async function saveEditTxn(item) {
   const amount = Number(editTxnForm.amount)
   if (!editTxnForm.volume.trim() || !amount || amount <= 0) return
+  // type은 넘기지 않는다 — 입고/사용 구분은 편집 대상이 아니다.
   await store.updateInventoryTxn(item.id, editingTxnId.value, {
-    type: editTxnForm.type, volume: editTxnForm.volume.trim(),
+    volume: editTxnForm.volume.trim(),
     expiryDate: editTxnForm.expiryDate, amount, note: editTxnForm.note,
+    date: toIsoDate(editTxnForm.date),
   })
   cancelEditTxn()
 }
@@ -543,7 +607,7 @@ async function printReport() {
 </script>
 
 <template>
-  <div :class="['page-grid', showForm ? 'two-columns' : '']">
+  <div :class="['page-grid', showForm && !expandedId ? 'two-columns' : '']">
     <!-- ── 목록 열 ─────────────────────────────────────────────── -->
     <article>
       <!-- 헤더: 액션 -->
@@ -664,30 +728,62 @@ async function printReport() {
           <div v-if="expandedId === item.id" class="log-panel">
             <form class="stack-form" style="margin-bottom: 1rem;" @submit.prevent="recordTxn(item)">
               <div class="inline-filters">
-                <button type="button" :class="{ ghost: txnForm.type !== '입고' }" @click="txnForm.type = '입고'">{{ t('inventory.stockIn') }}</button>
-                <button type="button" :class="{ ghost: txnForm.type !== '사용' }" @click="txnForm.type = '사용'">{{ t('inventory.stockOut') }}</button>
+                <button type="button" :class="{ ghost: txnForm.type !== '입고' }" @click="setTxnType(item, '입고')">{{ t('inventory.stockIn') }}</button>
+                <button type="button" :class="{ ghost: txnForm.type !== '사용' }" @click="setTxnType(item, '사용')">{{ t('inventory.stockOut') }}</button>
               </div>
-              <div class="row-actions">
-                <label style="flex: 1;">{{ t('inventory.volume') }}
-                  <input v-model="txnForm.volume" type="text" :list="`vol-${item.id}`" :placeholder="t('inventory.volumePlaceholder')" />
-                  <datalist :id="`vol-${item.id}`">
-                    <option v-for="v in volumeOptions(item)" :key="v" :value="v" />
-                  </datalist>
-                </label>
-                <label style="flex: 1;">{{ t('inventory.expiryDate') }}
-                  <input v-model="txnForm.expiryDate" type="date" />
-                </label>
-                <label style="width: 5.5rem;">{{ t('inventory.amount') }}
+              <!-- 뺄 재고가 없으면 입력할 것이 없으므로 안내만 남긴다. -->
+              <p v-if="cannotRecordUse(item)" class="muted text-sm">{{ t('inventory.noStockForUse') }}</p>
+
+              <template v-else>
+              <div class="row-actions txn-fields">
+                <!-- 사용은 남아 있는 로트에서만 고르고, 입고는 새 로트를 만들 수 있어야 하므로 자유 입력이다. -->
+                <template v-if="txnForm.type === '사용'">
+                  <label class="txn-field-grow">{{ t('inventory.volume') }}
+                    <select :value="txnForm.volume" @change="selectTxnVolume(item, $event.target.value)">
+                      <option value="">{{ t('inventory.selectLot') }}</option>
+                      <option v-for="v in stockVolumeOptions(item)" :key="v" :value="v">{{ v }}</option>
+                    </select>
+                  </label>
+                  <label class="txn-field-grow">{{ t('inventory.expiryDate') }}
+                    <select v-model="txnForm.expiryDate" :disabled="!txnForm.volume">
+                      <option
+                        v-for="lot in stockExpiryOptions(item, txnForm.volume)"
+                        :key="lot.expiryDate"
+                        :value="lot.expiryDate"
+                      >{{ lot.expiryDate || t('inventory.noExpiry') }} ({{ lot.quantity }})</option>
+                    </select>
+                  </label>
+                </template>
+                <template v-else>
+                  <label class="txn-field-grow">{{ t('inventory.volume') }}
+                    <input v-model="txnForm.volume" type="text" :list="`vol-${item.id}`" :placeholder="t('inventory.volumePlaceholder')" />
+                    <datalist :id="`vol-${item.id}`">
+                      <option v-for="v in volumeOptions(item)" :key="v" :value="v" />
+                    </datalist>
+                  </label>
+                  <label class="txn-field-grow">{{ t('inventory.expiryDate') }}
+                    <input v-model="txnForm.expiryDate" type="date" />
+                  </label>
+                </template>
+                <label class="txn-field-amount">{{ t('inventory.amount') }}
                   <input v-model="txnForm.amount" type="number" min="0" step="any" />
                 </label>
               </div>
+              <label>{{ txnForm.type === '사용' ? t('inventory.stockOutDate') : t('inventory.stockInDate') }}
+                <input v-model="txnForm.date" type="date" />
+              </label>
               <input v-model="txnForm.note" type="text" :placeholder="t('inventory.txnNote')" />
-              <button type="submit">{{ t('inventory.record') }}</button>
+              </template>
+              <!-- 닫기는 재고가 없어 입력란이 숨겨진 경우에도 필요하므로 항상 둔다. -->
+              <div class="row-actions">
+                <button v-if="!cannotRecordUse(item)" type="submit">{{ t('inventory.record') }}</button>
+                <button class="ghost" type="button" @click="closeTxnPanel">{{ t('common.close') }}</button>
+              </div>
             </form>
 
             <p class="muted log-history-label">{{ t('inventory.history') }}</p>
             <ul class="list clean compact">
-              <li v-for="txn in item.txns" :key="txnKey(txn)" class="list-item">
+              <li v-for="txn in sortedTxns(item)" :key="txnKey(txn)" class="list-item">
                 <div v-if="editingTxnId !== txnKey(txn)" class="log-entry">
                   <span class="log-entry-info">
                     <span class="pill" :class="txn.type === '사용' ? 'danger' : ''">{{ txn.type }}</span>
@@ -702,15 +798,18 @@ async function printReport() {
                   </span>
                 </div>
                 <form v-else class="stack-form" @submit.prevent="saveEditTxn(item)">
+                  <!-- 입고/사용 구분은 편집으로 바꾸지 않는다(재고 계산이 뒤집힌다) — 표시만 한다. -->
                   <div class="inline-filters">
-                    <button type="button" :class="{ ghost: editTxnForm.type !== '입고' }" @click="editTxnForm.type = '입고'">{{ t('inventory.stockIn') }}</button>
-                    <button type="button" :class="{ ghost: editTxnForm.type !== '사용' }" @click="editTxnForm.type = '사용'">{{ t('inventory.stockOut') }}</button>
+                    <span class="pill" :class="txn.type === '사용' ? 'danger' : ''">{{ txn.type }}</span>
                   </div>
-                  <div class="row-actions">
-                    <input v-model="editTxnForm.volume" type="text" style="flex: 1;" :placeholder="t('inventory.volume')" />
-                    <input v-model="editTxnForm.expiryDate" type="date" style="flex: 1;" />
-                    <input v-model="editTxnForm.amount" type="number" min="0" step="any" style="width: 5.5rem;" />
+                  <div class="row-actions txn-fields">
+                    <input v-model="editTxnForm.volume" class="txn-field-grow" type="text" :placeholder="t('inventory.volume')" />
+                    <input v-model="editTxnForm.expiryDate" class="txn-field-grow" type="date" />
+                    <input v-model="editTxnForm.amount" class="txn-field-amount" type="number" min="0" step="any" />
                   </div>
+                  <label>{{ editTxnForm.type === '사용' ? t('inventory.stockOutDate') : t('inventory.stockInDate') }}
+                    <input v-model="editTxnForm.date" type="date" />
+                  </label>
                   <input v-model="editTxnForm.note" type="text" :placeholder="t('inventory.txnNote')" />
                   <div class="row-actions">
                     <button type="submit">{{ t('common.change') }}</button>
@@ -725,9 +824,9 @@ async function printReport() {
       </ul>
     </article>
 
-    <!-- ── 폼 열 ──────────────────────────────────────────────── -->
-    <Teleport v-if="showForm" :to="formTarget" :disabled="!isMobile">
-    <article v-if="showForm" class="card">
+    <!-- ── 폼 열 (입출고 패널이 열려 있는 동안에는 감춘다) ──────────── -->
+    <Teleport v-if="showForm && !expandedId" :to="formTarget" :disabled="!isMobile">
+    <article class="card">
       <div v-if="!editingId" class="inline-filters" style="margin-bottom: 1rem;">
         <button :class="{ ghost: formMode !== 'single' }" type="button" @click="formMode = 'single'">품목 추가</button>
         <button :class="{ ghost: formMode !== 'bulk' }" type="button" @click="formMode = 'bulk'">붙여넣기 일괄추가</button>
@@ -807,6 +906,22 @@ async function printReport() {
 </template>
 
 <style scoped>
+
+/* 입출고 입력줄 — 입력 요소는 기본 폭(≈170px)이 있어 그대로 두면 좁은 화면에서 칸을 넘친다.
+   칸 너비에 맞춰 줄이고(min-width: 0), 자리가 모자라면 다음 줄로 넘긴다. */
+.txn-fields > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.txn-fields input,
+.txn-fields select {
+  width: 100%;
+  min-width: 0;
+}
+.txn-field-grow { flex: 1 1 9rem; }
+.txn-field-amount { flex: 0 1 5.5rem; }
 
 /* OpenAPI search panel */
 .inv-api-panel {

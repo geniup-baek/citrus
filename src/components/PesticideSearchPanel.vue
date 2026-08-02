@@ -4,9 +4,9 @@ import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useFarmsStore } from '../stores/farmsStore.js'
 import { useAppPolicyStore } from '../stores/appPolicyStore.js'
-import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, searchFromFullCache, searchGroupedFromFullCache, splitTargetPests, getTypesFromCache, getDetailCoverage, formatPreHarvest, formatMaxApplications, saveManualPesticide, deleteManualPesticide, loadManualEntries, blankManualUsage, TOXIC_GRADES, FISH_TOXIC_GRADES } from '../services/pesticide'
+import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, searchFromFullCache, searchGroupedFromFullCache, splitTargetPests, getTypesFromCache, getDetailCoverage, formatPreHarvest, formatMaxApplications, saveManualPesticide, deleteManualPesticide, loadManualEntries, blankManualUsage, getDetailSummaryFromCache, DETAIL_INDEX_KEY, TOXIC_GRADES, FISH_TOXIC_GRADES } from '../services/pesticide'
 import { confirm } from '../composables/useConfirm'
-import { withCache, formatFetchedAt } from '../services/cache.js'
+import { withCache, formatFetchedAt, pullSharedCache } from '../services/cache.js'
 
 const localeStore = useLocaleStore()
 const settingsStore = useRecommendSettingsStore()
@@ -163,6 +163,12 @@ async function toggleDetail(group) {
     }
     return
   }
+  // 받아둔 상세나 공유 색인에 있으면 조회 없이 바로 보여준다.
+  const summary = getDetailSummaryFromCache(rep.pestiCode, rep.diseaseUseSeq)
+  if (summary) {
+    detailMap.value[group.key] = summary
+    return
+  }
   detailLoading.value = true
   try {
     const { result } = await withCache(
@@ -268,9 +274,12 @@ function manualRecordOf(group) {
   return group.records.find(r => r.isManual) ?? null
 }
 
-onMounted(() => {
+onMounted(async () => {
   availableTypes.value = getTypesFromCache()
   loadFromCache()
+  refreshStats()
+  // 공유 독성 색인은 앱 시작 시에도 받아오지만, 그 사이에 이 탭을 열었을 수 있어 한 번 더 확인한다.
+  await pullSharedCache(DETAIL_INDEX_KEY)
   refreshStats()
 })
 </script>

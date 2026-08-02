@@ -1092,7 +1092,8 @@ export const useFarmStore = defineStore('farm', () => {
   }
 
   // 입출고 1건 기록. 로트는 (규격 volume + 유효기간 expiryDate)로 식별된다.
-  async function addInventoryTxn(itemId, { type, volume, expiryDate, amount, note }) {
+  // date를 넘기면 그 날짜로 기록한다(입고·사용을 나중에 몰아서 입력하는 경우).
+  async function addInventoryTxn(itemId, { type, volume, expiryDate, amount, note, date }) {
     const item = state.value.inventory.find((entry) => entry.id === itemId)
     if (!item) return
 
@@ -1102,7 +1103,7 @@ export const useFarmStore = defineStore('farm', () => {
     item.txns = item.txns || []
     item.txns.unshift({
       id: crypto.randomUUID(),
-      date: new Date().toISOString(),
+      date: date || new Date().toISOString(),
       type: type === '사용' ? '사용' : '입고',
       volume: volume || '기본',
       expiryDate: expiryDate || '',
@@ -1120,6 +1121,7 @@ export const useFarmStore = defineStore('farm', () => {
     const txn = item.txns.find((entry) => (entry.id || entry.date) === txnId)
     if (!txn) return
 
+    if (patch.date) txn.date = patch.date
     if (patch.type !== undefined) txn.type = patch.type === '사용' ? '사용' : '입고'
     if (patch.volume !== undefined) txn.volume = patch.volume || '기본'
     if (patch.expiryDate !== undefined) txn.expiryDate = patch.expiryDate || ''

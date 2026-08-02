@@ -1,7 +1,8 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db, firebaseEnabled } from './firebase.js'
 
-const PREFIX = 'citrus:'
+export const CACHE_PREFIX = 'citrus:'
+const PREFIX = CACHE_PREFIX
 const SHARED_COLLECTION = 'sharedCache'
 
 // 로컬(개발 서버 프록시)에서만 성공하는 OpenAPI 전체 조회 결과를 Firestore에 올려,

@@ -10,7 +10,7 @@
 // SVC02: 농약등록정보 상세
 //   필수: apiKey, serviceCode=SVC02, pestiCode, diseaseUseSeq (SVC01 응답에서 획득)
 
-import { saveCache, loadCache, pushSharedCache, pullSharedCache } from './cache.js'
+import { saveCache, loadCache, pushSharedCache, pullSharedCache, CACHE_PREFIX } from './cache.js'
 
 const API_KEY = import.meta.env.VITE_AGRI_API_KEY
 const USE_MOCK = !API_KEY
@@ -456,12 +456,55 @@ export function searchGroupedFromFullCache({ pestName = '', targetPest = '', pes
 // 독성 등급 (농약관리법 기준 4단계, 높은 순서)
 export const TOXIC_GRADES = ['맹독성', '고독성', '보통독성', '저독성']
 
-// 상세정보(SVC02) 캐시에서 독성 등급을 조회한다.
-// (독성 정보는 목록(SVC01)엔 없고 상세조회로만 얻을 수 있어, "상세정보 전체 가져오기"로 미리 캐시해둔 것을 사용한다)
+// 상세 요약 색인 — 상세정보(SVC02)는 레코드마다 문서가 따로라 수천 건이고, 기기에는 펼쳐본
+// 것만 내려온다. 그래서 "상세정보 전체 가져오기"가 목록(SVC01)에 없는 값만 뽑아 품목코드 단위로
+// 압축한 문서 하나를 함께 올리고(약 100KB), 다른 기기는 앱 시작 시 이 문서 하나만 받아
+// 화면에 표시되는 상세 정보를 전부 커버한다.
+//   t: 독성  f: 어독성  n: 주성분 일반명  c: 주성분 함량
+// 모두 병해충이 아니라 제품 단위 정보라 품목코드당 한 건이면 충분하고, 키를 한 글자로 줄인 것도
+// 문서 크기(1MiB 한도)를 아끼기 위한 것이다.
+export const DETAIL_INDEX_KEY = 'pesticide:detail-index'
+
+// 색인은 조회마다 파싱하기엔 커서, 원본 문자열이 바뀔 때만 다시 파싱한다.
+let detailIndexRaw = null
+let detailIndexData = {}
+
+function loadDetailIndex() {
+  let raw = null
+  try { raw = localStorage.getItem(CACHE_PREFIX + DETAIL_INDEX_KEY) } catch {}
+  if (raw !== detailIndexRaw) {
+    detailIndexRaw = raw
+    try {
+      const parsed = raw ? JSON.parse(raw).data : null
+      detailIndexData = (parsed && typeof parsed === 'object') ? parsed : {}
+    } catch {
+      detailIndexData = {}
+    }
+  }
+  return detailIndexData
+}
+
+// 카드 펼치기에서 쓰는 상세 정보. 이 기기에 받아둔 상세가 있으면 그것을, 없으면 공유 색인을 쓴다.
+// 둘 다 없으면 null (호출 측에서 API/공유 캐시 조회로 넘어간다).
+export function getDetailSummaryFromCache(pestiCode, diseaseUseSeq) {
+  if (!pestiCode) return null
+  const local = diseaseUseSeq ? loadCache(detailCacheKey(pestiCode, diseaseUseSeq))?.data : null
+  if (local) return local
+  const entry = loadDetailIndex()[pestiCode]
+  if (!entry) return null
+  return {
+    ingredient: entry.n || '',
+    ingredientContent: entry.c || '',
+    toxicName: entry.t || '',
+    fishToxic: entry.f || '',
+  }
+}
+
+// 상세정보(SVC02) 캐시에서 독성 등급을 조회한다. 이 기기에 상세가 없으면 공유 색인을 본다.
 export function getToxicityFromCache(pestiCode, diseaseUseSeq) {
-  if (!pestiCode || !diseaseUseSeq) return ''
-  const cached = loadCache(`pesticide:detail:${pestiCode}-${diseaseUseSeq}`)
-  return cached?.data?.toxicName ?? ''
+  if (!pestiCode) return ''
+  const cached = diseaseUseSeq ? loadCache(detailCacheKey(pestiCode, diseaseUseSeq)) : null
+  return cached?.data?.toxicName || loadDetailIndex()[pestiCode]?.t || ''
 }
 
 // 어독성 등급 (농약관리법 기준 3단계, 저장값은 API 원본 표기인 로마숫자 그대로 사용)
@@ -511,11 +554,11 @@ export function formatFishToxicBadge(grade) {
   return roman ? `어독성 ${roman}` : ''
 }
 
-// 상세정보(SVC02) 캐시에서 어독성 등급을 조회한다.
+// 상세정보(SVC02) 캐시에서 어독성 등급을 조회한다. 없으면 공유 독성 색인을 본다.
 export function getFishToxicFromCache(pestiCode, diseaseUseSeq) {
-  if (!pestiCode || !diseaseUseSeq) return ''
-  const cached = loadCache(`pesticide:detail:${pestiCode}-${diseaseUseSeq}`)
-  return normalizeFishGrade(cached?.data?.fishToxic ?? '')
+  if (!pestiCode) return ''
+  const cached = diseaseUseSeq ? loadCache(detailCacheKey(pestiCode, diseaseUseSeq)) : null
+  return normalizeFishGrade(cached?.data?.fishToxic || loadDetailIndex()[pestiCode]?.f || '')
 }
 
 // 같은 상표명(제품)이라도 병해충마다 레코드(diseaseUseSeq)가 따로 있고 상세정보도 레코드 단위로
@@ -544,7 +587,7 @@ export function detailCacheKey(pestiCode, diseaseUseSeq) {
 // 상세정보가 캐시된 레코드 id(pestiCode-diseaseUseSeq) 집합.
 // 개수만 세면 되므로 값은 파싱하지 않고 localStorage 키만 훑는다.
 function cachedDetailIds() {
-  const prefix = 'citrus:pesticide:detail:' // cache.js의 localStorage 접두사 + 상세 캐시 키
+  const prefix = CACHE_PREFIX + 'pesticide:detail:'
   const ids = new Set()
   try {
     for (let i = 0; i < localStorage.length; i++) {
@@ -555,16 +598,19 @@ function cachedDetailIds() {
   return ids
 }
 
-// 전건 캐시의 상표(제품) 수와, 그중 상세정보를 가져온 상표 수.
-// 상세는 병해충별 레코드 단위로 캐시되므로 한 레코드라도 있으면 그 상표는 가져온 것으로 센다.
+// 전건 캐시의 상표(제품) 수와, 그중 독성정보를 확보한 상표 수.
+// 이 기기에 받아둔 상세(레코드 단위)가 있거나, 공유 독성 색인(품목코드 단위)에 있으면 확보한 것으로 센다.
 export function getDetailCoverage() {
   const cached = loadCache(FULL_CACHE_KEY)
   if (!cached) return { brands: 0, withDetail: 0 }
   const ids = cachedDetailIds()
+  const index = loadDetailIndex()
   const byBrand = new Map() // 상표 키 → 상세 보유 여부
   for (const item of cached.data) {
     const key = normalizeBrandKey(item.brandName || item.name) || item.pestiCode
-    const has = byBrand.get(key) || ids.has(`${item.pestiCode}-${item.diseaseUseSeq}`)
+    const has = byBrand.get(key)
+      || ids.has(`${item.pestiCode}-${item.diseaseUseSeq}`)
+      || Boolean(index[item.pestiCode])
     byBrand.set(key, has)
   }
   let withDetail = 0
@@ -614,24 +660,44 @@ export async function getPesticideDetail({ pestiCode, diseaseUseSeq } = {}) {
 }
 
 // 전건 목록(SVC01)에 있는 모든 항목의 상세정보(SVC02)를 순차 조회해 캐시 + 공유 캐시에 저장한다.
-// 이미 캐시된 항목은 건너뛴다(force=true면 전부 다시 가져옴).
+// 이미 캐시된 항목은 다시 조회하지 않는다(force=true면 전부 다시 가져옴).
+// 끝나면 독성·어독성만 뽑은 색인을 문서 하나로 올려, 상세를 직접 받을 수 없는 기기(배포본)도
+// 앱 시작 시 그 문서 하나로 전체 독성 정보를 갖게 한다.
 // onProgress(done, total)로 진행 상황을 알릴 수 있다.
 export async function warmAllDetails(force = false, onProgress = () => {}) {
   if (USE_MOCK) return
   const cached = loadCache(FULL_CACHE_KEY)
   const list = cached?.data ?? []
+  const index = {}
   let done = 0
   for (const item of list) {
     done++
     onProgress(done, list.length)
     if (!item.pestiCode || !item.diseaseUseSeq) continue
     const key = detailCacheKey(item.pestiCode, item.diseaseUseSeq)
-    if (!force && loadCache(key)) continue
-    try {
-      const detail = await getPesticideDetail({ pestiCode: item.pestiCode, diseaseUseSeq: item.diseaseUseSeq })
-      saveCache(key, detail)
-      pushSharedCache(key, detail)
-    } catch {}
+    let detail = force ? null : loadCache(key)?.data
+    if (!detail) {
+      try {
+        detail = await getPesticideDetail({ pestiCode: item.pestiCode, diseaseUseSeq: item.diseaseUseSeq })
+        saveCache(key, detail)
+        pushSharedCache(key, detail)
+      } catch { continue }
+    }
+    // 독성·주성분은 제품 단위 정보라 품목코드당 한 번만 담는다(색인 크기 절약).
+    if (!index[item.pestiCode]) {
+      const entry = {
+        t: detail.toxicName || '',
+        f: detail.fishToxic || '',
+        n: detail.ingredient || '',
+        c: detail.ingredientContent || '',
+      }
+      if (Object.values(entry).some(Boolean)) index[item.pestiCode] = entry
+    }
+  }
+
+  if (Object.keys(index).length) {
+    saveCache(DETAIL_INDEX_KEY, index)
+    await pushSharedCache(DETAIL_INDEX_KEY, index)
   }
 }
 
