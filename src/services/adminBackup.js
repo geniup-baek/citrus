@@ -5,11 +5,26 @@ import { db } from './firebase.js'
 
 const BACKUP_TYPE = 'citrus-admin-backup'
 
-// 시스템 관리 모드 전용 백업: 공통 설정(appSettings) + 등록된 모든 농장의 데이터.
+// sharedCache 중 사용자가 만든 데이터라 다시 만들 수 없는 것들.
+// (pesticide:all·detail-index·병해충 캐시 등은 공공데이터에서 다시 받으면 되므로 백업에 넣지 않는다)
+const SHARED_CACHE_DOCS = [
+  'pesticide:manual', // 공공데이터에 없어 직접 등록한 농약
+  'app:policy',       // 전 기기 공통 정책(농약 직접등록 권한 등)
+]
+
+// 시스템 관리 모드 전용 백업: 공통 설정(appSettings) + 공용 데이터 + 등록된 모든 농장의 데이터.
 // 농장 모드 백업(farmStore.exportBackup 등)과 달리 사진 본문은 포함하지 않는다(용량이 커질 수 있어
 // 필요 시 각 농장에서 개별적으로 백업/복원하도록 안내한다).
 export async function exportAllFarmsBackup() {
   const appSettingsSnap = await getDoc(doc(db, 'shared', 'appSettings'))
+  const sharedCacheSnaps = await Promise.all(
+    SHARED_CACHE_DOCS.map((key) => getDoc(doc(db, 'sharedCache', key))),
+  )
+  const sharedCache = {}
+  SHARED_CACHE_DOCS.forEach((key, i) => {
+    if (sharedCacheSnaps[i].exists()) sharedCache[key] = sharedCacheSnaps[i].data()
+  })
+
   const farmsSnap = await getDocs(collection(db, 'farms'))
 
   const farms = {}
@@ -32,10 +47,11 @@ export async function exportAllFarmsBackup() {
 
   return {
     type: BACKUP_TYPE,
-    version: 1,
+    version: 2, // 2부터 sharedCache 포함
     exportedAt: new Date().toISOString(),
     data: {
       appSettings: appSettingsSnap.exists() ? appSettingsSnap.data() : {},
+      sharedCache,
       farms,
     },
   }
@@ -55,6 +71,7 @@ export function allFarmsBackupSummary(payload) {
       treatments: Array.isArray(f?.treatments) ? f.treatments.length : 0,
     })),
     hasAppSettings: !!(payload?.data?.appSettings && Object.keys(payload.data.appSettings).length),
+    manualPesticides: (payload?.data?.sharedCache?.['pesticide:manual']?.data ?? []).length,
   }
 }
 
@@ -64,10 +81,19 @@ export async function restoreAllFarmsBackup(payload) {
     throw new Error('invalid-admin-backup')
   }
 
-  const { appSettings, farms } = payload.data
+  const { appSettings, sharedCache, farms } = payload.data
 
   if (appSettings && typeof appSettings === 'object') {
     await setDoc(doc(db, 'shared', 'appSettings'), appSettings, { merge: true })
+  }
+
+  // 구버전(version 1) 백업에는 sharedCache가 없다 — 그때는 이 단계를 건너뛴다.
+  // 백업에 담기로 한 문서만 복원한다(알 수 없는 키가 섞여 들어오는 것을 막는다).
+  for (const key of SHARED_CACHE_DOCS) {
+    const value = sharedCache?.[key]
+    if (value && typeof value === 'object') {
+      await setDoc(doc(db, 'sharedCache', key), value, { merge: true })
+    }
   }
 
   for (const [farmId, farmPayload] of Object.entries(farms || {})) {

@@ -960,6 +960,7 @@ function saveEdit(key, i, isPair) {
               <span class="pill">농장 {{ pendingAdminRestore.summary.farmCount }}개</span>
               <span v-for="f in pendingAdminRestore.summary.farms" :key="f.id" class="pill">{{ f.name }} · 방제기록 {{ f.treatments }}</span>
               <span v-if="pendingAdminRestore.summary.hasAppSettings" class="pill">{{ localeStore.t('settings.backupSettingsIncluded') }}</span>
+              <span v-if="pendingAdminRestore.summary.manualPesticides" class="pill">직접등록 농약 {{ pendingAdminRestore.summary.manualPesticides }}</span>
             </div>
             <p class="settings-error">{{ localeStore.t('settings.restoreWarning') }}</p>
             <div class="row-actions">
