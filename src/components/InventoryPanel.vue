@@ -18,6 +18,11 @@ const { isMobile } = useIsMobile()
 
 const CATEGORY = '비료'
 
+// 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
+const showResetButton = computed(() =>
+  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+)
+
 const showForm = ref(false)
 const editingId = ref('')
 const expandedId = ref('')
@@ -202,6 +207,20 @@ async function deleteItem(item) {
   if (expandedId.value === item.id) expandedId.value = ''
 }
 
+// 비료재고 전체 삭제 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
+async function resetAllItems() {
+  const n = summary.value.total
+  if (!n) return
+  const ok = await confirm({
+    title: localeStore.t('confirm.resetTitle'),
+    message: localeStore.t('confirm.resetInventory', { n }),
+    confirmLabel: localeStore.t('common.reset'),
+  })
+  if (!ok) return
+  await store.resetInventoryCategory(CATEGORY)
+  closeForm()
+}
+
 // ── 입출고 ───────────────────────────────────────────────────────────────────
 function toggleExpand(item) {
   if (expandedId.value === item.id) {
@@ -378,7 +397,15 @@ clearForm()
           <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="printReport">{{ localeStore.t('inventory.printReport') }}</button>
           <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="downloadReport">{{ localeStore.t('inventory.downloadReport') }}</button>
           <button v-if="!showForm" type="button" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
-          <button v-else class="ghost" type="button" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+          <template v-else>
+            <button
+              v-if="showResetButton && summary.total > 0"
+              class="danger"
+              type="button"
+              @click="resetAllItems"
+            >{{ localeStore.t('common.reset') }}</button>
+            <button class="ghost" type="button" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+          </template>
         </div>
       </div>
 

@@ -19,6 +19,7 @@ import {
 import { useRoute } from 'vue-router'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
+import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
@@ -26,7 +27,13 @@ import { useLightboxBack } from '../composables/useLightboxBack'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
+const recSettingsStore = useRecommendSettingsStore()
 const route = useRoute()
+
+// 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
+const showResetButton = computed(() =>
+  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+)
 
 const vAutoResize = {
   mounted(el) {
@@ -424,6 +431,23 @@ function exitEdit() {
   formOpen.value = false
 }
 
+// 작업 전체 삭제 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
+// 반복 규칙을 남기면 스케줄러가 작업을 다시 만들어내므로 규칙도 함께 지운다.
+async function resetAllTasks() {
+  const n = store.state.tasks.length
+  const rules = store.state.scheduleRules.length
+  if (!n && !rules) return
+  const ok = await confirm({
+    title: localeStore.t('confirm.resetTitle'),
+    message: localeStore.t('confirm.resetTasks', { n, rules }),
+    confirmLabel: localeStore.t('common.reset'),
+  })
+  if (!ok) return
+  await store.resetTasks()
+  clearSchedulerForm()
+  exitEdit()
+}
+
 // ── 단일 작업 추가 ───────────────────────────────────────────────────────────
 async function addTask() {
   if (!form.title || !form.dueDate) return
@@ -686,6 +710,13 @@ clearSchedulerForm()
       <div class="row-actions align-start" style="margin-bottom: 0.5rem;">
         <h2>{{ localeStore.t('tasks.taskBoard') }}</h2>
         <div class="row-actions">
+          <!-- 초기화는 다른 화면과 같이 버튼 묶음의 맨 왼쪽에 둔다. -->
+          <button
+            v-if="showForm && showResetButton && (store.state.tasks.length > 0 || store.state.scheduleRules.length > 0)"
+            class="danger"
+            type="button"
+            @click="resetAllTasks"
+          >{{ localeStore.t('common.reset') }}</button>
           <button :class="{ ghost: viewMode !== 'list' }" @click="viewMode = 'list'">목록</button>
           <button :class="{ ghost: viewMode !== 'calendar' }" @click="viewMode = 'calendar'">캘린더</button>
           <button v-if="!showForm" @click="showForm = true; formOpen = true">{{ localeStore.t('common.edit') }}</button>

@@ -3,6 +3,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { format } from 'date-fns'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
+import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
@@ -10,8 +11,14 @@ import { useLightboxBack } from '../composables/useLightboxBack'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
+const recSettingsStore = useRecommendSettingsStore()
 const editingId = ref('')
 const showForm = ref(false)
+
+// 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
+const showResetButton = computed(() =>
+  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+)
 
 const { isMobile } = useIsMobile()
 const formOpen = ref(false) // 폼(추가/편집) 표시 여부 — 토글로 닫으면 추가 폼도 숨긴다
@@ -136,6 +143,22 @@ async function confirmDeleteSeedling(seedling) {
     message: localeStore.t('confirm.seedling', { name: seedling.variety, logs }),
   })
   if (ok) await store.removeSeedling(seedling.id)
+}
+
+// 묘목 전체 삭제 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
+// 화면 필터와 무관하게 이 농장의 묘목을 전부 지운다(확인창에 전체 건수를 그대로 보여준다).
+async function resetAllSeedlings() {
+  const n = store.state.seedlings.length
+  if (!n) return
+  const ok = await confirm({
+    title: localeStore.t('confirm.resetTitle'),
+    message: localeStore.t('confirm.resetSeedlings', { n }),
+    confirmLabel: localeStore.t('common.reset'),
+  })
+  if (!ok) return
+  await store.resetSeedlings()
+  expandedId.value = ''
+  closeForm()
 }
 
 function positionText(seedling) {
@@ -478,7 +501,15 @@ clearForm()
       <div class="pip-header">
         <div class="pip-actions">
           <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
-          <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+          <template v-else>
+            <button
+              v-if="showResetButton && store.state.seedlings.length > 0"
+              class="danger"
+              type="button"
+              @click="resetAllSeedlings"
+            >{{ localeStore.t('common.reset') }}</button>
+            <button class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+          </template>
         </div>
       </div>
 

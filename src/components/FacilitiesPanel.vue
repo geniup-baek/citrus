@@ -2,6 +2,7 @@
 import { computed, nextTick, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
+import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
@@ -9,8 +10,14 @@ import { useLightboxBack } from '../composables/useLightboxBack'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
+const recSettingsStore = useRecommendSettingsStore()
 const editingId = ref('')
 const showForm = ref(false)
+
+// 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
+const showResetButton = computed(() =>
+  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+)
 
 const { isMobile } = useIsMobile()
 // 편집 대상이 목록에 있을 때만 그 항목 슬롯으로, 아니면 항상 존재하는 상단 호스트로(텔레포트 대상 null 방지)
@@ -67,6 +74,25 @@ async function confirmDeleteFacility(facility) {
     message: localeStore.t('confirm.facility', { name: facility.name, seedlings, issues }),
   })
   if (ok) await store.removeFacility(facility.id)
+}
+
+// 재배동 전체 삭제 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
+async function resetAllFacilities() {
+  const n = store.state.facilities.length
+  if (!n) return
+  const ids = new Set(store.state.facilities.map((f) => f.id))
+  const ok = await confirm({
+    title: localeStore.t('confirm.resetTitle'),
+    message: localeStore.t('confirm.resetFacilities', {
+      n,
+      seedlings: store.state.seedlings.filter((s) => ids.has(s.greenhouseId)).length,
+      issues: store.state.issues.filter((i) => ids.has(i.greenhouseId)).length,
+    }),
+    confirmLabel: localeStore.t('common.reset'),
+  })
+  if (!ok) return
+  await store.resetFacilities()
+  closeForm()
 }
 
 // ── 사진 헬퍼 ────────────────────────────────────────────────────────────────
@@ -210,7 +236,15 @@ async function saveFacility() {
       <div class="pip-header">
         <div class="pip-actions">
           <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
-          <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+          <template v-else>
+            <button
+              v-if="showResetButton && store.state.facilities.length > 0"
+              class="danger"
+              type="button"
+              @click="resetAllFacilities"
+            >{{ localeStore.t('common.reset') }}</button>
+            <button class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+          </template>
         </div>
       </div>
       <div class="sort-filter-bar">

@@ -20,7 +20,7 @@ const FARM_POLICY_DEFAULTS = {
   excludeFishToxicGrades: ['Ⅰ급'],
   overwriteLinkedTreatments: false, // 방제이력 전체 재연결 시 이미 연결된 이력도 다시 연결할지 여부
   bulkImportMode: 'append', // 'append' | 'replace' — 붙여넣기 일괄추가 시 기존 목록에 더할지, 전체를 새로 작성할지
-  showResetButtons: false, // 이 농장의 방제이력·농약재고·가용농약 편집모드에 "초기화" 버튼을 노출할지 여부
+  showResetButtons: false, // 이 농장의 목록 편집모드(방제이력·농약재고·가용농약·재배동·시설장비·묘목·비료재고·작업·문제)에 "초기화" 버튼을 노출할지 여부
 }
 
 // 순수 "동작" 설정 — 기기/앱 전역 동작이라 농장과 무관하며, 기기 로컬에만 저장한다(동기화 없음).

@@ -175,6 +175,9 @@ h2 {
 .page-grid {
   display: grid;
   gap: 1rem;
+  /* 칸 폭을 컨테이너에 고정한다 — auto 칸은 자식의 min-content 폭까지 늘어나
+     좁은 화면에서 카드 밖으로 삐져나온다. */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .page-grid.two-columns {
@@ -261,11 +264,15 @@ h2 {
 .stack-form {
   display: grid;
   gap: 0.65rem;
+  /* 파일 선택 입력처럼 min-content 폭이 큰 컨트롤이 칸을 늘려 폼이 카드 밖으로
+     삐져나오지 않도록 칸 폭을 컨테이너에 고정한다. */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 label {
   display: grid;
   gap: 0.25rem;
+  grid-template-columns: minmax(0, 1fr);
   font-size: 0.92rem;
 }
 
@@ -285,6 +292,21 @@ textarea {
   padding: 0.42rem 0.6rem;
   /* 16px 미만이면 iOS Safari가 포커스 시 자동 확대하므로 1rem 유지 */
   font-size: 1rem;
+}
+
+/* input의 size·textarea의 cols 기본값, 파일 선택 버튼의 글자 폭에서 오는 고유 폭이
+   좁은 화면에서는 칸보다 넓다. 칸을 넘지 않게 눌러 준다.
+   (체크박스·라디오는 고유 크기를 지켜야 하므로 제외) */
+input:not([type='checkbox']):not([type='radio']),
+select,
+textarea {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* 세로 크기만 조절하게 둔다 — 가로로 늘리면 카드 밖으로 나간다 */
+textarea {
+  resize: vertical;
 }
 
 /* 버튼 기본 크기: 헤더의 '농장 전환' 버튼(.compact-btn) 높이를 앱 전체 기준으로 통일 */

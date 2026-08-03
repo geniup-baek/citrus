@@ -402,5 +402,11 @@ export const messages = {
     resetTreatments: '방제이력 {n}건을 모두 삭제합니다.\n되돌릴 수 없습니다.',
     resetPesticideInventory: '농약재고 품목 {n}개를 입출고 이력과 함께 모두 삭제합니다.\n되돌릴 수 없습니다.',
     resetAvailablePesticides: '가용농약 목록 {n}건과 구입가능농약 입력·수동 연결 정보를 모두 삭제합니다.\n되돌릴 수 없습니다.',
+    resetFacilities: '재배동 {n}개를 모두 삭제합니다.\n소속 묘목 {seedlings}건과 문제 기록 {issues}건도 함께 삭제됩니다.\n되돌릴 수 없습니다.',
+    resetAncillaries: '시설·장비 {n}개를 모두 삭제합니다.\n되돌릴 수 없습니다.',
+    resetSeedlings: '묘목 {n}건을 성장기록·첨부 사진과 함께 모두 삭제합니다.\n되돌릴 수 없습니다.',
+    resetInventory: '비료재고 품목 {n}개를 입출고 이력과 함께 모두 삭제합니다.\n되돌릴 수 없습니다.',
+    resetTasks: '작업 {n}건을 진행기록·첨부 사진과 함께 모두 삭제합니다.\n반복 규칙 {rules}건도 함께 삭제됩니다(남겨두면 작업이 다시 생성됩니다).\n되돌릴 수 없습니다.',
+    resetIssues: '문제 {n}건을 조치기록·첨부 사진과 함께 모두 삭제합니다.\n되돌릴 수 없습니다.',
   },
 }

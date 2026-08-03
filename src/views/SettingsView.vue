@@ -801,7 +801,9 @@ function saveEdit(key, i, isPair) {
             <div class="settings-group-head">
               <h3>초기화 기능</h3>
             </div>
-            <p class="muted settings-group-hint">방제이력·농약재고·가용농약의 "초기화" 기능을 사용할지 설정합니다.</p>
+            <p class="muted settings-group-hint">
+              방제이력·농약재고·가용농약·재배동·시설장비·묘목·비료재고·작업·문제의 "초기화" 기능을 사용할지 설정합니다.
+            </p>
             <div class="inline-filters">
               <button
                 type="button"
@@ -874,7 +876,7 @@ function saveEdit(key, i, isPair) {
               <h3>초기화 버튼 표시</h3>
             </div>
             <p class="muted settings-group-hint">
-              방제이력·농약재고·가용농약 편집모드에 "초기화" 버튼을 표시할지 설정합니다. (현재 농장에만 적용됩니다)
+              방제이력·농약재고·가용농약·재배동·시설장비·묘목·비료재고·작업·문제 편집모드에 "초기화" 버튼을 표시할지 설정합니다. (현재 농장에만 적용됩니다)
             </p>
             <div class="inline-filters">
               <button

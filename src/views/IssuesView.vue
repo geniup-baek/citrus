@@ -3,14 +3,21 @@ import { computed, nextTick, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { useLocaleStore } from '../stores/localeStore'
+import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
 import { useLightboxBack } from '../composables/useLightboxBack'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
+const recSettingsStore = useRecommendSettingsStore()
 const editingId = ref('')
 const showForm = ref(false)
+
+// 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
+const showResetButton = computed(() =>
+  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+)
 const lightboxPhoto = ref(null)
 useLightboxBack(lightboxPhoto)
 
@@ -209,6 +216,21 @@ async function confirmDeleteIssue(issue) {
   const steps = (issue.resolutionSteps || []).length
   const ok = await confirm({ message: localeStore.t('confirm.issue', { title: issue.title, steps }) })
   if (ok) await store.removeIssue(issue.id)
+}
+
+// 문제 전체 삭제 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
+async function resetAllIssues() {
+  const n = store.state.issues.length
+  if (!n) return
+  const ok = await confirm({
+    title: localeStore.t('confirm.resetTitle'),
+    message: localeStore.t('confirm.resetIssues', { n }),
+    confirmLabel: localeStore.t('common.reset'),
+  })
+  if (!ok) return
+  await store.resetIssues()
+  expandedId.value = ''
+  closeForm()
 }
 
 async function saveIssue() {
@@ -410,8 +432,17 @@ clearForm()
     <article class="card">
       <div class="row-actions align-start">
         <h2>{{ localeStore.t('issues.issueHistory') }}</h2>
-        <button v-if="!showForm" @click="showForm = true; formOpen = true">{{ localeStore.t('common.edit') }}</button>
-        <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+        <!-- 버튼은 한 묶음으로 감싼다 — align-start(space-between) 아래서 낱개로 두면 가운데로 흩어진다. -->
+        <div class="row-actions">
+          <button
+            v-if="showForm && showResetButton && store.state.issues.length > 0"
+            class="danger"
+            type="button"
+            @click="resetAllIssues"
+          >{{ localeStore.t('common.reset') }}</button>
+          <button v-if="!showForm" @click="showForm = true; formOpen = true">{{ localeStore.t('common.edit') }}</button>
+          <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+        </div>
       </div>
       <div class="sort-filter-bar">
         <span class="summary-chip">{{ localeStore.t('common.totalCount', { n: store.state.issues.length }) }}</span>

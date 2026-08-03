@@ -2,6 +2,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
+import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
@@ -9,8 +10,14 @@ import { useLightboxBack } from '../composables/useLightboxBack'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
+const recSettingsStore = useRecommendSettingsStore()
 const editingId = ref('')
 const showForm = ref(false)
+
+// 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
+const showResetButton = computed(() =>
+  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+)
 
 const { isMobile } = useIsMobile()
 // 편집 대상이 목록에 있을 때만 그 항목 슬롯으로, 아니면 항상 존재하는 상단 호스트로(텔레포트 대상 null 방지)
@@ -65,6 +72,20 @@ function newEntry() {
 async function confirmDeleteAncillary(item) {
   const ok = await confirm({ message: localeStore.t('confirm.ancillary', { name: item.name }) })
   if (ok) await store.removeAncillary(item.id)
+}
+
+// 시설·장비 전체 삭제 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
+async function resetAllAncillaries() {
+  const n = store.state.ancillaries.length
+  if (!n) return
+  const ok = await confirm({
+    title: localeStore.t('confirm.resetTitle'),
+    message: localeStore.t('confirm.resetAncillaries', { n }),
+    confirmLabel: localeStore.t('common.reset'),
+  })
+  if (!ok) return
+  await store.resetAncillaries()
+  closeForm()
 }
 
 // 구분 변경 시 현재 유형이 새 옵션에 없으면 첫 항목으로 재설정
@@ -216,7 +237,15 @@ async function saveAncillary() {
       <div class="pip-header">
         <div class="pip-actions">
           <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
-          <button v-else class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+          <template v-else>
+            <button
+              v-if="showResetButton && store.state.ancillaries.length > 0"
+              class="danger"
+              type="button"
+              @click="resetAllAncillaries"
+            >{{ localeStore.t('common.reset') }}</button>
+            <button class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
+          </template>
         </div>
       </div>
       <div class="sort-filter-bar">

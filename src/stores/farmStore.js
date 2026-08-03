@@ -1142,6 +1142,47 @@ export const useFarmStore = defineStore('farm', () => {
     await persistAll()
   }
 
+  // ── 목록 전체 초기화 ─────────────────────────────────────────────────────────
+  // 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 화면에 노출된다.
+  // 항목을 하나씩 지우면 매번 저장이 일어나므로, 한 번에 비우고 한 번만 저장한다.
+  // 개별 삭제와 같은 연쇄 삭제 규칙을 그대로 따른다(사진 정리는 persistAll이 알아서 한다).
+  async function resetFacilities() {
+    const ids = new Set(state.value.facilities.map((item) => item.id))
+    state.value.facilities = []
+    state.value.seedlings = state.value.seedlings.filter((item) => !ids.has(item.greenhouseId))
+    state.value.issues = state.value.issues.filter((item) => !ids.has(item.greenhouseId))
+    await persistAll()
+  }
+
+  async function resetAncillaries() {
+    state.value.ancillaries = []
+    await persistAll()
+  }
+
+  async function resetSeedlings() {
+    state.value.seedlings = []
+    await persistAll()
+  }
+
+  // 반복 규칙을 남겨두면 다음 실행 때 스케줄러가 작업을 다시 만들어 초기화가 무의미해진다.
+  async function resetTasks() {
+    state.value.tasks = []
+    state.value.scheduleRules = []
+    state.value.notifications = {}
+    await persistAll()
+  }
+
+  async function resetIssues() {
+    state.value.issues = []
+    await persistAll()
+  }
+
+  // 재고는 비료·농약이 한 배열에 섞여 있으므로 분류별로만 비운다.
+  async function resetInventoryCategory(category) {
+    state.value.inventory = state.value.inventory.filter((item) => item.category !== category)
+    await persistAll()
+  }
+
   // ── 백업 / 복원 ──────────────────────────────────────────────────────────────
   // 사용자가 변경할 수 있는 모든 데이터를 백업한다.
   // (annualTaskTemplates = 앱 고정 템플릿, notifications = 시스템 추적값이므로 제외)
@@ -1327,6 +1368,12 @@ export const useFarmStore = defineStore('farm', () => {
     updateIssueResolutionStep,
     removeIssueResolutionStep,
     removeIssue,
+    resetFacilities,
+    resetAncillaries,
+    resetSeedlings,
+    resetTasks,
+    resetIssues,
+    resetInventoryCategory,
     upsertScheduleRule,
     removeScheduleRule,
     updateScheduleSettings,
