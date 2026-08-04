@@ -10,19 +10,21 @@ import { moaColor } from '../services/recommend.js'
 import { usePesticideTypes } from '../composables/usePesticideTypes.js'
 import { useIsMobile } from '../composables/useIsMobile.js'
 import { useFarmsStore } from '../stores/farmsStore'
+import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { confirmFilteredExport, downloadCsv, exportFileName, openPrintReport } from '../utils/dataExport.js'
 
 const store      = useFarmStore()
 const localeStr  = useLocaleStore()
 const recSettingsStore = useRecommendSettingsStore()
 const farmsStore = useFarmsStore()
+const policyStore = useAppPolicyStore()
 const t          = (key, p) => localeStr.t(key, p)
 
 const CATEGORY = '농약'
 
 // 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
 const showResetButton = computed(() =>
-  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+  policyStore.policy.enableResetFeature && recSettingsStore.settings.showResetButtons,
 )
 
 const { typeNames: pesticideTypes, resolveType } = usePesticideTypes()
@@ -601,7 +603,7 @@ async function printReport() {
     meta: `${t('inventory.reportGeneratedAt', { date: today })} · ${t('inventory.summaryTotal', { count: summary.value.total })}${summaryText}`,
     headers,
     rows,
-    autoPrint: recSettingsStore.settings.autoOpenPrintDialog,
+    autoPrint: policyStore.policy.autoOpenPrintDialog,
   })
 }
 </script>

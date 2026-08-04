@@ -24,10 +24,9 @@ const FARM_POLICY_DEFAULTS = {
 }
 
 // 순수 "동작" 설정 — 기기/앱 전역 동작이라 농장과 무관하며, 기기 로컬에만 저장한다(동기화 없음).
+// 기기 간에도 동일하게 적용돼야 하는 동작 설정(PDF 출력·초기화 기능 등)은 appPolicyStore에 있다.
 const COMMON_PREF_DEFAULTS = {
   skipCachedPesticideDetails: true, // 농약 상세정보 전체 가져오기 시 이미 캐시된 항목은 건너뛸지 여부
-  autoOpenPrintDialog: false, // PDF 출력 시 인쇄 대화상자를 자동으로 열지 여부
-  enableResetFeature: false, // 초기화 기능 자체를 사용할지 여부(끄면 농장별 "초기화 버튼 표시" 설정도 감춘다)
 }
 
 const DEFAULTS = { ...FARM_POLICY_DEFAULTS, ...COMMON_PREF_DEFAULTS }

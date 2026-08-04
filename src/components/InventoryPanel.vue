@@ -7,12 +7,14 @@ import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
 import { useFarmsStore } from '../stores/farmsStore'
+import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { downloadCsv, exportFileName, openPrintReport } from '../utils/dataExport.js'
 
 const store = useFarmStore()
 const farmsStore = useFarmsStore()
 const localeStore = useLocaleStore()
 const recSettingsStore = useRecommendSettingsStore()
+const policyStore = useAppPolicyStore()
 
 const { isMobile } = useIsMobile()
 
@@ -20,7 +22,7 @@ const CATEGORY = '비료'
 
 // 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
 const showResetButton = computed(() =>
-  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+  policyStore.policy.enableResetFeature && recSettingsStore.settings.showResetButtons,
 )
 
 const showForm = ref(false)
@@ -382,7 +384,7 @@ function printReport() {
     meta: `${localeStore.t('inventory.reportGeneratedAt', { date: today })} · ${localeStore.t('common.totalCount', { n: summary.value.total })}${expiringText}`,
     headers,
     rows,
-    autoPrint: recSettingsStore.settings.autoOpenPrintDialog,
+    autoPrint: policyStore.policy.autoOpenPrintDialog,
   })
 }
 

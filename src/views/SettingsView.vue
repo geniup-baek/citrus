@@ -222,6 +222,7 @@ const backupMessage = ref('')
 const restoreError = ref('')
 const pendingRestore = ref(null)
 const restoreInput = ref(null)
+const restoring = ref(false)
 
 const datasetLabels = {
   facilities: () => localeStore.t('nav.facilities'),
@@ -296,19 +297,24 @@ function cancelRestore() {
 
 async function confirmRestore() {
   if (!pendingRestore.value) return
-  const { payload } = pendingRestore.value
-  await store.restoreBackup(payload)
-  if (Array.isArray(payload.data?.treatments)) {
-    await treatStore.replaceAllTreatments(payload.data.treatments)
+  restoring.value = true
+  try {
+    const { payload } = pendingRestore.value
+    await store.restoreBackup(payload)
+    if (Array.isArray(payload.data?.treatments)) {
+      await treatStore.replaceAllTreatments(payload.data.treatments)
+    }
+    if (payload.data?.recommendSettings) {
+      recSettingsStore.restoreSettings(payload.data.recommendSettings)
+    }
+    if (payload.data?.availablePesticide) {
+      apStore.restoreData(payload.data.availablePesticide)
+    }
+    pendingRestore.value = null
+    backupMessage.value = localeStore.t('settings.restoreDone')
+  } finally {
+    restoring.value = false
   }
-  if (payload.data?.recommendSettings) {
-    recSettingsStore.restoreSettings(payload.data.recommendSettings)
-  }
-  if (payload.data?.availablePesticide) {
-    apStore.restoreData(payload.data.availablePesticide)
-  }
-  pendingRestore.value = null
-  backupMessage.value = localeStore.t('settings.restoreDone')
 }
 
 // ── 전체 백업/복원 (시스템 관리 모드 전용: 모든 농장 + 공통 데이터) ───────────────
@@ -749,6 +755,7 @@ function saveEdit(key, i, isPair) {
             </div>
             <p class="muted text-sm" style="margin-top: 0.5rem;">
               "전체 새로 가져오기"는 매번 API를 다시 다 호출하므로 시간이 오래 걸립니다. 데이터 구조가 바뀌었거나 잘못 저장된 캐시를 고쳐야 할 때만 선택하세요.
+              이 설정은 <strong>이 기기에만 적용</strong>됩니다.
             </p>
           </div>
 
@@ -760,13 +767,13 @@ function saveEdit(key, i, isPair) {
             <div class="inline-filters">
               <button
                 type="button"
-                :class="{ ghost: recSettingsStore.settings.autoOpenPrintDialog }"
-                @click="recSettingsStore.settings.autoOpenPrintDialog = false"
+                :class="{ ghost: policyStore.policy.autoOpenPrintDialog }"
+                @click="policyStore.policy.autoOpenPrintDialog = false"
               >보고서만 열기</button>
               <button
                 type="button"
-                :class="{ ghost: !recSettingsStore.settings.autoOpenPrintDialog }"
-                @click="recSettingsStore.settings.autoOpenPrintDialog = true"
+                :class="{ ghost: !policyStore.policy.autoOpenPrintDialog }"
+                @click="policyStore.policy.autoOpenPrintDialog = true"
               >인쇄 대화상자 자동으로 열기</button>
             </div>
             <p class="muted text-sm" style="margin-top: 0.5rem;">
@@ -793,7 +800,6 @@ function saveEdit(key, i, isPair) {
             </div>
             <p class="muted text-sm" style="margin-top: 0.5rem;">
               직접등록한 농약은 모든 농장이 함께 쓰는 자료입니다. "시스템 관리 모드만"으로 두면 농장 모드에서는 추가·수정·삭제 버튼이 보이지 않습니다(등록된 농약 검색·연결은 그대로 됩니다).
-              이 설정은 <strong>모든 기기에 함께 적용</strong>됩니다.
             </p>
           </div>
 
@@ -807,13 +813,13 @@ function saveEdit(key, i, isPair) {
             <div class="inline-filters">
               <button
                 type="button"
-                :class="{ ghost: recSettingsStore.settings.enableResetFeature }"
-                @click="recSettingsStore.settings.enableResetFeature = false"
+                :class="{ ghost: policyStore.policy.enableResetFeature }"
+                @click="policyStore.policy.enableResetFeature = false"
               >사용 안 함</button>
               <button
                 type="button"
-                :class="{ ghost: !recSettingsStore.settings.enableResetFeature }"
-                @click="recSettingsStore.settings.enableResetFeature = true"
+                :class="{ ghost: !policyStore.policy.enableResetFeature }"
+                @click="policyStore.policy.enableResetFeature = true"
               >사용</button>
             </div>
             <p class="muted text-sm" style="margin-top: 0.5rem;">
@@ -871,7 +877,7 @@ function saveEdit(key, i, isPair) {
           </div>
 
           <!-- 초기화 기능은 시스템 관리 모드에서 켜 둔 경우에만 농장별로 표시 여부를 고를 수 있다. -->
-          <div v-if="recSettingsStore.settings.enableResetFeature" class="sub-card">
+          <div v-if="policyStore.policy.enableResetFeature" class="sub-card">
             <div class="settings-group-head">
               <h3>초기화 버튼 표시</h3>
             </div>
@@ -1006,8 +1012,8 @@ function saveEdit(key, i, isPair) {
             </div>
             <p class="settings-error">{{ localeStore.t('settings.restoreWarning') }}</p>
             <div class="row-actions">
-              <button class="danger" type="button" @click="confirmRestore">{{ localeStore.t('settings.restoreRun') }}</button>
-              <button class="ghost" type="button" @click="cancelRestore">{{ localeStore.t('common.cancel') }}</button>
+              <button class="danger" type="button" :disabled="restoring" @click="confirmRestore">{{ restoring ? '복원 중...' : localeStore.t('settings.restoreRun') }}</button>
+              <button class="ghost" type="button" :disabled="restoring" @click="cancelRestore">{{ localeStore.t('common.cancel') }}</button>
             </div>
           </div>
         </div>

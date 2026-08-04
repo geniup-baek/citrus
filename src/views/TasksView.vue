@@ -20,6 +20,7 @@ import { useRoute } from 'vue-router'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
+import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
@@ -28,11 +29,12 @@ import { useLightboxBack } from '../composables/useLightboxBack'
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const recSettingsStore = useRecommendSettingsStore()
+const policyStore = useAppPolicyStore()
 const route = useRoute()
 
 // 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
 const showResetButton = computed(() =>
-  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+  policyStore.policy.enableResetFeature && recSettingsStore.settings.showResetButtons,
 )
 
 const vAutoResize = {
@@ -206,14 +208,28 @@ const filteredTasks = computed(() => {
 
   let result = store.state.tasks
 
+  // 기간 필터보다 이전이 마감인 작업도, 미완료라면 계속 표시 대상에 포함한다
+  // (예: '이번주' 필터에서도 3주 전 마감인 미완료 작업이 보여야 함)
   if (filter.value === 'annual') {
     result = result.filter((t) => t.frequency === '매년')
   } else if (filter.value === 'month') {
-    result = result.filter((t) => { const d = safeDate(t.dueDate); return d ? isWithinInterval(d, monthRange) : false })
+    result = result.filter((t) => {
+      const d = safeDate(t.dueDate)
+      if (!d) return false
+      return isWithinInterval(d, monthRange) || (isBefore(d, monthRange.start) && t.status !== '완료')
+    })
   } else if (filter.value === 'week') {
-    result = result.filter((t) => { const d = safeDate(t.dueDate); return d ? isWithinInterval(d, weekRange) : false })
+    result = result.filter((t) => {
+      const d = safeDate(t.dueDate)
+      if (!d) return false
+      return isWithinInterval(d, weekRange) || (isBefore(d, weekRange.start) && t.status !== '완료')
+    })
   } else if (filter.value === 'today') {
-    result = result.filter((t) => { const d = safeDate(t.dueDate); return d ? isSameDay(d, now) : false })
+    result = result.filter((t) => {
+      const d = safeDate(t.dueDate)
+      if (!d) return false
+      return isSameDay(d, now) || (isBefore(d, todayStart) && t.status !== '완료')
+    })
   } else if (filter.value === 'overdue') {
     result = result.filter((t) => { const d = safeDate(t.dueDate); return d ? isBefore(d, todayStart) && t.status !== '완료' : false })
   }
@@ -241,12 +257,14 @@ const filteredTasks = computed(() => {
   })
 })
 
-// 요약 카운트
+// 요약 카운트 (기간 필터와 동일하게, 기간 이전 마감이라도 미완료면 포함)
 const todayTaskCount = computed(() => {
   const now = new Date()
+  const todayStart = startOfDay(now)
   return store.state.tasks.filter((t) => {
+    if (t.status === '완료') return false
     const d = safeDate(t.dueDate)
-    return d && isSameDay(d, now) && t.status !== '완료'
+    return d ? (isSameDay(d, now) || isBefore(d, todayStart)) : false
   }).length
 })
 
@@ -254,8 +272,9 @@ const weekTaskCount = computed(() => {
   const now = new Date()
   const weekRange = { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) }
   return store.state.tasks.filter((t) => {
+    if (t.status === '완료') return false
     const d = safeDate(t.dueDate)
-    return d && isWithinInterval(d, weekRange) && t.status !== '완료'
+    return d ? (isWithinInterval(d, weekRange) || isBefore(d, weekRange.start)) : false
   }).length
 })
 

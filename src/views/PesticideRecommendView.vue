@@ -12,6 +12,7 @@ import { useIsMobile } from '../composables/useIsMobile.js'
 import { useLocaleStore } from '../stores/localeStore'
 import { confirm } from '../composables/useConfirm'
 import { useFarmsStore } from '../stores/farmsStore'
+import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { confirmFilteredExport, downloadCsv, exportFileName, openPrintReport } from '../utils/dataExport.js'
 
 const treatStore    = useTreatmentStore()
@@ -20,12 +21,13 @@ const farmStore     = useFarmStore()
 const apStore       = useAvailablePesticideStore()
 const localeStore   = useLocaleStore()
 const farmsStore    = useFarmsStore()
+const policyStore   = useAppPolicyStore()
 
 const activeTab = ref('peststock') // 탭 순서와 맞춰 농약재고를 기본으로 연다
 
 // 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
 const showResetButton = computed(() =>
-  settingsStore.settings.enableResetFeature && settingsStore.settings.showResetButtons,
+  policyStore.policy.enableResetFeature && settingsStore.settings.showResetButtons,
 )
 
 // ── 오늘 날짜 (YYYY-MM-DD) ─────────────────────────────────────────────────
@@ -334,7 +336,7 @@ async function printTreatments() {
     rows: filteredTreatments.value.map(t => [
       t.date, t.brandName, normCat(t.category) || '', t.moa || '', histMatchLabel(t), t.memo || '',
     ]),
-    autoPrint: settingsStore.settings.autoOpenPrintDialog,
+    autoPrint: policyStore.policy.autoOpenPrintDialog,
   })
 }
 
@@ -775,7 +777,7 @@ async function printApList() {
       p.toxicName || '',
       formatFishToxic(p.fishToxic),
     ]),
-    autoPrint: settingsStore.settings.autoOpenPrintDialog,
+    autoPrint: policyStore.policy.autoOpenPrintDialog,
   })
 }
 

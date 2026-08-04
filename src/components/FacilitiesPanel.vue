@@ -3,6 +3,7 @@ import { computed, nextTick, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
+import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { compressImageFile } from '../utils/imageProcessing'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
@@ -11,12 +12,13 @@ import { useLightboxBack } from '../composables/useLightboxBack'
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const recSettingsStore = useRecommendSettingsStore()
+const policyStore = useAppPolicyStore()
 const editingId = ref('')
 const showForm = ref(false)
 
 // 초기화 버튼 — 시스템 관리 모드에서 기능을 "사용"으로 켜고, 이 농장에서 "표시"로 켠 경우에만 노출한다.
 const showResetButton = computed(() =>
-  recSettingsStore.settings.enableResetFeature && recSettingsStore.settings.showResetButtons,
+  policyStore.policy.enableResetFeature && recSettingsStore.settings.showResetButtons,
 )
 
 const { isMobile } = useIsMobile()

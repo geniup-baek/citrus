@@ -703,7 +703,7 @@ button.pill:hover {
   color: var(--muted);
 }
 
-/* 곳곳에 흩어진 인라인 font-size(0.75~0.9rem대)를 대체하는 공용 텍스트 크기 */
+/* 보조/메타 텍스트용 공용 크기 — 배지·안내문 등에서 본문보다 한 단계 작게 쓸 때 사용 */
 .text-xs { font-size: 0.72rem; }
 .text-sm { font-size: 0.82rem; }
 

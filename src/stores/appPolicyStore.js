@@ -14,6 +14,8 @@ const LS_KEY = 'citrus:app-policy'
 
 const DEFAULTS = {
   allowManualPesticideForAll: false, // 농약 직접등록(자료 > 농약)을 농장 모드에서도 허용할지
+  autoOpenPrintDialog: false, // PDF 출력 시 인쇄 대화상자를 자동으로 열지 여부
+  enableResetFeature: false, // 초기화 기능 자체를 사용할지 여부(끄면 농장별 "초기화 버튼 표시" 설정도 감춘다)
 }
 
 const KEYS = Object.keys(DEFAULTS)
