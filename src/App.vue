@@ -24,6 +24,8 @@ onMounted(() => {
   farmsStore.init()
   // 전 기기 공통 정책은 농장 선택과 무관하므로 관리 모드에서도 바로 동기화한다.
   policyStore.init()
+  // 분류·항목(appSettings)도 모든 농장이 공유하므로 관리 모드에서도 실시간 데이터를 읽어야 한다.
+  store.initAppSettings()
 })
 
 // 활성 농장이 (비동기로) 정해지는 시점에 딱 한 번 농장별 데이터 스토어를 초기화한다.

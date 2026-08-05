@@ -120,6 +120,28 @@ const batch = reactive({
   notes: '',
 })
 
+// 농장에서 재배 품종을 지정해 두면 새 묘목 등록 시 그 품종만 고를 수 있다. 지정이 없으면 전체 허용.
+const grownVarieties = computed(() => {
+  const grown = recSettingsStore.settings.grownVarieties
+  if (!grown.length) return varieties.value
+  const filtered = varieties.value.filter((v) => grown.includes(v))
+  return filtered.length ? filtered : varieties.value
+})
+
+// 편집 중인 묘목의 기존 품종이 재배 품종 목록에서 빠졌더라도, 그 값을 계속 선택할 수 있게 포함한다.
+const formVarietyOptions = computed(() => {
+  if (form.variety && !grownVarieties.value.includes(form.variety)) {
+    return [...grownVarieties.value, form.variety]
+  }
+  return grownVarieties.value
+})
+
+// 필터는 재배 품종에서 빠졌어도 기존 데이터에 남아있는 품종은 계속 골라 볼 수 있어야 한다.
+const filterVarietyOptions = computed(() => {
+  const usedVarieties = store.state.seedlings.map((s) => s.variety).filter(Boolean)
+  return [...new Set([...grownVarieties.value, ...usedVarieties])]
+})
+
 const batchCount = computed(() => {
   const span = Number(batch.rowTo) - Number(batch.rowFrom) + 1
   return span > 0 ? span * batch.cols.length : 0
@@ -176,7 +198,7 @@ function clearForm() {
   form.greenhouseId = store.state.facilities[0]?.id || ''
   form.positionRow = ''
   form.positionCol = ''
-  form.variety = varieties.value[0] ?? ''
+  form.variety = grownVarieties.value[0] ?? ''
   form.plantedAt = ''
   form.rootstock = ''
   form.notes = ''
@@ -211,7 +233,7 @@ function clearBatch() {
   batch.rowFrom = 1
   batch.rowTo = 27
   batch.cols = ['A', 'B']
-  batch.variety = varieties.value[0] ?? ''
+  batch.variety = grownVarieties.value[0] ?? ''
   batch.plantedAt = ''
   batch.rootstock = ''
   batch.notes = ''
@@ -539,7 +561,7 @@ clearForm()
         <span class="filter-label">{{ localeStore.t('seedlings.filterVariety') }}</span>
         <select v-model="filterVariety" class="compact-select">
           <option value="">{{ localeStore.t('seedlings.filterAll') }}</option>
-          <option v-for="v in varieties" :key="v" :value="v">{{ v }}</option>
+          <option v-for="v in filterVarietyOptions" :key="v" :value="v">{{ v }}</option>
         </select>
       </div>
 
@@ -706,7 +728,7 @@ clearForm()
         <label>
           {{ localeStore.t('seedlings.variety') }}
           <select v-model="batch.variety">
-            <option v-for="v in varieties" :key="v" :value="v">{{ v }}</option>
+            <option v-for="v in grownVarieties" :key="v" :value="v">{{ v }}</option>
           </select>
         </label>
         <label>
@@ -763,7 +785,7 @@ clearForm()
         <label>
           {{ localeStore.t('seedlings.variety') }}
           <select v-model="form.variety">
-            <option v-for="v in varieties" :key="v" :value="v">{{ v }}</option>
+            <option v-for="v in formVarietyOptions" :key="v" :value="v">{{ v }}</option>
           </select>
         </label>
         <label>

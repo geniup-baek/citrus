@@ -13,6 +13,7 @@ export const messages = {
     issues: '문제',
     inventory: '비료',
     knowledge: '지식',
+    glossary: '용어집',
     pest: '병해충',
     pesticide: '농약',
     resources: '자료',

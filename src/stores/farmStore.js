@@ -377,6 +377,21 @@ export const useFarmStore = defineStore('farm', () => {
     if (!raw) persistLocal()
   }
 
+  let appSettingsInitialized = false
+
+  // 분류·항목(appSettings)은 모든 농장이 공유하는 문서라 농장 선택과 무관하다.
+  // 시스템 관리 모드에는 활성 농장이 없어 init(farmId)가 호출되지 않으므로,
+  // 그 화면에서도 실시간 데이터를 읽을 수 있도록 별도로 구독한다(App.vue에서 무조건 호출).
+  function initAppSettings() {
+    if (appSettingsInitialized) return
+    appSettingsInitialized = true
+    if (!firebaseEnabled || !db) return
+    const appSettingsRef = doc(db, 'shared', 'appSettings')
+    appSettingsUnsub = onSnapshot(appSettingsRef, (snapshot) => {
+      state.value.appSettings = normalizeAppSettings(snapshot.exists() ? snapshot.data() : null)
+    })
+  }
+
   // farmId: 활성 농장 id. farmsStore에서 결정되어 App.vue가 넘겨준다.
   async function init(farmId) {
     if (initialized.value) {
@@ -385,11 +400,6 @@ export const useFarmStore = defineStore('farm', () => {
     activeFarmId = farmId
 
     if (firebaseEnabled && db) {
-      const appSettingsRef = doc(db, 'shared', 'appSettings')
-      appSettingsUnsub = onSnapshot(appSettingsRef, (snapshot) => {
-        state.value.appSettings = normalizeAppSettings(snapshot.exists() ? snapshot.data() : null)
-      })
-
       const ref = doc(db, 'farms', farmId, 'data', 'farmData')
 
       unsubscriber.value = onSnapshot(ref, async (snapshot) => {
@@ -1337,6 +1347,7 @@ export const useFarmStore = defineStore('farm', () => {
     tasksThisWeek,
     tasksThisMonth,
     init,
+    initAppSettings,
     cleanup,
     photoSrc,
     savePhotos,

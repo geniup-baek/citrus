@@ -21,6 +21,26 @@ const apStore = useAvailablePesticideStore()
 const farmsStore = useFarmsStore()
 const policyStore = useAppPolicyStore()
 
+// ── 재배 품종(농장별) ────────────────────────────────────────────────────────
+async function toggleGrownVariety(variety) {
+  const list = recSettingsStore.settings.grownVarieties
+  const idx = list.indexOf(variety)
+  if (idx < 0) {
+    list.push(variety)
+    return
+  }
+  const usedCount = store.state.seedlings.filter((s) => s.variety === variety).length
+  if (usedCount > 0) {
+    const ok = await confirm({
+      title: '재배 품종 제외',
+      message: `"${variety}"(으)로 등록된 묘목이 ${usedCount}그루 있습니다. 재배 품종에서 제외해도 기존 묘목 데이터는 그대로 남지만, 지식 페이지·묘목 추가 목록에서는 더 이상 보이지 않습니다. 계속할까요?`,
+      confirmLabel: '제외',
+    })
+    if (!ok) return
+  }
+  list.splice(idx, 1)
+}
+
 // ── 탭 ───────────────────────────────────────────────────────────────────────
 // 농장 모드에서는 저장·백업 탭만 사용할 수 있다(농장/분류·항목/동작은 시스템 관리 모드 전용).
 const activeTab = ref(farmsStore.isAdminMode ? 'categories' : 'storage')
@@ -873,6 +893,27 @@ function saveEdit(key, i, isPair) {
             </div>
             <p class="muted text-sm" style="margin-top: 0.5rem;">
               "기존 목록에 추가"는 붙여넣은 항목만 더합니다. "전체 새로 작성"은 붙여넣기 전 기존 목록(방제이력·농약재고는 전체 삭제, 가용농약은 구입가능농약 텍스트 전체)을 지우고 붙여넣은 내용으로 다시 만듭니다 — 되돌릴 수 없으니 주의하세요.
+            </p>
+          </div>
+
+          <div class="sub-card">
+            <div class="settings-group-head">
+              <h3>재배 품종</h3>
+            </div>
+            <p class="muted settings-group-hint">
+              이 농장에서 실제로 재배하는 묘목 품종을 선택합니다. (현재 농장에만 적용됩니다)
+            </p>
+            <div class="inline-filters">
+              <button
+                v-for="v in (store.state.appSettings?.seedlingVarieties ?? [])"
+                :key="v"
+                type="button"
+                :class="{ ghost: !recSettingsStore.settings.grownVarieties.includes(v) }"
+                @click="toggleGrownVariety(v)"
+              >{{ v }}</button>
+            </div>
+            <p class="muted text-sm" style="margin-top: 0.5rem;">
+              선택한 품종만 지식 페이지의 "품종 특성"과 묘목 추가 시 품종 목록에 표시됩니다. 아무것도 선택하지 않으면 전체 품종이 제한 없이 표시됩니다. 이미 등록된 묘목의 품종을 제외해도 그 묘목 데이터는 그대로 남습니다.
             </p>
           </div>
 

@@ -1,5 +1,8 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
+
+const recSettingsStore = useRecommendSettingsStore()
 
 const selectedVariety = ref('hallabong')
 
@@ -54,68 +57,187 @@ const varieties = {
       '만감류 중 수확이 가장 늦어(하우스 3~4월, 노지 5~6월) 저장성이 길고 틈새 출하가 가능',
     ],
   },
+  cheonhyehyang: {
+    name: '천혜향',
+    nameEn: 'Cheonhyehyang (Setoka, せとか)',
+    parentage: '구치노쓰(청견 × 앙코르 2호) × 머콧(Murcott)',
+    origin: '일본 육성(1984년 교배), 한국 2000년대 초 도입 · 2005년 "천혜향" 명칭 확정',
+    harvestPeriod: '하우스 재배 1~4월(2~3월이 제철) · 노지는 3월 ~ 5월 초',
+    brix: '13° Brix 이상',
+    acidity: '1.0% 이하 (목표 기준)',
+    weight: '250 ~ 350g',
+    storageTemp: '5 ~ 7°C',
+    color: '#a0522d',
+    traits: [
+      { label: '외관', value: '껍질이 얇고 매끄러워 손으로 벗기기 편함' },
+      { label: '과육', value: '한라봉과 비슷한 크기, 과즙 풍부' },
+      { label: '향미', value: '만감류 중 향이 가장 강한 편 — 자몽 같은 새콤달콤한 맛' },
+      { label: '내한성', value: '약함 — 냉해를 입으면 쓴맛이 강해짐. 시설 재배 필수' },
+    ],
+    notes: [
+      '냉해를 입으면 쓴맛이 강해지므로 시설 내 저온 방지가 특히 중요',
+      '수확 후 서늘하고 통풍이 잘되는 곳에서 며칠 후숙하면 산미가 줄고 당도가 살아남',
+      '만감류 중 향이 가장 강한 편이라 향을 중시하는 소비자에게 인기',
+    ],
+  },
 }
 
+const VARIETY_KEYS = Object.keys(varieties)
+
+// 농장에서 재배 품종을 지정해 두면 그 품종만 표시하고, 지정이 없으면 전체를 보여준다.
+const availableVarietyKeys = computed(() => {
+  const grown = recSettingsStore.settings.grownVarieties
+  if (!grown.length) return VARIETY_KEYS
+  const filtered = VARIETY_KEYS.filter((key) => grown.includes(varieties[key].name))
+  return filtered.length ? filtered : VARIETY_KEYS
+})
+
+watch(availableVarietyKeys, (keys) => {
+  if (!keys.includes(selectedVariety.value)) selectedVariety.value = keys[0]
+}, { immediate: true })
+
+// stage/tasks/alert의 각 조각에 variety를 달아두면, 그 품종을 재배하지 않는 농장에는 숨긴다.
+// variety가 없는 조각(일반 관리 작업)은 항상 표시한다.
 const months = [
   {
-    m: 12, label: '12월', stage: '성숙·수확 시작',
-    tasks: ['카라향 착과 유지·비대 지속 (수확은 3~4월)', '기비(밑거름) 시작', '시설 보온 강화'],
-    alert: '야간 3°C 이하 → 난방 가동',
+    m: 12, label: '12월',
+    stage: [{ text: '성숙·수확 시작' }],
+    tasks: [
+      { text: '카라향 착과 유지·비대 지속 (수확은 3~4월)', variety: 'karahyang' },
+      { text: '기비(밑거름) 시작' },
+      { text: '시설 보온 강화' },
+    ],
+    alert: { text: '야간 3°C 이하 → 난방 가동' },
   },
   {
-    m: 1, label: '1월', stage: '한라봉 수확기',
-    tasks: ['한라봉 수확 (브릭스 13° 이상)', '저온 저장 예냉 관리', '전정 계획 수립'],
-    alert: '동해 방지 — 최저 −2°C 경보 시 즉각 조치',
+    m: 1, label: '1월',
+    stage: [
+      { text: '한라봉 수확기', variety: 'hallabong' },
+      { text: '천혜향 수확기', variety: 'cheonhyehyang' },
+    ],
+    tasks: [
+      { text: '한라봉 수확 (브릭스 13° 이상)', variety: 'hallabong' },
+      { text: '천혜향 수확 개시 (하우스, 브릭스 13° 이상)', variety: 'cheonhyehyang' },
+      { text: '저온 저장 예냉 관리' },
+      { text: '전정 계획 수립' },
+    ],
+    alert: { text: '동해 방지 — 최저 −2°C 경보 시 즉각 조치' },
   },
   {
-    m: 2, label: '2월', stage: '수확 마무리·휴면',
-    tasks: ['수확 마무리 및 저장고 정리', '전정 실시 (도장지·고사지 제거)', '토양 개량재 시용'],
+    m: 2, label: '2월',
+    stage: [
+      { text: '수확 마무리·휴면' },
+      { text: '천혜향 제철', variety: 'cheonhyehyang' },
+    ],
+    tasks: [
+      { text: '한라봉 수확 마무리 및 저장고 정리', variety: 'hallabong' },
+      { text: '천혜향 수확 지속 (제철, 냉해 주의)', variety: 'cheonhyehyang' },
+      { text: '전정 실시 (도장지·고사지 제거)' },
+      { text: '토양 개량재 시용' },
+    ],
+    alert: { text: '천혜향은 냉해를 입으면 쓴맛이 강해지므로 저온 특히 주의', variety: 'cheonhyehyang' },
+  },
+  {
+    m: 3, label: '3월',
+    stage: [
+      { text: '발아 전 준비' },
+      { text: '카라향 수확기', variety: 'karahyang' },
+      { text: '천혜향 수확기', variety: 'cheonhyehyang' },
+    ],
+    tasks: [
+      { text: '카라향 수확 개시 (무가온 하우스, 당도 13° 이상 확인)', variety: 'karahyang' },
+      { text: '천혜향 수확 지속(노지는 이때부터 시작)', variety: 'cheonhyehyang' },
+      { text: '봄 방제 (석회유황합제 도포)' },
+      { text: '전정 마무리' },
+      { text: '배수로 점검·정비' },
+    ],
+    alert: { text: '늦서리 주의 (3월 하순)' },
+  },
+  {
+    m: 4, label: '4월',
+    stage: [
+      { text: '발아·꽃눈 분화' },
+      { text: '카라향 수확 마무리', variety: 'karahyang' },
+      { text: '천혜향 수확 마무리', variety: 'cheonhyehyang' },
+    ],
+    tasks: [
+      { text: '카라향 수확 마무리 및 후숙 출하 준비', variety: 'karahyang' },
+      { text: '천혜향 수확 마무리(노지는 5월 초까지)', variety: 'cheonhyehyang' },
+      { text: '꽃눈 분화 상태 점검' },
+      { text: '봄 추비 1차 (질소 위주)' },
+      { text: '관수 라인 점검 및 재개' },
+    ],
     alert: null,
   },
   {
-    m: 3, label: '3월', stage: '발아 전 준비·카라향 수확기',
-    tasks: ['카라향 수확 개시 (무가온 하우스, 당도 13° 이상 확인)', '봄 방제 (석회유황합제 도포)', '전정 마무리', '배수로 점검·정비'],
-    alert: '늦서리 주의 (3월 하순)',
+    m: 5, label: '5월',
+    stage: [{ text: '개화기' }],
+    tasks: [
+      { text: '개화 상태 확인, 수분 관리' },
+      { text: '병해충 예찰 강화 (귤굴나방 첫 발생)' },
+      { text: '환기 관리로 꽃 수분 촉진' },
+    ],
+    alert: { text: '개화기 강우·저온 → 착화 불량 위험' },
   },
   {
-    m: 4, label: '4월', stage: '발아·꽃눈 분화·카라향 수확',
-    tasks: ['카라향 수확 마무리 및 후숙 출하 준비', '꽃눈 분화 상태 점검', '봄 추비 1차 (질소 위주)', '관수 라인 점검 및 재개'],
+    m: 6, label: '6월',
+    stage: [{ text: '유과기·적과' }],
+    tasks: [
+      { text: '1차 적과 실시 (과다 착과 교정)' },
+      { text: '귤녹균 예방 방제' },
+      { text: '추비 2차 (칼리·인산 위주)' },
+    ],
+    alert: { text: '장마 전 귤녹균 선제 방제' },
+  },
+  {
+    m: 7, label: '7월',
+    stage: [{ text: '과실 비대기' }],
+    tasks: [
+      { text: '2차 적과 (한라봉 과당 5~7개 기준)', variety: 'hallabong' },
+      { text: '관수량 증가 (증발산 최대기)' },
+      { text: '응애·깍지벌레 방제' },
+    ],
+    alert: { text: '고온 건조 → 응애 폭발적 증가 주의' },
+  },
+  {
+    m: 8, label: '8월',
+    stage: [{ text: '과실 비대 지속' }],
+    tasks: [
+      { text: '관수 지속, 토양 수분 유지' },
+      { text: '태풍 대비 (지주·고정 점검)' },
+      { text: '엽면 시비 (칼슘·붕소)' },
+    ],
+    alert: { text: '태풍 통과 후 즉시 방제 (상처 통한 감염)' },
+  },
+  {
+    m: 9, label: '9월',
+    stage: [{ text: '비대 완료·착색 준비' }],
+    tasks: [
+      { text: '봉지 씌우기 (카라향 선택 시)', variety: 'karahyang' },
+      { text: '관수량 점진적 감소 시작' },
+      { text: '추비 3차 (인산 위주, 착색 촉진)' },
+    ],
     alert: null,
   },
   {
-    m: 5, label: '5월', stage: '개화기',
-    tasks: ['개화 상태 확인, 수분 관리', '병해충 예찰 강화 (귤굴나방 첫 발생)', '환기 관리로 꽃 수분 촉진'],
-    alert: '개화기 강우·저온 → 착화 불량 위험',
-  },
-  {
-    m: 6, label: '6월', stage: '유과기·적과',
-    tasks: ['1차 적과 실시 (과다 착과 교정)', '귤녹균 예방 방제', '추비 2차 (칼리·인산 위주)'],
-    alert: '장마 전 귤녹균 선제 방제',
-  },
-  {
-    m: 7, label: '7월', stage: '과실 비대기',
-    tasks: ['2차 적과 (한라봉 과당 5~7개 기준)', '관수량 증가 (증발산 최대기)', '응애·깍지벌레 방제'],
-    alert: '고온 건조 → 응애 폭발적 증가 주의',
-  },
-  {
-    m: 8, label: '8월', stage: '과실 비대 지속',
-    tasks: ['관수 지속, 토양 수분 유지', '태풍 대비 (지주·고정 점검)', '엽면 시비 (칼슘·붕소)'],
-    alert: '태풍 통과 후 즉시 방제 (상처 통한 감염)',
-  },
-  {
-    m: 9, label: '9월', stage: '비대 완료·착색 준비',
-    tasks: ['봉지 씌우기 (카라향 선택 시)', '관수량 점진적 감소 시작', '추비 3차 (인산 위주, 착색 촉진)'],
+    m: 10, label: '10월',
+    stage: [{ text: '착색기' }],
+    tasks: [
+      { text: '시설 보온 설비 점검' },
+      { text: '당도 측정 시작 (주 1회)' },
+      { text: '야간 온도 관리 (10°C 이상 유지)' },
+    ],
     alert: null,
   },
   {
-    m: 10, label: '10월', stage: '착색기',
-    tasks: ['시설 보온 설비 점검', '당도 측정 시작 (주 1회)', '야간 온도 관리 (10°C 이상 유지)'],
-    alert: null,
-  },
-  {
-    m: 11, label: '11월', stage: '착색 진행·품질 관리',
-    tasks: ['브릭스·산도 주간 추적', '수확 컨테이너·저장고 준비', '최종 방제 (수확 전 안전 사용 기간 준수)'],
-    alert: '야간 기온 5°C 이하 → 본격 보온 가동',
+    m: 11, label: '11월',
+    stage: [{ text: '착색 진행·품질 관리' }],
+    tasks: [
+      { text: '브릭스·산도 주간 추적' },
+      { text: '수확 컨테이너·저장고 준비' },
+      { text: '최종 방제 (수확 전 안전 사용 기간 준수)' },
+    ],
+    alert: { text: '야간 기온 5°C 이하 → 본격 보온 가동' },
   },
 ]
 
@@ -149,13 +271,18 @@ const pests = [
   },
 ]
 
+// varietyNotes: 특정 품종에만 해당하는 보충 설명. 그 품종을 재배하지 않는 농장에는 숨긴다.
 const fertilization = [
   {
     timing: '기비 (12~1월)',
     stage: '수확 후 ~ 휴면기',
     npk: 'N:P:K = 1:1:1 완효성',
     amount: '성목 기준 질소 150~200g/주',
-    notes: '유기물(퇴비) 병용으로 토양 구조 개선. 시용 후 충분히 관수. (한라봉 기준 — 카라향은 수확이 3~4월이라 기비 시기도 그만큼 늦춰야 함)',
+    notes: '유기물(퇴비) 병용으로 토양 구조 개선. 시용 후 충분히 관수.',
+    varietyNotes: [
+      { text: '카라향은 수확이 3~4월이라 기비 시기도 그만큼 늦춰야 함', variety: 'karahyang' },
+      { text: '천혜향은 수확이 4월까지 이어지므로 기비 시기도 그만큼 늦춰야 함', variety: 'cheonhyehyang' },
+    ],
   },
   {
     timing: '봄 추비 (3~4월)',
@@ -163,6 +290,7 @@ const fertilization = [
     npk: 'N:P:K = 2:1:1 속효성',
     amount: '질소 70~100g/주',
     notes: '새순·꽃눈 분화 촉진. 질소 과다 시 도장지 발생 증가 주의.',
+    varietyNotes: [],
   },
   {
     timing: '여름 추비 (6~7월)',
@@ -170,13 +298,17 @@ const fertilization = [
     npk: 'N:P:K = 1:1:2 칼리 강화',
     amount: '칼리 80~120g/주',
     notes: '과실 비대·세포 충실에 칼리가 핵심. 질소 과다는 당도 저하 원인.',
+    varietyNotes: [],
   },
   {
     timing: '가을 추비 (9~10월)',
     stage: '착색 준비기',
     npk: 'N:P:K = 0.5:1.5:1 인산 강화',
     amount: '인산 60~80g/주',
-    notes: '착색 촉진 및 당도 상승. 질소는 최소화 (착색 방해 가능). (한라봉 기준 — 카라향은 수확이 훨씬 늦어 이 시기엔 아직 비대 진행 중)',
+    notes: '착색 촉진 및 당도 상승. 질소는 최소화 (착색 방해 가능).',
+    varietyNotes: [
+      { text: '카라향은 수확이 훨씬 늦어 이 시기엔 아직 비대 진행 중', variety: 'karahyang' },
+    ],
   },
   {
     timing: '엽면 시비 (수시)',
@@ -184,16 +316,29 @@ const fertilization = [
     npk: '칼슘(Ca) · 붕소(B) · 마그네슘(Mg)',
     amount: '권장 배율 (제품별 상이)',
     notes: '칼슘: 열과 방지 / 붕소: 꽃 수정 촉진 / Mg: 황화 방지. 고온·직사광선 시간 엽면 시비 회피.',
+    varietyNotes: [],
   },
 ]
 
 const irrigation = [
-  { period: '1~3월', guide: '최소 관수', detail: '휴면~전정기. 토양이 심하게 건조할 때만 소량 관수. 과습은 뿌리 부패 유발.' },
-  { period: '4~5월', guide: '발아기 적정 수분 공급', detail: '발아 시작 전 토양 수분 확인. 꽃눈 분화 촉진을 위해 이 시기 과도한 관수는 피함.' },
-  { period: '6~7월', guide: '관수 증가', detail: '유과기~비대기. 토양 수분 50~60% 유지. 고온기에는 이른 아침 관수로 증발 손실 최소화.' },
-  { period: '8월', guide: '최대 관수기', detail: '증발산량 최대. EC(전기전도도) 모니터링으로 염류 농도 관리. 점적관수 추천.' },
-  { period: '9~10월', guide: '점진적 감수', detail: '관수량 20~30% 줄여 당 농축 유도. 급격한 감수는 열과 발생 — 서서히 감량. (한라봉 기준 — 카라향은 아직 비대기라 감수 시기가 아님)' },
-  { period: '11~12월', guide: '최소 관수 (수확기)', detail: '수확 전 2~3주 관수 중단 또는 최소화로 당도 상승. 단, 시설 내 건조 시 소량 보충. (한라봉 기준 — 카라향은 수확이 3~4월이라 감수 시점도 2~3월경으로 늦춰야 함)' },
+  { period: '1~3월', guide: '최소 관수', detail: '휴면~전정기. 토양이 심하게 건조할 때만 소량 관수. 과습은 뿌리 부패 유발.', varietyNotes: [] },
+  { period: '4~5월', guide: '발아기 적정 수분 공급', detail: '발아 시작 전 토양 수분 확인. 꽃눈 분화 촉진을 위해 이 시기 과도한 관수는 피함.', varietyNotes: [] },
+  { period: '6~7월', guide: '관수 증가', detail: '유과기~비대기. 토양 수분 50~60% 유지. 고온기에는 이른 아침 관수로 증발 손실 최소화.', varietyNotes: [] },
+  { period: '8월', guide: '최대 관수기', detail: '증발산량 최대. EC(전기전도도) 모니터링으로 염류 농도 관리. 점적관수 추천.', varietyNotes: [] },
+  {
+    period: '9~10월', guide: '점진적 감수',
+    detail: '관수량 20~30% 줄여 당 농축 유도. 급격한 감수는 열과 발생 — 서서히 감량.',
+    varietyNotes: [
+      { text: '카라향은 아직 비대기라 감수 시기가 아님', variety: 'karahyang' },
+    ],
+  },
+  {
+    period: '11~12월', guide: '최소 관수 (수확기)',
+    detail: '수확 전 2~3주 관수 중단 또는 최소화로 당도 상승. 단, 시설 내 건조 시 소량 보충.',
+    varietyNotes: [
+      { text: '카라향은 수확이 3~4월이라 감수 시점도 2~3월경으로 늦춰야 함', variety: 'karahyang' },
+    ],
+  },
 ]
 
 const checklist = {
@@ -226,15 +371,77 @@ const checkTabs = [
   { key: 'monthly', label: '매월' },
 ]
 
+// onlyVarieties: 이 행 자체가 특정 품종 전용 시기일 때(그중 하나도 재배하지 않으면 행 전체를 숨김).
+// notes: 비고 조각들 — variety가 있으면 그 품종을 재배할 때만 표시.
+// 천혜향 수치는 제주특별자치도농업기술원 「천혜향 재배기술」(2017) 무가온재배 월별 품질조사 기준.
 const brixGuide = [
-  { stage: '6월 (적과 직전 유과)', hallabong: '—', karahyang: '—', note: '크기·무게 기준 적과' },
-  { stage: '9월 중순', hallabong: '7~8°', karahyang: '8~9°', note: '비대 완료 기준치 확인' },
-  { stage: '10월 중순', hallabong: '9~10°', karahyang: '10~11°', note: '착색 진행 중' },
-  { stage: '11월 중순', hallabong: '11°', karahyang: '11~12°', note: '한라봉 착색 마무리, 카라향은 계속 비대·숙성 중' },
-  { stage: '12월 하순', hallabong: '12°', karahyang: '12~13°', note: '카라향은 나무에 달린 채 계속 숙성 (수확 아님)' },
-  { stage: '1월 중순', hallabong: '13° → 수확', karahyang: '13~14°', note: '한라봉 수확 기준 도달' },
-  { stage: '3~4월 (하우스 기준)', hallabong: '—', karahyang: '13~16° → 수확', note: '카라향 수확기. 노지 재배는 5~6월' },
+  { stage: '6월 (적과 직전 유과)', hallabong: '—', karahyang: '—', cheonhyehyang: '—', notes: [{ text: '크기·무게 기준 적과' }] },
+  { stage: '9월 중순', hallabong: '7~8°', karahyang: '8~9°', cheonhyehyang: '7~8°', notes: [{ text: '비대 완료 기준치 확인' }] },
+  { stage: '10월 중순', hallabong: '9~10°', karahyang: '10~11°', cheonhyehyang: '8~9°', notes: [{ text: '착색 진행 중' }] },
+  {
+    stage: '11월 중순', hallabong: '11°', karahyang: '11~12°', cheonhyehyang: '9~10°',
+    notes: [
+      { text: '한라봉 착색 마무리', variety: 'hallabong' },
+      { text: '카라향은 계속 비대·숙성 중', variety: 'karahyang' },
+      { text: '천혜향은 계속 비대·숙성 중', variety: 'cheonhyehyang' },
+    ],
+  },
+  {
+    stage: '12월 하순', hallabong: '12°', karahyang: '12~13°', cheonhyehyang: '10~11°',
+    notes: [
+      { text: '카라향은 나무에 달린 채 계속 숙성 (수확 아님)', variety: 'karahyang' },
+      { text: '천혜향은 나무에 달린 채 계속 숙성 (수확 아님)', variety: 'cheonhyehyang' },
+    ],
+  },
+  {
+    stage: '1월 중순', hallabong: '13° → 수확', karahyang: '13~14°', cheonhyehyang: '11~12°',
+    notes: [{ text: '한라봉 수확 기준 도달', variety: 'hallabong' }],
+  },
+  {
+    stage: '3~4월 (하우스 기준)', hallabong: '—', karahyang: '13~16° → 수확', cheonhyehyang: '12~13° → 수확',
+    onlyVarieties: ['karahyang', 'cheonhyehyang'],
+    notes: [
+      { text: '카라향 수확기. 노지 재배는 5~6월', variety: 'karahyang' },
+      { text: '천혜향 수확기(무가온 하우스 기준). 노지 재배는 5월 초까지', variety: 'cheonhyehyang' },
+    ],
+  },
 ]
+
+function isVarietyShown(key) {
+  return !key || availableVarietyKeys.value.includes(key)
+}
+function joinShownText(fragments, sep = '·') {
+  return fragments.filter((f) => isVarietyShown(f.variety)).map((f) => f.text).join(sep)
+}
+
+// 연간 생육 달력: 농장이 재배하지 않는 품종의 조각은 stage/tasks/alert에서 제외한다.
+const filteredMonths = computed(() => months.map((mon) => ({
+  ...mon,
+  stageText: joinShownText(mon.stage),
+  tasks: mon.tasks.filter((t) => isVarietyShown(t.variety)),
+  alert: mon.alert && isVarietyShown(mon.alert.variety) ? mon.alert.text : null,
+})))
+
+// 브릭스 추이 기준표: 농장이 재배하지 않는 품종은 열을 통째로 숨기고, 그 품종들 전용 시기(onlyVarieties)는
+// 그중 하나도 재배하지 않을 때만 행 자체를 숨긴다.
+const showHallabongColumn = computed(() => isVarietyShown('hallabong'))
+const showKarahyangColumn = computed(() => isVarietyShown('karahyang'))
+const showCheonhyehyangColumn = computed(() => isVarietyShown('cheonhyehyang'))
+const brixTableApplicable = computed(() =>
+  showHallabongColumn.value || showKarahyangColumn.value || showCheonhyehyangColumn.value)
+const filteredBrixGuide = computed(() => brixGuide
+  .filter((row) => !row.onlyVarieties || row.onlyVarieties.some((v) => isVarietyShown(v)))
+  .map((row) => ({ ...row, noteText: joinShownText(row.notes, ', ') })))
+
+// 시비 가이드 / 관수 가이드: 품종 전용 보충 설명만 필터링(항목 자체는 모든 품종 공통이라 항상 표시).
+const filteredFertilization = computed(() => fertilization.map((f) => ({
+  ...f,
+  varietyNoteText: joinShownText(f.varietyNotes, ' · '),
+})))
+const filteredIrrigation = computed(() => irrigation.map((i) => ({
+  ...i,
+  varietyNoteText: joinShownText(i.varietyNotes, ' · '),
+})))
 </script>
 
 <template>
@@ -247,8 +454,7 @@ const brixGuide = [
         <div class="row-actions align-start" style="margin-bottom: 1rem;">
           <h2>품종 특성</h2>
           <div class="inline-filters">
-            <button :class="{ ghost: selectedVariety !== 'hallabong' }" @click="selectedVariety = 'hallabong'">한라봉</button>
-            <button :class="{ ghost: selectedVariety !== 'karahyang' }" @click="selectedVariety = 'karahyang'">카라향</button>
+            <button v-for="key in availableVarietyKeys" :key="key" :class="{ ghost: selectedVariety !== key }" @click="selectedVariety = key">{{ varieties[key].name }}</button>
           </div>
         </div>
 
@@ -306,17 +512,17 @@ const brixGuide = [
         <h2 style="margin-bottom: 1rem;">연간 생육 달력</h2>
         <div class="month-grid">
           <div
-            v-for="mon in months"
+            v-for="mon in filteredMonths"
             :key="mon.m"
             class="month-card"
             :class="{ 'has-alert': !!mon.alert }"
           >
             <div class="month-header">
               <span class="month-num">{{ mon.label }}</span>
-              <span class="month-stage">{{ mon.stage }}</span>
+              <span class="month-stage">{{ mon.stageText }}</span>
             </div>
             <ul class="month-tasks">
-              <li v-for="task in mon.tasks" :key="task">{{ task }}</li>
+              <li v-for="task in mon.tasks" :key="task.text">{{ task.text }}</li>
             </ul>
             <p v-if="mon.alert" class="month-alert">⚠ {{ mon.alert }}</p>
           </div>
@@ -327,26 +533,29 @@ const brixGuide = [
       <article class="know-card" style="margin-top: 1rem;">
         <h2 style="margin-bottom: 0.75rem;">브릭스(당도) 추이 기준표</h2>
         <p class="muted text-sm" style="margin-bottom: 0.75rem;">수확 결정의 핵심 지표입니다. 대표 과실 5~10개 평균값을 주 1회 기록하세요.</p>
-        <div class="brix-table-wrap">
+        <div v-if="brixTableApplicable" class="brix-table-wrap">
           <table class="brix-table">
             <thead>
               <tr>
                 <th>시기</th>
-                <th>한라봉</th>
-                <th>카라향</th>
+                <th v-if="showHallabongColumn">한라봉</th>
+                <th v-if="showKarahyangColumn">카라향</th>
+                <th v-if="showCheonhyehyangColumn">천혜향</th>
                 <th>비고</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in brixGuide" :key="row.stage">
+              <tr v-for="row in filteredBrixGuide" :key="row.stage">
                 <td>{{ row.stage }}</td>
-                <td class="brix-val">{{ row.hallabong }}</td>
-                <td class="brix-val">{{ row.karahyang }}</td>
-                <td class="muted text-sm">{{ row.note }}</td>
+                <td v-if="showHallabongColumn" class="brix-val">{{ row.hallabong }}</td>
+                <td v-if="showKarahyangColumn" class="brix-val">{{ row.karahyang }}</td>
+                <td v-if="showCheonhyehyangColumn" class="brix-val">{{ row.cheonhyehyang }}</td>
+                <td class="muted text-sm">{{ row.noteText }}</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <p v-else class="muted text-sm">선택한 재배 품종에 대한 당도 추이 자료가 아직 없습니다.</p>
       </article>
     </div>
 
@@ -376,7 +585,7 @@ const brixGuide = [
         <h2 style="margin-bottom: 0.75rem;">시비 가이드 (성목 기준)</h2>
         <p class="muted text-sm" style="margin-bottom: 0.75rem;">수세 · 토양 분석 결과에 따라 가감. 아래 수치는 10a(1,000m²) 기준 참고값입니다.</p>
         <ul class="list clean compact">
-          <li v-for="fert in fertilization" :key="fert.timing" class="list-item card-like fert-item">
+          <li v-for="fert in filteredFertilization" :key="fert.timing" class="list-item card-like fert-item">
             <div class="fert-header">
               <strong>{{ fert.timing }}</strong>
               <span class="pill text-xs">{{ fert.stage }}</span>
@@ -386,6 +595,7 @@ const brixGuide = [
               <span class="meta-key">시용량</span><span>{{ fert.amount }}</span>
             </div>
             <p class="muted text-sm">{{ fert.notes }}</p>
+            <p v-if="fert.varietyNoteText" class="muted text-sm">{{ fert.varietyNoteText }}</p>
           </li>
         </ul>
       </article>
@@ -394,12 +604,13 @@ const brixGuide = [
       <article class="know-card" style="margin-top: 1rem;">
         <h2 style="margin-bottom: 0.75rem;">계절별 관수 가이드</h2>
         <ul class="list clean compact">
-          <li v-for="irr in irrigation" :key="irr.period" class="list-item irr-item">
+          <li v-for="irr in filteredIrrigation" :key="irr.period" class="list-item irr-item">
             <div class="irr-header">
               <span class="irr-period">{{ irr.period }}</span>
               <span class="irr-guide">{{ irr.guide }}</span>
             </div>
             <p class="muted text-sm">{{ irr.detail }}</p>
+            <p v-if="irr.varietyNoteText" class="muted text-sm">{{ irr.varietyNoteText }}</p>
           </li>
         </ul>
       </article>

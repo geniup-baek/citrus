@@ -6,6 +6,7 @@ import PestSearchPanel from '../components/PestSearchPanel.vue'
 import PestPredictionPanel from '../components/PestPredictionPanel.vue'
 import PestSurveillancePanel from '../components/PestSurveillancePanel.vue'
 import KnowledgePanel from '../components/KnowledgePanel.vue'
+import GlossaryPanel from '../components/GlossaryPanel.vue'
 
 const localeStore = useLocaleStore()
 
@@ -25,6 +26,7 @@ const activeTab = ref('pesticide')
       <button class="tab-btn" :class="{ active: activeTab === 'prediction' }" @click="activeTab = 'prediction'">{{ localeStore.t('pest.tabPrediction') }}</button>
       <button class="tab-btn" :class="{ active: activeTab === 'surveillance' }" @click="activeTab = 'surveillance'">{{ localeStore.t('pest.tabSurveillance') }}</button>
       <button class="tab-btn" :class="{ active: activeTab === 'knowledge' }" @click="activeTab = 'knowledge'">{{ localeStore.t('nav.knowledge') }}</button>
+      <button class="tab-btn" :class="{ active: activeTab === 'glossary' }" @click="activeTab = 'glossary'">{{ localeStore.t('nav.glossary') }}</button>
     </div>
 
     <PesticideSearchPanel v-if="activeTab === 'pesticide'" />
@@ -32,6 +34,7 @@ const activeTab = ref('pesticide')
     <PestPredictionPanel v-if="activeTab === 'prediction'" />
     <PestSurveillancePanel v-if="activeTab === 'surveillance'" />
     <KnowledgePanel v-if="activeTab === 'knowledge'" />
+    <GlossaryPanel v-if="activeTab === 'glossary'" />
   </div>
 </template>
 
