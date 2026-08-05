@@ -5,7 +5,7 @@ import { useRecommendSettingsStore } from '../stores/recommendSettingsStore.js'
 import { useFarmStore } from '../stores/farmStore.js'
 import { useAvailablePesticideStore, parsePurchaseText } from '../stores/availablePesticideStore.js'
 import { getRecommendations, moaColor } from '../services/recommend.js'
-import { searchFromFullCache, findBestMatchInCache, formatPreHarvest, formatMaxApplications, TOXIC_GRADES, FISH_TOXIC_GRADES, FISH_TOXIC_INFO, formatFishToxic, formatFishToxicBadge } from '../services/pesticide.js'
+import { searchGroupedFromFullCache, findBestMatchInCache, normalizeBrandKey, formatPreHarvest, formatMaxApplications, TOXIC_GRADES, FISH_TOXIC_GRADES, FISH_TOXIC_INFO, formatFishToxic, formatFishToxicBadge } from '../services/pesticide.js'
 import PesticideInventoryPanel from '../components/PesticideInventoryPanel.vue'
 import { usePesticideTypes } from '../composables/usePesticideTypes.js'
 import { useIsMobile } from '../composables/useIsMobile.js'
@@ -65,6 +65,15 @@ const histYears = computed(() =>
   [...new Set(treatStore.treatments.map(t => t.date?.slice(0, 4)).filter(Boolean))]
     .sort((a, b) => b.localeCompare(a)),
 )
+
+const histYearCounts = computed(() => {
+  const counts = {}
+  for (const t of treatStore.treatments) {
+    const y = t.date?.slice(0, 4)
+    if (y) counts[y] = (counts[y] || 0) + 1
+  }
+  return counts
+})
 
 const histUnmatchedCount = computed(() => treatStore.treatments.filter(t => !t.moa).length)
 
@@ -179,14 +188,34 @@ function findInventoryMatch(brandName) {
   }) ?? null
 }
 
+// 목록(SVC01)은 같은 상표명이 대상 병해충 수만큼 레코드로 나뉘어 있으므로, 상표명 기준으로
+// 묶어서 한 건씩만 돌려준다(병해충은 요약 문자열로 합쳐 기존 flat 필드 형태를 그대로 유지한다).
+function pestSummaryText(targetPests) {
+  const shown = targetPests.slice(0, 3).join(', ')
+  const rest = targetPests.length - 3
+  return rest > 0 ? `${shown} 외 ${rest}종` : shown
+}
+
+function searchGroupedFlat(query, pageSize) {
+  const result = searchGroupedFromFullCache({ pestName: query, page: 1, pageSize })
+  return (result?.list ?? []).map(g => ({
+    brandName: g.brandName,
+    pesticideType: g.pesticideType,
+    modeOfAction: g.modeOfActions[0] || '',
+    targetPest: pestSummaryText(g.targetPests),
+    pestiCode: g.key,
+    diseaseUseSeq: '',
+  }))
+}
+
 function searchTreatmentLinkCandidates(query, pageSize = 10) {
   const q = query.trim()
   if (!q) return []
-  const apiResult = searchFromFullCache({ pestName: q, page: 1, pageSize })
-  const apiList = (apiResult?.list ?? []).map(r => ({ ...r, matchSourceType: 'api' }))
+  const apiList = searchGroupedFlat(q, pageSize).map(r => ({ ...r, matchSourceType: 'api' }))
+  const apiBrandKeys = new Set(apiList.map(r => normalizeBrandKey(r.brandName)))
   const ql = q.toLowerCase()
   const invList = inventoryPesticides.value
-    .filter(i => i.name.toLowerCase().includes(ql))
+    .filter(i => i.name.toLowerCase().includes(ql) && !apiBrandKeys.has(normalizeBrandKey(i.name)))
     .map(i => ({
       brandName:      i.name,
       pesticideType:  i.pesticideType || '',
@@ -832,8 +861,7 @@ function onNewApBrandInput(val) {
   newApMessage.value = ''
   const q = val.trim()
   if (!q) { newApLinkResults.value = []; return }
-  const result = searchFromFullCache({ pestName: q, page: 1, pageSize: 10 })
-  newApLinkResults.value = result?.list ?? []
+  newApLinkResults.value = searchGroupedFlat(q, 10)
 }
 
 function applyNewApLink(apiItem) {
@@ -873,9 +901,9 @@ function openManualMatch(itemId) {
 }
 
 function searchApiCandidates(query) {
-  if (!query.trim()) { matchResults.value = []; return }
-  const result = searchFromFullCache({ pestName: query.trim(), page: 1, pageSize: 12 })
-  matchResults.value = result?.list ?? []
+  const q = query.trim()
+  if (!q) { matchResults.value = []; return }
+  matchResults.value = searchGroupedFlat(q, 12)
 }
 
 function applyMatch(itemId, apiItem) {
@@ -993,20 +1021,22 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
           <div v-if="histYears.length" class="sort-filter-bar">
             <span class="summary-chip">{{ histIsFiltered ? localeStore.t('common.filteredCount', { shown: filteredTreatments.length, total: treatStore.treatments.length }) : localeStore.t('common.totalCount', { n: filteredTreatments.length }) }}</span>
             <span class="filter-sep">|</span>
-            <button
-              class="ghost compact-btn"
-              :class="{ 'hist-year-active': histYear === '' }"
-              type="button"
-              @click="histYear = ''"
-            >전체</button>
-            <button
-              v-for="y in histYears"
-              :key="y"
-              class="ghost compact-btn"
-              :class="{ 'hist-year-active': histYear === y }"
-              type="button"
-              @click="histYear = y"
-            >{{ y }}년</button>
+            <div class="seg-filter">
+              <button
+                class="seg-btn"
+                :class="{ active: histYear === '' }"
+                type="button"
+                @click="histYear = ''"
+              >전체 ({{ treatStore.treatments.length }})</button>
+              <button
+                v-for="y in histYears"
+                :key="y"
+                class="seg-btn"
+                :class="{ active: histYear === y }"
+                type="button"
+                @click="histYear = y"
+              >{{ y }}년 ({{ histYearCounts[y] ?? 0 }})</button>
+            </div>
             <button
               class="ghost ap-unmatched-btn"
               :class="{ 'ap-unmatched-active': histUnmatchedOnly }"
@@ -1309,10 +1339,10 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
         <div class="sort-filter-bar">
           <span class="summary-chip">{{ apIsFiltered ? localeStore.t('common.filteredCount', { shown: filteredApList.length, total: apStats.total }) : localeStore.t('common.totalCount', { n: filteredApList.length }) }}</span>
           <span class="filter-sep">|</span>
-          <div class="ap-src-filter">
-            <button class="ap-src-btn" :class="{ active: apSourceFilter === 'all' }"       @click="apSourceFilter = 'all'">전체 ({{ apStats.total }})</button>
-            <button class="ap-src-btn" :class="{ active: apSourceFilter === 'purchase' }"  @click="apSourceFilter = 'purchase'">구입가능 ({{ apSourceCounts.purchase }})</button>
-            <button class="ap-src-btn" :class="{ active: apSourceFilter === 'inventory' }" @click="apSourceFilter = 'inventory'">재고 ({{ apSourceCounts.inventory }})</button>
+          <div class="seg-filter">
+            <button class="seg-btn" :class="{ active: apSourceFilter === 'all' }"       @click="apSourceFilter = 'all'">전체 ({{ apStats.total }})</button>
+            <button class="seg-btn" :class="{ active: apSourceFilter === 'purchase' }"  @click="apSourceFilter = 'purchase'">구입가능 ({{ apSourceCounts.purchase }})</button>
+            <button class="seg-btn" :class="{ active: apSourceFilter === 'inventory' }" @click="apSourceFilter = 'inventory'">재고 ({{ apSourceCounts.inventory }})</button>
           </div>
           <button
             class="ghost ap-unmatched-btn"
@@ -1702,14 +1732,6 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 /* ── 농약정보 연결 ── */
 .link-btn-active { background: var(--primary) !important; color: var(--primary-ink) !important; border-color: var(--primary) !important; }
 
-/* button.ghost(요소+클래스)보다 우선하도록 클래스 두 개를 겹쳐 특정도를 높인다 */
-.ghost.hist-year-active {
-  background: var(--surface-strong);
-  border-color: var(--primary);
-  color: var(--primary);
-  font-weight: 600;
-}
-
 .hist-date-divider {
   display: flex;
   align-items: center;
@@ -1913,28 +1935,6 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
   flex-wrap: wrap;
 }
 .ap-stats { font-size: 0.8rem; color: var(--muted); }
-
-.ap-src-filter {
-  display: flex;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.ap-src-btn {
-  background: none;
-  border: none;
-  border-right: 1px solid var(--line);
-  padding: 0.22rem 0.6rem;
-  font-size: 0.75rem;
-  cursor: pointer;
-  color: var(--muted);
-  white-space: nowrap;
-  font-family: inherit;
-}
-.ap-src-btn:last-child { border-right: none; }
-.ap-src-btn.active { background: var(--primary); color: var(--primary-ink); font-weight: 600; }
-.ap-src-btn:not(.active):hover { background: var(--surface-strong); color: var(--text); }
 
 .ap-filter-input {
   flex: 1;

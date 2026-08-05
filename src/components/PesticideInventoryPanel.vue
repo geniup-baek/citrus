@@ -5,7 +5,7 @@ import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { confirm } from '../composables/useConfirm'
-import { searchFromFullCache, findBestMatchInCache } from '../services/pesticide.js'
+import { searchGroupedFromFullCache, findBestMatchInCache } from '../services/pesticide.js'
 import { moaColor } from '../services/recommend.js'
 import { usePesticideTypes } from '../composables/usePesticideTypes.js'
 import { useIsMobile } from '../composables/useIsMobile.js'
@@ -95,11 +95,19 @@ const categoryClass = (cat) => ({
 
 const invMatchResults = ref([])
 
+// 목록(SVC01)은 같은 상표명이 대상 병해충 수만큼 레코드로 나뉘어 있으므로,
+// 상표명 기준으로 묶어서 한 줄만 보여준다(병해충은 요약해서 함께 표시).
+function pestSummary(group) {
+  const shown = group.targetPests.slice(0, 3).join(', ')
+  const rest = group.targetPests.length - 3
+  return rest > 0 ? `${shown} 외 ${rest}종` : shown
+}
+
 function onNameInput() {
   form.matchSource = '' // 이름을 직접 고치는 중이므로 자동 연결 표시를 해제한다
   const q = form.name.trim()
   if (!q) { invMatchResults.value = []; return }
-  const result = searchFromFullCache({ pestName: q, page: 1, pageSize: 10 })
+  const result = searchGroupedFromFullCache({ pestName: q, page: 1, pageSize: 10 })
   invMatchResults.value = result?.list ?? []
 }
 
@@ -109,8 +117,8 @@ function applyInvMatch(apiItem) {
     const mapped = resolveType(apiItem.pesticideType)
     if (pesticideTypes.value.includes(mapped)) form.pesticideType = mapped
   }
-  if (apiItem.modeOfAction && apiItem.modeOfAction !== '-') form.actionGroup  = apiItem.modeOfAction
-  if (apiItem.name)                                          form.productName  = apiItem.name
+  if (apiItem.modeOfActions?.[0]) form.actionGroup = apiItem.modeOfActions[0]
+  if (apiItem.name)                form.productName = apiItem.name
   form.matchSource = 'auto'
   invMatchResults.value = []
 }
@@ -135,7 +143,7 @@ function openLink(itemId) {
 
 function searchLinkCandidates(query) {
   if (!query.trim()) { linkResults.value = []; return }
-  const result = searchFromFullCache({ pestName: query.trim(), page: 1, pageSize: 12 })
+  const result = searchGroupedFromFullCache({ pestName: query.trim(), page: 1, pageSize: 12 })
   linkResults.value = result?.list ?? []
 }
 
@@ -146,7 +154,7 @@ async function applyLink(item, apiItem) {
     name:          apiItem.brandName || item.name,
     category:      CATEGORY,
     pesticideType: pesticideTypes.value.includes(mappedType) ? mappedType : (item.pesticideType || ''),
-    actionGroup:   (apiItem.modeOfAction && apiItem.modeOfAction !== '-') ? apiItem.modeOfAction : (item.actionGroup || ''),
+    actionGroup:   apiItem.modeOfActions?.[0] || (item.actionGroup || ''),
     productName:   apiItem.name || item.productName || '',
     matchSource:   'auto',
     notes:         item.notes || '',
@@ -709,14 +717,14 @@ async function printReport() {
             <div v-if="linkResults.length" class="link-results">
               <div
                 v-for="r in linkResults"
-                :key="`${r.pestiCode}-${r.diseaseUseSeq}`"
+                :key="r.key"
                 class="link-result-item"
                 @click="applyLink(item, r)"
               >
                 <span class="link-result-brand">{{ r.brandName }}</span>
                 <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(resolveType(r.pesticideType))">{{ resolveType(r.pesticideType) }}</span>
-                <span v-if="r.modeOfAction && r.modeOfAction !== '-'" class="moa-badge" :style="{ background: moaColor(r.modeOfAction) }">{{ r.modeOfAction }}</span>
-                <span class="link-result-pest">{{ r.targetPest }}</span>
+                <span v-if="r.modeOfActions?.[0]" class="moa-badge" :style="{ background: moaColor(r.modeOfActions[0]) }">{{ r.modeOfActions[0] }}</span>
+                <span class="link-result-pest">{{ pestSummary(r) }}</span>
               </div>
             </div>
             <p v-else-if="linkQuery.trim().length > 1" class="muted text-sm" style="padding:0.4rem 0;">
@@ -871,14 +879,14 @@ async function printReport() {
         <div v-if="invMatchResults.length" class="inv-api-panel">
           <div
             v-for="r in invMatchResults"
-            :key="`${r.pestiCode}-${r.diseaseUseSeq}`"
+            :key="r.key"
             class="inv-api-item"
             @mousedown.prevent="applyInvMatch(r)"
           >
             <span class="inv-api-brand">{{ r.brandName }}</span>
             <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(resolveType(r.pesticideType))">{{ resolveType(r.pesticideType) }}</span>
-            <span v-if="r.modeOfAction && r.modeOfAction !== '-'" class="moa-badge" :style="{ background: moaColor(r.modeOfAction) }">{{ r.modeOfAction }}</span>
-            <span class="inv-api-pest">{{ r.targetPest }}</span>
+            <span v-if="r.modeOfActions?.[0]" class="moa-badge" :style="{ background: moaColor(r.modeOfActions[0]) }">{{ r.modeOfActions[0] }}</span>
+            <span class="inv-api-pest">{{ pestSummary(r) }}</span>
           </div>
         </div>
         <label>{{ t('pesticideInventory.pesticideType') }}

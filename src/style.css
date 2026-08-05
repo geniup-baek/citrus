@@ -21,6 +21,8 @@
   --radius-control: 0.5rem;
   --radius-panel: 0.75rem;
   --radius-pill: 999px;
+  /* 목록 위 정렬·필터 바에 나오는 알약/버튼/드롭다운의 세로 높이 통일 */
+  --filter-ctl-h: 1.7rem;
 
   /* 상태 배지 색상 톤 (농약분류·독성등급·구매/재고출처 등 배지 공용) */
   --tone-green-bg: #f0fdf4;
@@ -578,7 +580,10 @@ button.pill:hover {
   color: var(--text);
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 0.28rem 0.72rem;
+  height: var(--filter-ctl-h);
+  padding: 0 0.72rem;
+  display: inline-flex;
+  align-items: center;
   font-size: 0.82rem;
   cursor: pointer;
   transition: background 0.15s;
@@ -667,13 +672,18 @@ button.pill:hover {
 }
 
 .compact-select {
-  padding: 0.28rem 0.45rem;
+  height: var(--filter-ctl-h);
+  padding: 0 0.45rem;
   font-size: 0.82rem;
   border-radius: 0.5rem;
 }
 
 .compact-btn {
-  padding: 0.28rem 0.55rem;
+  height: var(--filter-ctl-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.55rem;
   font-size: 0.82rem;
 }
 
@@ -920,9 +930,12 @@ button.pill:hover {
 
 /* 미연결 필터 버튼 (방제이력·가용농약·농약재고 공용) */
 .ap-unmatched-btn {
-  font-size: 0.78rem;
+  height: var(--filter-ctl-h);
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.82rem;
   border-radius: 999px;
-  padding: 0.22rem 0.7rem;
+  padding: 0 0.7rem;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -1293,8 +1306,11 @@ button.pill:hover {
 }
 .type-btn {
   border-radius: var(--radius-pill);
+  height: var(--filter-ctl-h);
+  display: inline-flex;
+  align-items: center;
   font-size: 0.82rem;
-  padding: 0.28rem 0.72rem;
+  padding: 0 0.72rem;
 }
 /* button.ghost(요소+클래스)보다 우선하도록 클래스 두 개를 겹쳐 특정도를 높인다 */
 .ghost.type-btn-active {
@@ -1303,6 +1319,33 @@ button.pill:hover {
   border-color: transparent;
 }
 .result-count { font-size: 0.8rem; color: var(--muted); }
+
+/* ── 세그먼트형 필터 버튼 (여러 옵션을 이어붙인 박스 하나로 표시, 옵션마다 개수 포함) ── */
+.seg-filter {
+  display: flex;
+  height: var(--filter-ctl-h);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.seg-btn {
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--line);
+  padding: 0 0.6rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: var(--muted);
+  white-space: nowrap;
+  font-family: inherit;
+}
+.seg-btn:last-child { border-right: none; }
+.seg-btn.active { background: var(--primary); color: var(--primary-ink); font-weight: 600; }
+.seg-btn:not(.active):hover { background: var(--surface-strong); color: var(--text); }
 
 /* ── 상태 메시지 공용 ── */
 .error-msg { color: var(--danger); font-size: 0.85rem; }

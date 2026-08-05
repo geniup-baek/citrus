@@ -35,6 +35,14 @@ const filteredSurvItems = computed(() => {
 
 const availableYears = computed(() => YEARS.filter(y => survItemsAll.value.some(item => item._year === y)))
 
+const survYearCounts = computed(() => {
+  const counts = {}
+  for (const item of survItemsAll.value) {
+    counts[item._year] = (counts[item._year] || 0) + 1
+  }
+  return counts
+})
+
 function applyAllFromCache() {
   const merged = []
   let latestFetchedAt = null
@@ -150,17 +158,20 @@ onMounted(() => {
   </div>
   <p v-else-if="!loading && !error && cacheInfo && !filteredSurvItems.length" class="empty-msg">해당 연도의 예찰 데이터가 없습니다.</p>
 
-  <div v-if="cacheInfo" class="type-filter">
-    <button
-      v-for="y in ['', ...availableYears]"
-      :key="y || 'all'"
-      class="ghost type-btn"
-      :class="{ 'type-btn-active': yearFilter === y }"
-      @click="yearFilter = y"
-    >
-      {{ y === '' ? '전체' : `${y}년` }}
-    </button>
-    <span v-if="filteredSurvItems.length" class="result-count">총 {{ filteredSurvItems.length }}건</span>
+  <div v-if="cacheInfo" class="sort-filter-bar">
+    <span class="summary-chip">{{ yearFilter ? localeStore.t('common.filteredCount', { shown: filteredSurvItems.length, total: survItemsAll.length }) : localeStore.t('common.totalCount', { n: survItemsAll.length }) }}</span>
+    <span class="filter-sep">|</span>
+    <div class="seg-filter">
+      <button
+        v-for="y in ['', ...availableYears]"
+        :key="y || 'all'"
+        class="seg-btn"
+        :class="{ active: yearFilter === y }"
+        @click="yearFilter = y"
+      >
+        {{ y === '' ? `전체 (${survItemsAll.length})` : `${y}년 (${survYearCounts[y] ?? 0})` }}
+      </button>
+    </div>
   </div>
 
   <ul v-if="filteredSurvItems.length" class="list clean">

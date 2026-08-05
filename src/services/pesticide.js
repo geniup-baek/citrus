@@ -330,8 +330,15 @@ export async function warmFullCache(force = false) {
   } catch {}
 }
 
-function normalizeBrandKey(name) {
+export function normalizeBrandKey(name) {
   return name.toLowerCase().replace(/[\s\-()·.]/g, '')
+}
+
+// 같은 상표명이 병해충마다 레코드로 나뉜 것을 한 줄로 묶을 때 쓰는 키.
+// normalizeBrandKey는 하이픈 등도 지워 "다이센엠-45"와 "다이센엠45"처럼 실제로는 다른 상표명까지
+// 하나로 합쳐버리므로, 그룹핑에는 공백 정리 정도만 하는 엄격한 키를 따로 쓴다.
+function exactBrandKey(name) {
+  return (name || '').trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
 // 전건 캐시(+직접등록)에서 상표명이 정확히(우선) 또는 접두로 일치하는 항목 하나를 찾는다.
@@ -411,7 +418,7 @@ export function searchGroupedFromFullCache({ pestName = '', targetPest = '', pes
   const groups = new Map()
   const seenUsages = new Map() // 그룹 키 → 이미 담은 사용기준 키 집합
   for (const item of list) {
-    const key = normalizeBrandKey(item.brandName || item.name) || `${item.pestiCode}`
+    const key = exactBrandKey(item.brandName || item.name) || `${item.pestiCode}`
     let group = groups.get(key)
     if (!group) {
       group = {
@@ -607,7 +614,7 @@ export function getDetailCoverage() {
   const index = loadDetailIndex()
   const byBrand = new Map() // 상표 키 → 상세 보유 여부
   for (const item of cached.data) {
-    const key = normalizeBrandKey(item.brandName || item.name) || item.pestiCode
+    const key = exactBrandKey(item.brandName || item.name) || item.pestiCode
     const has = byBrand.get(key)
       || ids.has(`${item.pestiCode}-${item.diseaseUseSeq}`)
       || Boolean(index[item.pestiCode])

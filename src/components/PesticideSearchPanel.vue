@@ -4,7 +4,7 @@ import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useFarmsStore } from '../stores/farmsStore.js'
 import { useAppPolicyStore } from '../stores/appPolicyStore.js'
-import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, searchFromFullCache, searchGroupedFromFullCache, splitTargetPests, getTypesFromCache, getDetailCoverage, formatPreHarvest, formatMaxApplications, saveManualPesticide, deleteManualPesticide, loadManualEntries, blankManualUsage, getDetailSummaryFromCache, DETAIL_INDEX_KEY, TOXIC_GRADES, FISH_TOXIC_GRADES } from '../services/pesticide'
+import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, searchFromFullCache, searchGroupedFromFullCache, splitTargetPests, getTypesFromCache, getDetailCoverage, allPesticideRecords, formatPreHarvest, formatMaxApplications, saveManualPesticide, deleteManualPesticide, loadManualEntries, blankManualUsage, getDetailSummaryFromCache, DETAIL_INDEX_KEY, TOXIC_GRADES, FISH_TOXIC_GRADES } from '../services/pesticide'
 import { confirm } from '../composables/useConfirm'
 import { withCache, formatFetchedAt, pullSharedCache } from '../services/cache.js'
 
@@ -20,7 +20,6 @@ const typeFilter = ref('all')
 
 const items = ref([])
 const total = ref(0)
-const recordTotal = ref(0)
 // 같은 상표명의 레코드(병해충별로 나뉨)를 한 건으로 묶어서 볼지 여부
 const groupMode = ref(true)
 const page = ref(1)
@@ -36,10 +35,20 @@ const cacheInfo = ref(null) // { error, fetchedAt } | null
 const detailCoverage = ref({ brands: 0, withDetail: 0 })
 const manualCount = ref(0) // 직접등록 농약 수
 const manualOnly = ref(false)
+const groupedTotal = ref(0)   // 필터 없이 상표명으로 묶었을 때의 전체 종수
+const ungroupedTotal = ref(0) // 필터 없이 병해충별로 펼쳤을 때의 전체 건수
+
+const isFiltered = computed(() =>
+  typeFilter.value !== 'all' || manualOnly.value || !!pestNameInput.value.trim() || !!targetPestInput.value.trim(),
+)
+// 요약칩의 분모 — 현재 상표명묶기/병해충별 보기 모드에 맞는 전체 건수를 쓴다.
+const grandTotal = computed(() => groupMode.value ? groupedTotal.value : ungroupedTotal.value)
 
 function refreshStats() {
   detailCoverage.value = getDetailCoverage()
   manualCount.value = loadManualEntries().length
+  groupedTotal.value = detailCoverage.value.brands + manualCount.value
+  ungroupedTotal.value = allPesticideRecords().length
 }
 
 const expandedId = ref(null)
@@ -63,12 +72,10 @@ function loadFromCache() {
   if (local) {
     items.value = local.list
     total.value = local.total
-    recordTotal.value = local.recordTotal ?? local.total
     cacheInfo.value = { error: null, fetchedAt: local.fetchedAt }
   } else {
     items.value = []
     total.value = 0
-    recordTotal.value = 0
     cacheInfo.value = null
   }
 }
@@ -389,16 +396,20 @@ onMounted(async () => {
     </div>
   </div>
 
-  <div class="type-filter">
-    <button
-      v-for="opt in ['all', ...availableTypes]"
-      :key="opt"
-      class="ghost type-btn"
-      :class="{ 'type-btn-active': typeFilter === opt }"
-      @click="typeFilter = opt; search()"
-    >
-      {{ opt === 'all' ? t('pesticide.typeAll') : opt }}
-    </button>
+  <div class="sort-filter-bar">
+    <span v-if="total > 0" class="summary-chip">{{ isFiltered ? localeStore.t('common.filteredCount', { shown: total, total: grandTotal }) : localeStore.t('common.totalCount', { n: total }) }}</span>
+    <span class="filter-sep">|</span>
+    <div class="seg-filter">
+      <button
+        v-for="opt in ['all', ...availableTypes]"
+        :key="opt"
+        class="seg-btn"
+        :class="{ active: typeFilter === opt }"
+        @click="typeFilter = opt; search()"
+      >
+        {{ opt === 'all' ? t('pesticide.typeAll') : opt }}
+      </button>
+    </div>
     <button
       v-if="manualOnly || manualCount > 0"
       class="ghost type-btn"
@@ -406,12 +417,8 @@ onMounted(async () => {
       type="button"
       @click="manualOnly = !manualOnly; search()"
     >직접등록만 ({{ manualCount }})</button>
-    <span v-if="total > 0" class="result-count">
-      {{ t('pest.totalCount').replace('{count}', total) }}
-      <span v-if="groupMode && recordTotal > total" class="muted">(병해충별 {{ recordTotal }}건)</span>
-    </span>
     <span
-      v-if="detailCoverage.brands > 0"
+      v-if="farmsStore.isAdminMode && detailCoverage.brands > 0"
       class="result-count coverage-count"
       title="상세정보(독성 등)를 가져온 상표 수 / 전체 상표 수"
     >상세 {{ detailCoverage.withDetail }}/{{ detailCoverage.brands }}종</span>
