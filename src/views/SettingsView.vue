@@ -243,6 +243,7 @@ const restoreError = ref('')
 const pendingRestore = ref(null)
 const restoreInput = ref(null)
 const restoring = ref(false)
+const exporting = ref(false)
 
 const datasetLabels = {
   facilities: () => localeStore.t('nav.facilities'),
@@ -273,22 +274,27 @@ const currentCounts = computed(() => {
 })
 
 async function exportBackup() {
-  const payload = await store.exportBackupWithPhotos()
-  payload.data.treatments = treatStore.treatments
-  payload.data.recommendSettings = { ...recSettingsStore.settings }
-  payload.data.availablePesticide = apStore.exportData()
-  payload.farm = { id: farmsStore.activeFarm?.id, name: farmsStore.activeFarm?.name }
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `citrus-backup-${(farmsStore.activeFarm?.name || 'farm')}-${payload.exportedAt.slice(0, 10)}.json`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-  restoreError.value = ''
-  backupMessage.value = localeStore.t('settings.backupExported', { date: payload.exportedAt.slice(0, 10) })
+  exporting.value = true
+  try {
+    const payload = await store.exportBackupWithPhotos()
+    payload.data.treatments = treatStore.treatments
+    payload.data.recommendSettings = { ...recSettingsStore.settings }
+    payload.data.availablePesticide = apStore.exportData()
+    payload.farm = { id: farmsStore.activeFarm?.id, name: farmsStore.activeFarm?.name }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `citrus-backup-${(farmsStore.activeFarm?.name || 'farm')}-${payload.exportedAt.slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    restoreError.value = ''
+    backupMessage.value = localeStore.t('settings.backupExported', { date: payload.exportedAt.slice(0, 10) })
+  } finally {
+    exporting.value = false
+  }
 }
 
 async function handleRestoreFile(event) {
@@ -1035,7 +1041,7 @@ function saveEdit(key, i, isPair) {
           </div>
 
           <div class="row-actions settings-backup-actions">
-            <button type="button" @click="exportBackup">{{ localeStore.t('settings.backupExport') }}</button>
+            <button type="button" :disabled="exporting" @click="exportBackup">{{ exporting ? '내보내는 중...' : localeStore.t('settings.backupExport') }}</button>
             <button class="ghost" type="button" @click="restoreInput?.click()">{{ localeStore.t('settings.backupImport') }}</button>
             <input ref="restoreInput" accept="application/json,.json" type="file" hidden @change="handleRestoreFile" />
           </div>
