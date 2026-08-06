@@ -356,6 +356,31 @@ export const defaultIssues = [
   },
 ]
 
+export const defaultUsageGuides = [
+  {
+    id: 'guide-1',
+    title: '스프링클러를 이용한 농약살포',
+    description: '재배동 스프링클러 시스템으로 농약을 살포하는 순서입니다.',
+    steps: [
+      { id: 'guide-1-step-1', text: '농약을 정확한 배율로 물에 희석해 저장탱크에 채운다.', photos: [] },
+      { id: 'guide-1-step-2', text: '스프링클러 밸브를 열고 저장탱크의 펌프를 가동한다.', photos: [] },
+      { id: 'guide-1-step-3', text: '전체 구역에 골고루 살포되는지 확인하며 압력을 조절한다.', photos: [] },
+      { id: 'guide-1-step-4', text: '살포가 끝나면 펌프를 끄고 배관에 남은 약제를 깨끗한 물로 헹궈낸다.', photos: [] },
+    ],
+  },
+  {
+    id: 'guide-2',
+    title: '제초기 사용법',
+    description: '휴대용 예초기로 재배동 주변 잡초를 제거하는 순서입니다.',
+    steps: [
+      { id: 'guide-2-step-1', text: '연료·엔진오일 잔량을 확인하고 보호장비(보안경·장갑)를 착용한다.', photos: [] },
+      { id: 'guide-2-step-2', text: '시동을 걸고 회전 날이 안정적으로 도는지 확인한다.', photos: [] },
+      { id: 'guide-2-step-3', text: '작업 구역을 좌우로 이동하며 잡초를 제거한다. 나무 밑동은 접촉하지 않도록 주의한다.', photos: [] },
+      { id: 'guide-2-step-4', text: '작업 종료 후 날에 낀 이물질을 제거하고 보관한다.', photos: [] },
+    ],
+  },
+]
+
 export const defaultInventory = [
   {
     id: 'inv-1',

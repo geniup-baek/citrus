@@ -252,6 +252,7 @@ const datasetLabels = {
   scheduleRules: () => localeStore.t('settings.backupRules'),
   issues: () => localeStore.t('nav.issues'),
   inventory: () => '재고',
+  usageGuides: () => localeStore.t('nav.usageGuides'),
   treatments: () => '방제기록',
   availablePesticides: () => '가용농약',
 }

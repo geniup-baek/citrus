@@ -6,11 +6,12 @@ import FacilitiesPanel from '../components/FacilitiesPanel.vue'
 import AncillaryPanel from '../components/AncillaryPanel.vue'
 import SeedlingsPanel from '../components/SeedlingsPanel.vue'
 import InventoryPanel from '../components/InventoryPanel.vue'
+import UsageGuidePanel from '../components/UsageGuidePanel.vue'
 
 const localeStore = useLocaleStore()
 const route = useRoute()
 
-const TAB_KEYS = ['facilities', 'ancillary', 'seedlings', 'inventory']
+const TAB_KEYS = ['facilities', 'ancillary', 'seedlings', 'inventory', 'usageGuides']
 const activeTab = ref(TAB_KEYS.includes(route.query.tab) ? route.query.tab : 'facilities')
 </script>
 
@@ -26,12 +27,14 @@ const activeTab = ref(TAB_KEYS.includes(route.query.tab) ? route.query.tab : 'fa
       <button class="tab-btn" :class="{ active: activeTab === 'ancillary' }" @click="activeTab = 'ancillary'">{{ localeStore.t('nav.ancillary') }}</button>
       <button class="tab-btn" :class="{ active: activeTab === 'seedlings' }" @click="activeTab = 'seedlings'">{{ localeStore.t('nav.seedlings') }}</button>
       <button class="tab-btn" :class="{ active: activeTab === 'inventory' }" @click="activeTab = 'inventory'">{{ localeStore.t('nav.inventory') }}</button>
+      <button class="tab-btn" :class="{ active: activeTab === 'usageGuides' }" @click="activeTab = 'usageGuides'">{{ localeStore.t('nav.usageGuides') }}</button>
     </div>
 
     <FacilitiesPanel v-if="activeTab === 'facilities'" />
     <AncillaryPanel v-if="activeTab === 'ancillary'" />
     <SeedlingsPanel v-if="activeTab === 'seedlings'" />
     <InventoryPanel v-if="activeTab === 'inventory'" />
+    <UsageGuidePanel v-if="activeTab === 'usageGuides'" />
   </div>
 </template>
 

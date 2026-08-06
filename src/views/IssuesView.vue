@@ -461,7 +461,6 @@ clearForm()
                 <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
                   <img :src="store.photoSrc(photo)" :alt="localeStore.t('issues.issueEvidence')" />
                 </button>
-                <figcaption>{{ photo.name }}</figcaption>
               </figure>
             </div>
           </div>
@@ -519,7 +518,6 @@ clearForm()
                       <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
                         <img :src="store.photoSrc(photo)" :alt="localeStore.t('issues.issueEvidence')" />
                       </button>
-                      <figcaption>{{ photo.name }}</figcaption>
                     </figure>
                   </div>
                 </template>

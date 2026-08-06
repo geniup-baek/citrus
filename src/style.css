@@ -1184,15 +1184,6 @@ button.pill:hover {
   display: block;
 }
 
-.photo-card figcaption {
-  font-size: 0.75rem;
-  color: var(--muted);
-  padding: 0.45rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .photo-card-btn {
   display: block;
   width: 100%;

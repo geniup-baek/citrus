@@ -268,7 +268,6 @@ async function saveAncillary() {
                 <button type="button" class="photo-card-btn" @click="openLightbox(photo)">
                   <img :src="store.photoSrc(photo)" :alt="localeStore.t('ancillary.itemPhoto')" />
                 </button>
-                <figcaption>{{ photo.name }}</figcaption>
               </figure>
             </div>
           </div>
