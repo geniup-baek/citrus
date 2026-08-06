@@ -411,8 +411,8 @@ async function deleteStep(guide, step) {
           </div>
           <div class="row-actions">
             <button :class="{ ghost: expandedId !== guide.id }" type="button" @click="toggleStepPanel(guide)">{{ localeStore.t('usageGuides.steps') }}</button>
-            <button class="ghost" type="button" @click="exportGuide(guide)">{{ localeStore.t('usageGuides.exportFile') }}</button>
             <template v-if="showForm">
+              <button class="ghost" type="button" @click="exportGuide(guide)">{{ localeStore.t('usageGuides.exportFile') }}</button>
               <button class="ghost" :disabled="i === 0" @click="moveGuide(i, -1)">{{ localeStore.t('common.moveUp') }}</button>
               <button class="ghost" :disabled="i === store.state.usageGuides.length - 1" @click="moveGuide(i, 1)">{{ localeStore.t('common.moveDown') }}</button>
               <button :class="{ ghost: editingId !== guide.id }" @click="editGuide(guide)">{{ localeStore.t('common.edit') }}</button>
