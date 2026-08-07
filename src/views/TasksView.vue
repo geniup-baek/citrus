@@ -163,6 +163,8 @@ const weekdayOptions = computed(() => [
 
 const scheduleRules = computed(() => store.state.scheduleRules)
 
+const intervalUnit = computed(() => FREQUENCY_UNIT[schedulerForm.frequency] || '일')
+
 const selectedTask = computed(() =>
   store.state.tasks.find((t) => t.id === selectedTaskId.value),
 )
@@ -329,6 +331,15 @@ function weekdayLabel(value) {
   return weekdayOptions.value.find((d) => d.value === value)?.label || value
 }
 
+const FREQUENCY_UNIT = { 매일: '일', 매주: '주', 매월: '개월' }
+
+// 주기가 1이면 "매일/매주/매월" 그대로, 2 이상이면 "N일마다" 식으로 표시한다.
+function frequencyLabel(rule) {
+  const unit = FREQUENCY_UNIT[rule.frequency] || ''
+  const interval = Math.max(1, Number(rule.interval) || 1)
+  return interval > 1 ? `${interval}${unit}마다` : rule.frequency
+}
+
 function priorityDotClass(priority) {
   if (priority === '높음') return 'priority-dot high'
   if (priority === '낮음') return 'priority-dot low'
@@ -430,17 +441,6 @@ function backToAdd() {
   selectedTaskId.value = ''
   rightPanel.value = 'task'
   formOpen.value = true
-}
-
-// '+ 새 작업' — 새 작업 추가 폼으로 전환 후, 모바일에서 폼이 보이도록 스크롤
-function newEntry() {
-  backToAdd()
-  if (isMobile.value) {
-    nextTick(() => {
-      const id = viewMode.value === 'calendar' ? 'task-form-top-calendar' : 'task-form-top-list'
-      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
-  }
 }
 
 function exitEdit() {
@@ -1051,7 +1051,7 @@ clearSchedulerForm()
                   {{ rule.title }}
                 </p>
                 <p class="item-meta">
-                  {{ rule.category }} · {{ rule.frequency }}
+                  {{ rule.category }} · {{ frequencyLabel(rule) }}
                   <template v-if="rule.frequency === '매주'">({{ weekdayLabel(rule.dayOfWeek) }}요일)</template>
                   <template v-if="rule.frequency === '매월'">(매월 {{ rule.dayOfMonth }}일)</template>
                 </p>
@@ -1083,6 +1083,9 @@ clearSchedulerForm()
                   <option value="매주">{{ localeStore.t('tasks.frequencyWeekly') }}</option>
                   <option value="매월">{{ localeStore.t('tasks.frequencyMonthly') }}</option>
                 </select>
+              </label>
+              <label>{{ localeStore.t('tasks.interval') }} ({{ intervalUnit }})
+                <input v-model="schedulerForm.interval" min="1" type="number" />
               </label>
               <label v-if="schedulerForm.frequency === '매주'">{{ localeStore.t('tasks.weekday') }}
                 <select v-model="schedulerForm.dayOfWeek">
@@ -1148,7 +1151,7 @@ clearSchedulerForm()
           </label>
           <div class="row-actions">
             <button type="submit">{{ localeStore.t('common.change') }}</button>
-            <button class="ghost" type="button" @click="newEntry">{{ localeStore.t('tasks.newEntry') }}</button>
+            <button class="ghost" type="button" @click="backToAdd">{{ localeStore.t('common.cancel') }}</button>
           </div>
         </form>
 
