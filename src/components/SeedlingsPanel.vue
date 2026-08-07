@@ -220,13 +220,6 @@ function openAdd() {
   formOpen.value = true
 }
 
-// '+ 새 묘목' — 새 입력 폼으로 전환 후, 모바일에서 폼이 보이도록 스크롤
-function newEntry() {
-  clearForm()
-  if (isMobile.value) {
-    nextTick(() => document.getElementById('seed-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-}
 
 function clearBatch() {
   batch.greenhouseId = store.state.facilities[0]?.id || ''
@@ -578,7 +571,7 @@ clearForm()
             <p class="muted">{{ seedling.notes }}</p>
           </div>
           <div class="row-actions">
-            <button :class="{ ghost: expandedId !== seedling.id }" type="button" @click="toggleLogPanel(seedling)">{{ localeStore.t('seedlings.growthLog') }}</button>
+            <button :class="{ ghost: expandedId !== seedling.id }" type="button" @click="toggleLogPanel(seedling)">{{ localeStore.t('seedlings.growthLog') }} {{ expandedId === seedling.id ? '▲' : '▼' }}</button>
             <template v-if="showForm">
               <button :class="{ ghost: editingId !== seedling.id }" @click="editSeedling(seedling)">{{ localeStore.t('common.edit') }}</button>
               <button class="danger" @click="confirmDeleteSeedling(seedling)">{{ localeStore.t('common.delete') }}</button>
@@ -804,7 +797,7 @@ clearForm()
         </label>
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('seedlings.newEntry') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.cancel') }}</button>
         </div>
       </form>
       </template>

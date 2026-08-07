@@ -154,13 +154,6 @@ function openAdd() {
   formOpen.value = true
 }
 
-// '+ 새 품목' — 새 입력 폼으로 전환 후, 모바일에서 폼이 보이도록 스크롤
-function newEntry() {
-  clearForm()
-  if (isMobile.value) {
-    nextTick(() => document.getElementById('inv-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-}
 
 function editItem(item) {
   // 이미 이 품목 편집 중이면 그대로 둔다(재클릭해도 닫지 않음)
@@ -452,7 +445,7 @@ clearForm()
 
           <div class="row-actions">
             <template v-if="showForm">
-              <button :class="{ ghost: expandedId !== item.id }" type="button" @click="toggleExpand(item)">{{ localeStore.t('inventory.inOut') }}</button>
+              <button :class="{ ghost: expandedId !== item.id }" type="button" @click="toggleExpand(item)">{{ localeStore.t('inventory.inOut') }} {{ expandedId === item.id ? '▲' : '▼' }}</button>
               <button :class="{ ghost: editingId !== item.id }" type="button" @click="editItem(item)">{{ localeStore.t('common.edit') }}</button>
               <button class="danger" type="button" @click="deleteItem(item)">{{ localeStore.t('common.delete') }}</button>
             </template>
@@ -540,7 +533,7 @@ clearForm()
         </label>
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('inventory.newEntry') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.cancel') }}</button>
         </div>
       </form>
       <p class="muted text-sm">{{ localeStore.t('inventory.inOut') }}로 규격·유효기간별 재고를 등록·관리합니다.</p>

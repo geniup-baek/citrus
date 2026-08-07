@@ -64,7 +64,6 @@ export const messages = {
   facilities: {
     editTitle: '재배동 편집',
     addTitle: '재배동 추가',
-    newEntry: '+ 새 재배동',
     name: '동 이름',
     notes: '메모',
     notesPlaceholder: '운영 관련 메모 입력',
@@ -79,7 +78,6 @@ export const messages = {
   ancillary: {
     editTitle: '시설·장비 편집',
     addTitle: '시설·장비 추가',
-    newEntry: '+ 새 시설·장비',
     name: '명칭',
     category: '구분',
     categoryFacility: '시설',
@@ -97,7 +95,6 @@ export const messages = {
   seedlings: {
     editTitle: '묘목 편집',
     addTitle: '묘목 추가',
-    newEntry: '+ 새 묘목',
     greenhouse: '재배동(Greenhouse)',
     position: '식재 위치(Position)',
     positionRow: '열(Row)',
@@ -148,7 +145,6 @@ export const messages = {
     importFile: '불러오기',
     editTitle: '사용법 편집',
     addTitle: '사용법 추가',
-    newEntry: '+ 새 사용법',
     guideTitle: '제목',
     guideTitlePlaceholder: '예) 스프링클러를 이용한 농약살포',
     description: '설명',
@@ -248,7 +244,6 @@ export const messages = {
   },
   issues: {
     editTitle: '문제 편집',
-    newEntry: '+ 새 문제',
     recordIssue: '문제 기록',
     issueTitle: '문제 제목',
     issueTitlePlaceholder: '급격한 황화 발생',
@@ -281,7 +276,6 @@ export const messages = {
     overview: '비료 현황',
     addItem: '품목 등록',
     editItem: '품목 수정',
-    newEntry: '+ 새 품목',
     name: '품목명',
     namePlaceholder: '예: 유안, 복합비료 21-17-17',
     notes: '메모',

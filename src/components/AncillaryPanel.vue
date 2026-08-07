@@ -63,14 +63,6 @@ function moveAncillary(i, dir) {
   store.reorderAncillaries(moved(store.state.ancillaries, i, dir))
 }
 
-// '+ 새 시설·장비' — 새 입력 폼으로 전환 후, 모바일에서 폼이 보이도록 스크롤
-function newEntry() {
-  clearForm()
-  if (isMobile.value) {
-    nextTick(() => document.getElementById('anc-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-}
-
 async function confirmDeleteAncillary(item) {
   const ok = await confirm({ message: localeStore.t('confirm.ancillary', { name: item.name }) })
   if (ok) await store.removeAncillary(item.id)
@@ -337,7 +329,7 @@ async function saveAncillary() {
 
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('ancillary.newEntry') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.cancel') }}</button>
         </div>
       </form>
     </article>

@@ -215,13 +215,6 @@ function openAdd() {
   showForm.value = true
 }
 
-function newEntry() {
-  clearForm()
-  if (isMobile.value) {
-    nextTick(() => document.getElementById('guide-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-}
-
 function editGuide(guide) {
   form.id = guide.id
   form.title = guide.title
@@ -410,7 +403,7 @@ async function deleteStep(guide, step) {
             <p class="item-meta">{{ localeStore.t('usageGuides.steps') }} {{ guide.steps?.length || 0 }}</p>
           </div>
           <div class="row-actions">
-            <button :class="{ ghost: expandedId !== guide.id }" type="button" @click="toggleStepPanel(guide)">{{ localeStore.t('usageGuides.steps') }}</button>
+            <button :class="{ ghost: expandedId !== guide.id }" type="button" @click="toggleStepPanel(guide)">{{ localeStore.t('usageGuides.steps') }} {{ expandedId === guide.id ? '▲' : '▼' }}</button>
             <template v-if="showForm">
               <button class="ghost" type="button" @click="exportGuide(guide)">{{ localeStore.t('usageGuides.exportFile') }}</button>
               <button class="ghost" :disabled="i === 0" @click="moveGuide(i, -1)">{{ localeStore.t('common.moveUp') }}</button>
@@ -536,7 +529,7 @@ async function deleteStep(guide, step) {
 
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('usageGuides.newEntry') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.cancel') }}</button>
         </div>
       </form>
     </article>

@@ -283,12 +283,6 @@ watch(displayedItems, (list) => {
 })
 
 function openAdd() { clearForm(); showForm.value = true }
-function newEntry() {
-  clearForm()
-  if (isMobile.value) {
-    nextTick(() => document.getElementById('pip-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-}
 
 function editItem(item) {
   if (editingId.value === item.id) return
@@ -693,7 +687,7 @@ async function printReport() {
 
           <div class="row-actions">
             <template v-if="showForm">
-              <button :class="{ ghost: expandedId !== item.id }" type="button" @click="toggleExpand(item)">{{ t('inventory.inOut') }}</button>
+              <button :class="{ ghost: expandedId !== item.id }" type="button" @click="toggleExpand(item)">{{ t('inventory.inOut') }} {{ expandedId === item.id ? '▲' : '▼' }}</button>
               <button
                 class="ghost"
                 :class="{ 'link-btn-active': linkingItemId === item.id }"
@@ -905,7 +899,7 @@ async function printReport() {
         </label>
         <div class="row-actions">
           <button type="submit">{{ editingId ? t('common.change') : t('common.add') }}</button>
-          <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ t('inventory.newEntry') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ t('common.cancel') }}</button>
         </div>
       </form>
       <p class="muted text-sm">{{ t('inventory.inOut') }}로 규격·유효기간별 재고를 등록·관리합니다.</p>

@@ -175,14 +175,6 @@ function openAdd() {
   showForm.value = true
 }
 
-// '+ 새 재배동' — 새 입력 폼으로 전환 후, 모바일에서 폼이 보이도록 스크롤
-function newEntry() {
-  clearForm()
-  if (isMobile.value) {
-    nextTick(() => document.getElementById('fac-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-}
-
 function editFacility(facility) {
   form.id = facility.id
   form.name = facility.name
@@ -323,7 +315,7 @@ async function saveFacility() {
 
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('facilities.newEntry') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.cancel') }}</button>
         </div>
       </form>
     </article>

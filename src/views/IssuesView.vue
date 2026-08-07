@@ -206,13 +206,6 @@ function closeForm() {
   formOpen.value = false
 }
 
-// '+ 새 문제' — 새 입력 폼으로 전환 후, 모바일에서 폼이 보이도록 스크롤
-function newEntry() {
-  clearForm()
-  if (isMobile.value) {
-    nextTick(() => document.getElementById('issue-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-}
 
 async function confirmDeleteIssue(issue) {
   const steps = (issue.resolutionSteps || []).length
@@ -466,7 +459,7 @@ clearForm()
           </div>
           <div class="row-actions">
             <button class="pill" :class="{ danger: issue.status !== '해결' }" :title="localeStore.t('tasks.statusChange')" @click="cycleIssueStatus(issue)">{{ issueStatusLabel(issue.status) }}</button>
-            <button :class="{ ghost: expandedId !== issue.id }" type="button" @click="toggleLogPanel(issue)">{{ localeStore.t('issues.resolution') }}</button>
+            <button :class="{ ghost: expandedId !== issue.id }" type="button" @click="toggleLogPanel(issue)">{{ localeStore.t('issues.resolution') }} {{ expandedId === issue.id ? '▲' : '▼' }}</button>
             <template v-if="showForm">
               <button :class="{ ghost: editingId !== issue.id }" @click="editIssue(issue)">{{ localeStore.t('common.edit') }}</button>
               <button class="danger" @click="confirmDeleteIssue(issue)">{{ localeStore.t('common.delete') }}</button>
@@ -628,7 +621,7 @@ clearForm()
 
         <div class="row-actions">
           <button type="submit">{{ editingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-          <button v-if="editingId" class="ghost" type="button" @click="newEntry">{{ localeStore.t('issues.newEntry') }}</button>
+          <button v-if="editingId" class="ghost" type="button" @click="clearForm">{{ localeStore.t('common.cancel') }}</button>
         </div>
       </form>
 
