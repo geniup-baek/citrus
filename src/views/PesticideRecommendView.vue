@@ -167,13 +167,6 @@ async function confirmDeleteTreatment(t) {
   await treatStore.deleteTreatment(t.id)
 }
 
-function newHistoryEntry() {
-  resetForm()
-  if (isMobile.value) {
-    nextTick(() => document.getElementById('hist-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-}
-
 // ── 방제이력 농약정보 연결 (공공데이터 + 농약재고 통합 검색) ───────────────────────
 // 공공데이터에 없는 농약(예: 등록 안 된 자재)은 농약재고에 이미 연결해둔 정보로 대신 채울 수 있다.
 function findInventoryMatch(brandName) {
@@ -1187,7 +1180,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
               <button type="submit" :disabled="saving">
                 {{ saving ? '저장 중...' : (editingId ? '저장' : '기록 추가') }}
               </button>
-              <button v-if="editingId" class="ghost" type="button" @click="newHistoryEntry">새 기록</button>
+              <button v-if="editingId" class="ghost" type="button" @click="resetForm">{{ localeStore.t('common.cancel') }}</button>
             </div>
           </form>
           </template>

@@ -410,6 +410,7 @@ export const messages = {
     ancillary: "'{name}'을(를) 삭제합니다.",
     seedling: "묘목 '{name}'을(를) 삭제합니다.\n성장기록 {logs}건과 첨부 사진도 함께 삭제됩니다.",
     task: "작업 '{title}'을(를) 삭제합니다.\n진행기록 {logs}건과 첨부 사진도 함께 삭제됩니다.",
+    scheduleRule: "반복 규칙 '{title}'을(를) 삭제합니다.\n이미 생성된 작업은 그대로 남습니다.",
     issue: "문제 '{title}'을(를) 삭제합니다.\n조치기록 {steps}건과 첨부 사진도 함께 삭제됩니다.",
     inventoryItem: "품목 '{name}'을(를) 삭제합니다.\n입출고 이력 {txns}건도 함께 삭제됩니다.",
     treatment: "{date} '{brandName}' 방제 기록을 삭제합니다.",

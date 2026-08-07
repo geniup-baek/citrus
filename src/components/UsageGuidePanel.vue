@@ -454,8 +454,8 @@ async function deleteStep(guide, step) {
                       <span>{{ step.text }}</span>
                     </span>
                     <span v-if="stepEditMode" class="log-entry-actions">
-                      <button class="ghost icon-btn" type="button" :disabled="si === 0" :title="localeStore.t('common.moveUp')" :aria-label="localeStore.t('common.moveUp')" @click="moveStep(guide, si, -1)">▲</button>
-                      <button class="ghost icon-btn" type="button" :disabled="si === guide.steps.length - 1" :title="localeStore.t('common.moveDown')" :aria-label="localeStore.t('common.moveDown')" @click="moveStep(guide, si, 1)">▼</button>
+                      <button class="ghost icon-btn" type="button" :disabled="si === 0" :title="localeStore.t('common.moveUp')" :aria-label="localeStore.t('common.moveUp')" @click="moveStep(guide, si, -1)">↑</button>
+                      <button class="ghost icon-btn" type="button" :disabled="si === guide.steps.length - 1" :title="localeStore.t('common.moveDown')" :aria-label="localeStore.t('common.moveDown')" @click="moveStep(guide, si, 1)">↓</button>
                       <button class="ghost icon-btn" type="button" :title="localeStore.t('common.edit')" :aria-label="localeStore.t('common.edit')" @click="startEditStep(step)">✎</button>
                       <button class="danger icon-btn" type="button" :title="localeStore.t('common.delete')" :aria-label="localeStore.t('common.delete')" @click="deleteStep(guide, step)">✕</button>
                     </span>

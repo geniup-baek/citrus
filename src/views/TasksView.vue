@@ -687,6 +687,11 @@ async function saveScheduleRule() {
   })
 }
 
+async function confirmDeleteScheduleRule(rule) {
+  const ok = await confirm({ message: localeStore.t('confirm.scheduleRule', { title: rule.title }) })
+  if (ok) await removeScheduleRule(rule.id)
+}
+
 async function removeScheduleRule(id) {
   await store.removeScheduleRule(id)
   if (schedulerEditingId.value === id) clearSchedulerForm()
@@ -1059,7 +1064,7 @@ clearSchedulerForm()
               </div>
               <div class="row-actions">
                 <button class="ghost" @click="editSchedulerRule(rule)">{{ localeStore.t('common.edit') }}</button>
-                <button class="danger" @click="removeScheduleRule(rule.id)">{{ localeStore.t('common.delete') }}</button>
+                <button class="danger" @click="confirmDeleteScheduleRule(rule)">{{ localeStore.t('common.delete') }}</button>
               </div>
             </li>
             <li v-if="!scheduleRules.length" class="muted text-sm">{{ localeStore.t('tasks.noRules') }}</li>
@@ -1110,7 +1115,7 @@ clearSchedulerForm()
             </label>
             <div class="row-actions">
               <button type="submit">{{ schedulerEditingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-              <button class="ghost" type="button" @click="clearSchedulerForm">{{ localeStore.t('common.reset') }}</button>
+              <button v-if="schedulerEditingId" class="ghost" type="button" @click="clearSchedulerForm">{{ localeStore.t('common.cancel') }}</button>
             </div>
           </form>
 
