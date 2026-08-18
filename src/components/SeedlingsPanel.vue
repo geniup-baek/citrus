@@ -10,6 +10,11 @@ import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
 import { useLightboxBack } from '../composables/useLightboxBack'
 
+// 재배동 목록에서 '묘목 보기'로 넘어온 경우, 그 재배동으로 미리 필터링해서 보여준다.
+const props = defineProps({
+  initialGreenhouseId: { type: String, default: '' },
+})
+
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const recSettingsStore = useRecommendSettingsStore()
@@ -51,7 +56,7 @@ const varieties = computed(() => store.state.appSettings?.seedlingVarieties ?? [
 
 const sortBy = ref('greenhouse')
 const sortDir = ref('asc')
-const filterGreenhouseId = ref('')
+const filterGreenhouseId = ref(props.initialGreenhouseId || '')
 const filterVariety = ref('')
 
 const isFiltered = computed(() => !!filterGreenhouseId.value || !!filterVariety.value)

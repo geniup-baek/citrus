@@ -13,6 +13,13 @@ const route = useRoute()
 
 const TAB_KEYS = ['facilities', 'ancillary', 'seedlings', 'inventory', 'usageGuides']
 const activeTab = ref(TAB_KEYS.includes(route.query.tab) ? route.query.tab : 'facilities')
+
+// 재배동 목록에서 '묘목 보기'를 선택하면 묘목 탭으로 이동해 해당 재배동으로 필터링한다.
+const pendingGreenhouseId = ref('')
+function viewSeedlingsFor(greenhouseId) {
+  pendingGreenhouseId.value = greenhouseId
+  activeTab.value = 'seedlings'
+}
 </script>
 
 <template>
@@ -30,9 +37,9 @@ const activeTab = ref(TAB_KEYS.includes(route.query.tab) ? route.query.tab : 'fa
       <button class="tab-btn" :class="{ active: activeTab === 'usageGuides' }" @click="activeTab = 'usageGuides'">{{ localeStore.t('nav.usageGuides') }}</button>
     </div>
 
-    <FacilitiesPanel v-if="activeTab === 'facilities'" />
+    <FacilitiesPanel v-if="activeTab === 'facilities'" @view-seedlings="viewSeedlingsFor" />
     <AncillaryPanel v-if="activeTab === 'ancillary'" />
-    <SeedlingsPanel v-if="activeTab === 'seedlings'" />
+    <SeedlingsPanel v-if="activeTab === 'seedlings'" :initial-greenhouse-id="pendingGreenhouseId" />
     <InventoryPanel v-if="activeTab === 'inventory'" />
     <UsageGuidePanel v-if="activeTab === 'usageGuides'" />
   </div>

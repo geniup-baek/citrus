@@ -9,6 +9,8 @@ import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
 import { useLightboxBack } from '../composables/useLightboxBack'
 
+const emit = defineEmits(['view-seedlings'])
+
 const store = useFarmStore()
 const localeStore = useLocaleStore()
 const recSettingsStore = useRecommendSettingsStore()
@@ -262,11 +264,14 @@ async function saveFacility() {
               </figure>
             </div>
           </div>
-          <div v-if="showForm" class="row-actions">
-            <button class="ghost" :disabled="i === 0" @click="moveFacility(i, -1)">{{ localeStore.t('common.moveUp') }}</button>
-            <button class="ghost" :disabled="i === store.state.facilities.length - 1" @click="moveFacility(i, 1)">{{ localeStore.t('common.moveDown') }}</button>
-            <button :class="{ ghost: editingId !== facility.id }" @click="editFacility(facility)">{{ localeStore.t('common.edit') }}</button>
-            <button class="danger" @click="confirmDeleteFacility(facility)">{{ localeStore.t('common.delete') }}</button>
+          <div class="row-actions">
+            <button class="ghost" type="button" @click="emit('view-seedlings', facility.id)">{{ localeStore.t('facilities.viewSeedlings') }}</button>
+            <template v-if="showForm">
+              <button class="ghost" :disabled="i === 0" @click="moveFacility(i, -1)">{{ localeStore.t('common.moveUp') }}</button>
+              <button class="ghost" :disabled="i === store.state.facilities.length - 1" @click="moveFacility(i, 1)">{{ localeStore.t('common.moveDown') }}</button>
+              <button :class="{ ghost: editingId !== facility.id }" @click="editFacility(facility)">{{ localeStore.t('common.edit') }}</button>
+              <button class="danger" @click="confirmDeleteFacility(facility)">{{ localeStore.t('common.delete') }}</button>
+            </template>
           </div>
           <div :id="`fac-form-slot-${facility.id}`" class="mobile-form-slot"></div>
         </li>

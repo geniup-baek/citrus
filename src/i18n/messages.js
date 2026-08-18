@@ -69,6 +69,7 @@ export const messages = {
     notesPlaceholder: '운영 관련 메모 입력',
     inventory: '재배동 목록',
     treeUnit: '그루',
+    viewSeedlings: '묘목 보기',
     attachPhotos: '사진 첨부',
     photoLimit: '재배동당 최대 5장까지 첨부할 수 있습니다.',
     compressedReport: '{count}개 파일 압축: {from}KB -> {to}KB ({ratio}%)',
