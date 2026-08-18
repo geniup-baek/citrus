@@ -633,6 +633,22 @@ async function refreshAllPesticideInfo() {
   apRefreshMessage.value = parts.length ? parts.join(' ') : '갱신할 항목이 없습니다 (수동 연결 항목 제외).'
 }
 
+// 재고반영 — 구입가능농약 입력은 그대로 둔 채, 농약재고(재고농약 카테고리)의 현재 상태만
+// 다시 반영해 목록을 새로 만든다. 재고를 새로 등록·수정·삭제한 뒤 목록에 즉시 반영할 때 쓴다.
+async function applyInventoryToApList() {
+  apBuilding.value = true
+  let filled = 0
+  try {
+    apStore.buildList(inStockPesticides.value)
+    filled = await apStore.fillToxicityFromShared()
+  } finally {
+    apBuilding.value = false
+  }
+  const parts = ['현재 재고를 반영했습니다.']
+  if (filled > 0) parts.push(`독성정보 ${filled}건을 추가로 가져왔습니다.`)
+  apRefreshMessage.value = parts.join(' ')
+}
+
 // 가용농약 전체 초기화 — 관리모드 동작 설정에서 "초기화 버튼: 표시"일 때만 노출된다.
 const apHasData = computed(() => apStore.availableList.length > 0 || !!apStore.purchaseInput)
 
@@ -684,6 +700,11 @@ const inventoryStockMap = computed(() => {
   }
   return map
 })
+
+// 가용농약에 재고로 반영할 품목 — 다 써서 남은 수량이 0인 품목은 재고농약으로 취급하지 않는다.
+const inStockPesticides = computed(() =>
+  inventoryPesticides.value.filter(i => Object.hasOwn(inventoryStockMap.value, i.name)),
+)
 
 const parsedCount = computed(() => parsePurchaseText(apInputText.value).length)
 
@@ -807,7 +828,7 @@ async function buildApList() {
   apStore.savePurchaseInput(apInputText.value)
   apBuilding.value = true
   try {
-    apStore.buildList(inventoryPesticides.value)
+    apStore.buildList(inStockPesticides.value)
     await fillApToxicity()
   } finally { apBuilding.value = false }
 }
@@ -830,7 +851,7 @@ async function buildApListAppend() {
   apBuilding.value = true
   try {
     apStore.savePurchaseInput(merged)
-    apStore.buildList(inventoryPesticides.value)
+    apStore.buildList(inStockPesticides.value)
     await fillApToxicity()
   } finally {
     apBuilding.value = false
@@ -1298,6 +1319,9 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
           >{{ localeStore.t('common.reset') }}</button>
           <button v-if="apEditMode && apStore.availableList.length > 0" class="ghost" type="button" @click="refreshAllPesticideInfo">
             전체 재연결
+          </button>
+          <button v-if="apEditMode && inventoryPesticides.length > 0" class="ghost" type="button" @click="applyInventoryToApList">
+            재고반영
           </button>
           <button
             v-if="!apEditMode && apStore.availableList.length > 0"

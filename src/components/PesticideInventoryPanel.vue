@@ -51,6 +51,7 @@ const expandedId   = ref('')
 const sortBy       = ref('name')
 const sortDir      = ref('asc')
 const unmatchedOnly = ref(false)
+const outOfStockOnly = ref(false)
 const EXPIRY_SOON  = 30
 
 const form = reactive({
@@ -240,6 +241,7 @@ const displayedItems = computed(() => {
   const list = store.state.inventory
     .filter(i => i.category === CATEGORY)
     .filter(i => !unmatchedOnly.value || !i.actionGroup)
+    .filter(i => !outOfStockOnly.value || lotsOf(i).length === 0)
     .sort((a, b) => {
       const va = sortBy.value === 'expiry' ? earliestExpiry(a) : a.name
       const vb = sortBy.value === 'expiry' ? earliestExpiry(b) : b.name
@@ -255,10 +257,11 @@ const summary = computed(() => {
     categoryTotal: items.length,
     expiring:      displayedItems.value.reduce((s, i) => s + expiringLotCount(i), 0),
     unmatched:     items.filter(i => !i.actionGroup).length,
+    outOfStock:    items.filter(i => lotsOf(i).length === 0).length,
   }
 })
 
-const isFiltered = computed(() => unmatchedOnly.value)
+const isFiltered = computed(() => unmatchedOnly.value || outOfStockOnly.value)
 
 // ── 폼 ───────────────────────────────────────────────────────────────────────
 function clearForm() {
@@ -650,12 +653,18 @@ async function printReport() {
           type="button"
           @click="unmatchedOnly = !unmatchedOnly"
         >미연결만 ({{ summary.unmatched }})</button>
+        <button
+          class="ghost ap-unmatched-btn"
+          :class="{ 'ap-unmatched-active': outOfStockOnly }"
+          type="button"
+          @click="outOfStockOnly = !outOfStockOnly"
+        >재고없음 ({{ summary.outOfStock }})</button>
       </div>
 
       <!-- 품목 목록 -->
       <div id="pip-form-top" class="mobile-form-slot"></div>
       <div v-if="displayedItems.length === 0" class="empty-msg">
-        {{ unmatchedOnly ? '미연결 품목이 없습니다.' : (showForm ? '저장하면 목록에 표시됩니다.' : '농약 재고 품목이 없습니다. 추가 버튼으로 등록하세요.') }}
+        {{ unmatchedOnly ? '미연결 품목이 없습니다.' : outOfStockOnly ? '재고 없는 품목이 없습니다.' : (showForm ? '저장하면 목록에 표시됩니다.' : '농약 재고 품목이 없습니다. 추가 버튼으로 등록하세요.') }}
       </div>
       <ul v-else class="list clean">
         <li v-for="item in displayedItems" :key="item.id" class="list-item card-like">
