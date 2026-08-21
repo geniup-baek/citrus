@@ -303,6 +303,7 @@ export const messages = {
     txnNote: '메모(선택)',
     record: '기록',
     history: '입출고 이력',
+    addTxnTrigger: '+ 입출고 추가',
     noHistory: '입출고 기록이 없습니다.',
     lotLabel: '{volume} · {expiry} · {quantity}',
     summaryTotal: '전체 {count}',

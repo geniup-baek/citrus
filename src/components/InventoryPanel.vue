@@ -28,6 +28,7 @@ const showResetButton = computed(() =>
 const showForm = ref(false)
 const editingId = ref('')
 const expandedId = ref('')
+const showAddTxn = ref(false)
 
 const formOpen = ref(false) // 폼(추가/편집) 표시 여부 — 토글로 닫으면 추가 폼도 숨긴다
 // 편집 대상이 현재 목록에 보일 때만 그 항목 슬롯으로, 아니면 항상 존재하는 상단 호스트로(텔레포트 대상 null 방지)
@@ -224,6 +225,7 @@ function toggleExpand(item) {
     if (editingId.value) clearForm() // 편집 폼과 상호 배타
     formOpen.value = false
     expandedId.value = item.id
+    showAddTxn.value = false
     txnForm.type = '입고'
     txnForm.volume = ''
     txnForm.expiryDate = ''
@@ -231,6 +233,14 @@ function toggleExpand(item) {
     txnForm.note = ''
     cancelEditTxn()
   }
+}
+
+function openAddTxn() {
+  showAddTxn.value = true
+}
+
+function cancelAddTxn() {
+  showAddTxn.value = false
 }
 
 async function recordTxn(item) {
@@ -444,8 +454,8 @@ clearForm()
           </div>
 
           <div class="row-actions">
+            <button :class="{ ghost: expandedId !== item.id }" type="button" @click="toggleExpand(item)">{{ localeStore.t('inventory.inOut') }} {{ expandedId === item.id ? '▲' : '▼' }}</button>
             <template v-if="showForm">
-              <button :class="{ ghost: expandedId !== item.id }" type="button" @click="toggleExpand(item)">{{ localeStore.t('inventory.inOut') }} {{ expandedId === item.id ? '▲' : '▼' }}</button>
               <button :class="{ ghost: editingId !== item.id }" type="button" @click="editItem(item)">{{ localeStore.t('common.edit') }}</button>
               <button class="danger" type="button" @click="deleteItem(item)">{{ localeStore.t('common.delete') }}</button>
             </template>
@@ -453,7 +463,12 @@ clearForm()
 
           <!-- 입출고 패널 -->
           <div v-if="expandedId === item.id" class="log-panel">
-            <form class="stack-form" style="margin-bottom: 1rem;" @submit.prevent="recordTxn(item)">
+            <div class="row-actions align-start log-history-label">
+              <p class="muted" style="margin: 0;">{{ localeStore.t('inventory.history') }}</p>
+              <button v-if="!showAddTxn" class="ghost compact-btn" type="button" @click="openAddTxn">{{ localeStore.t('inventory.addTxnTrigger') }}</button>
+            </div>
+
+            <form v-if="showAddTxn" class="stack-form" style="margin-bottom: 1rem;" @submit.prevent="recordTxn(item)">
               <div class="inline-filters">
                 <button type="button" :class="{ ghost: txnForm.type !== '입고' }" @click="txnForm.type = '입고'">{{ localeStore.t('inventory.stockIn') }}</button>
                 <button type="button" :class="{ ghost: txnForm.type !== '사용' }" @click="txnForm.type = '사용'">{{ localeStore.t('inventory.stockOut') }}</button>
@@ -473,10 +488,12 @@ clearForm()
                 </label>
               </div>
               <input v-model="txnForm.note" type="text" :placeholder="localeStore.t('inventory.txnNote')" />
-              <button type="submit">{{ localeStore.t('inventory.record') }}</button>
+              <div class="row-actions">
+                <button type="submit">{{ localeStore.t('inventory.record') }}</button>
+                <button class="ghost" type="button" @click="cancelAddTxn">{{ localeStore.t('common.cancel') }}</button>
+              </div>
             </form>
 
-            <p class="muted log-history-label">{{ localeStore.t('inventory.history') }}</p>
             <ul class="list clean compact">
               <li v-for="txn in item.txns" :key="txnKey(txn)" class="list-item">
                 <!-- 표시 모드 -->

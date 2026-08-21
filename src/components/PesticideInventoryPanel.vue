@@ -48,6 +48,7 @@ const showForm     = ref(false)
 const formMode     = ref('single') // 'single' | 'bulk'
 const editingId    = ref('')
 const expandedId   = ref('')
+const showAddTxn   = ref(false)
 const sortBy       = ref('name')
 const sortDir      = ref('asc')
 const unmatchedOnly = ref(false)
@@ -441,13 +442,17 @@ function toggleExpand(item) {
   if (editingId.value) clearForm()
   linkingItemId.value = null
   expandedId.value    = item.id
+  showAddTxn.value    = false
   Object.assign(txnForm, { type: '입고', volume: '', expiryDate: '', amount: '', note: '', date: todayInput() })
   cancelEditTxn()
 }
 
-function closeTxnPanel() {
-  expandedId.value = ''
-  cancelEditTxn()
+function openAddTxn() {
+  showAddTxn.value = true
+}
+
+function cancelAddTxn() {
+  showAddTxn.value = false
 }
 
 // 입고↔사용 전환 시 규격·유효기간 입력 방식이 바뀌므로(자유 입력 ↔ 재고 선택) 값을 다시 잡는다.
@@ -695,8 +700,8 @@ async function printReport() {
           </div>
 
           <div class="row-actions">
+            <button :class="{ ghost: expandedId !== item.id }" type="button" @click="toggleExpand(item)">{{ t('inventory.inOut') }} {{ expandedId === item.id ? '▲' : '▼' }}</button>
             <template v-if="showForm">
-              <button :class="{ ghost: expandedId !== item.id }" type="button" @click="toggleExpand(item)">{{ t('inventory.inOut') }} {{ expandedId === item.id ? '▲' : '▼' }}</button>
               <button
                 class="ghost"
                 :class="{ 'link-btn-active': linkingItemId === item.id }"
@@ -739,7 +744,12 @@ async function printReport() {
 
           <!-- 입출고 패널 -->
           <div v-if="expandedId === item.id" class="log-panel">
-            <form class="stack-form" style="margin-bottom: 1rem;" @submit.prevent="recordTxn(item)">
+            <div class="row-actions align-start log-history-label">
+              <p class="muted" style="margin: 0;">{{ t('inventory.history') }}</p>
+              <button v-if="!showAddTxn" class="ghost compact-btn" type="button" @click="openAddTxn">{{ t('inventory.addTxnTrigger') }}</button>
+            </div>
+
+            <form v-if="showAddTxn" class="stack-form" style="margin-bottom: 1rem;" @submit.prevent="recordTxn(item)">
               <div class="inline-filters">
                 <button type="button" :class="{ ghost: txnForm.type !== '입고' }" @click="setTxnType(item, '입고')">{{ t('inventory.stockIn') }}</button>
                 <button type="button" :class="{ ghost: txnForm.type !== '사용' }" @click="setTxnType(item, '사용')">{{ t('inventory.stockOut') }}</button>
@@ -787,14 +797,13 @@ async function printReport() {
               </label>
               <input v-model="txnForm.note" type="text" :placeholder="t('inventory.txnNote')" />
               </template>
-              <!-- 닫기는 재고가 없어 입력란이 숨겨진 경우에도 필요하므로 항상 둔다. -->
+              <!-- 취소는 재고가 없어 입력란이 숨겨진 경우에도 필요하므로 항상 둔다. -->
               <div class="row-actions">
                 <button v-if="!cannotRecordUse(item)" type="submit">{{ t('inventory.record') }}</button>
-                <button class="ghost" type="button" @click="closeTxnPanel">{{ t('common.close') }}</button>
+                <button class="ghost" type="button" @click="cancelAddTxn">{{ t('common.cancel') }}</button>
               </div>
             </form>
 
-            <p class="muted log-history-label">{{ t('inventory.history') }}</p>
             <ul class="list clean compact">
               <li v-for="txn in sortedTxns(item)" :key="txnKey(txn)" class="list-item">
                 <div v-if="editingTxnId !== txnKey(txn)" class="log-entry">
