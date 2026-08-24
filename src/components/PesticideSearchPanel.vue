@@ -97,15 +97,15 @@ async function fetchLatest() {
 }
 
 const detailsWarming = ref(false)
-const detailsProgress = ref(null) // { done, total } | null
+const detailsProgress = ref(null) // { done, total, skipped } | null
 
 async function fetchAllDetails() {
   detailsWarming.value = true
   detailsProgress.value = null
   try {
     const force = !settingsStore.settings.skipCachedPesticideDetails
-    await warmAllDetails(force, (done, listTotal) => {
-      detailsProgress.value = { done, total: listTotal }
+    await warmAllDetails(force, (done, listTotal, skipped) => {
+      detailsProgress.value = { done, total: listTotal, skipped }
     })
   } finally {
     detailsWarming.value = false
@@ -460,7 +460,7 @@ onMounted(async () => {
       </button>
       <button class="cache-refresh-btn" :disabled="isMock || detailsWarming" @click="fetchAllDetails">
         {{ detailsWarming
-          ? `상세정보 가져오는 중... (${detailsProgress?.done ?? 0}/${detailsProgress?.total ?? 0})`
+          ? `상세정보 가져오는 중... (${detailsProgress?.done ?? 0}/${detailsProgress?.total ?? 0}, 건너뜀 ${detailsProgress?.skipped ?? 0})`
           : `상세정보 전체 가져오기 (${settingsStore.settings.skipCachedPesticideDetails ? '이미 있는 항목 건너뛰기' : '전체 새로 가져오기'})` }}
       </button>
     </div>

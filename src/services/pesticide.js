@@ -675,12 +675,29 @@ export async function warmAllDetails(force = false, onProgress = () => {}) {
   if (USE_MOCK) return
   const cached = loadCache(FULL_CACHE_KEY)
   const list = cached?.data ?? []
-  const index = {}
+  // 이 기기가 앱 시작 시 이미 받아둔 공유 색인(다른 기기가 전에 채워둔 독성·주성분 정보)에서
+  // 시작한다. 매번 빈 색인으로 시작해 덮어쓰면(setDoc, merge 없음), 이번 실행에서 못 채운
+  // 항목이 있을 때 예전에 이미 알아냈던 값까지 사라진다.
+  const index = { ...loadDetailIndex() }
   let done = 0
+  let skipped = 0
   for (const item of list) {
     done++
-    onProgress(done, list.length)
-    if (!item.pestiCode || !item.diseaseUseSeq) continue
+    if (!item.pestiCode || !item.diseaseUseSeq) {
+      onProgress(done, list.length, skipped)
+      continue
+    }
+
+    // "이미 있는 항목 건너뛰기": 이 기기의 개별 상세 캐시(pesticide:detail:*)는 기기마다 따로
+    // 쌓이고 앱 시작 시 동기화되지 않는다 — 그것만 보면 새 기기·캐시 삭제 후에는 이미 다른
+    // 누군가 다 받아놓은 항목까지 매번 다시 받아오게 된다. 앱 시작 시 모든 기기가 이미 받은
+    // 공유 색인(독성·주성분, 품목코드 단위)에 이 품목코드가 있으면 실제로 건너뛴다.
+    if (!force && index[item.pestiCode]) {
+      skipped++
+      onProgress(done, list.length, skipped)
+      continue
+    }
+
     const key = detailCacheKey(item.pestiCode, item.diseaseUseSeq)
     let detail = force ? null : loadCache(key)?.data
     if (!detail) {
@@ -688,7 +705,10 @@ export async function warmAllDetails(force = false, onProgress = () => {}) {
         detail = await getPesticideDetail({ pestiCode: item.pestiCode, diseaseUseSeq: item.diseaseUseSeq })
         saveCache(key, detail)
         pushSharedCache(key, detail)
-      } catch { continue }
+      } catch {
+        onProgress(done, list.length, skipped)
+        continue
+      }
     }
     // 독성·주성분은 제품 단위 정보라 품목코드당 한 번만 담는다(색인 크기 절약).
     if (!index[item.pestiCode]) {
@@ -700,6 +720,7 @@ export async function warmAllDetails(force = false, onProgress = () => {}) {
       }
       if (Object.values(entry).some(Boolean)) index[item.pestiCode] = entry
     }
+    onProgress(done, list.length, skipped)
   }
 
   if (Object.keys(index).length) {
