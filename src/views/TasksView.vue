@@ -633,6 +633,8 @@ async function saveEditLog() {
 
 async function deleteLog(log) {
   if (!expandedTask.value) return
+  const ok = await confirm({ message: '이 진행 기록을 삭제합니다. 되돌릴 수 없습니다.' })
+  if (!ok) return
   await store.removeTaskLog(expandedTask.value.id, logKey(log))
   if (editingLogId.value === logKey(log)) cancelEditLog()
 }

@@ -154,6 +154,8 @@ function removePreviewPhoto(id) {
 
 async function removeExistingPhoto(photoId) {
   if (!editingIssue.value) return
+  const ok = await confirm({ message: '첨부된 사진을 삭제합니다. 되돌릴 수 없습니다.' })
+  if (!ok) return
   await store.upsertIssue({
     ...editingIssue.value,
     photos: editingIssue.value.photos.filter((p) => p.id !== photoId),
@@ -403,6 +405,8 @@ async function saveEditStep(issue) {
 }
 
 async function deleteStep(issue, step) {
+  const ok = await confirm({ message: '이 해결 단계를 삭제합니다. 되돌릴 수 없습니다.' })
+  if (!ok) return
   await store.removeIssueResolutionStep(issue.id, stepKey(step))
   if (editingStepId.value === stepKey(step)) cancelEditStep()
 }
