@@ -451,8 +451,9 @@ async function importBulkTreatments() {
       bulkImportMessage.value = `전체 새로 작성됨: ${rows.length}건 (자동 연결 ${matched}건)`
     } else {
       for (const record of records) {
-        await treatStore.addTreatment(record)
+        await treatStore.addTreatment(record, { silent: true })
       }
+      if (records.length > 0) farmStore.logChange('방제이력', `일괄 추가 (${records.length}건)`, 'add')
       bulkImportMessage.value = `${rows.length}건 추가됨 (자동 연결 ${matched}건)`
     }
     bulkPasteText.value = ''

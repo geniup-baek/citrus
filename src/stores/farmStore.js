@@ -32,6 +32,8 @@ import {
 import { db, firebaseEnabled } from '../services/firebase'
 
 const APP_SETTINGS_LS_KEY = 'citrus:app-settings' // 공통(농장 무관) 분류·항목 설정
+const ACTOR_NAME_LS_KEY = 'citrus:actor-name' // 이 기기에서 변경 이력에 표시할 이름(기기별 로컬 저장, 서버 동기화 안 함)
+const CHANGE_LOG_LIMIT = 300 // 농장별 변경 이력 최대 보관 건수(Firestore 문서 용량 보호)
 
 function farmStorageKey(farmId) {
   return `citrus-farm-${farmId}-v1`
@@ -51,6 +53,7 @@ function createDefaultFarmData() {
     usageGuides: [...defaultUsageGuides],
     annualTaskTemplates: [...annualTaskTemplates],
     notifications: {},
+    changeLog: [],
     updatedAt: new Date().toISOString(),
   }
 }
@@ -78,6 +81,7 @@ function normalizeFarmData(data) {
       data?.notifications && typeof data.notifications === 'object'
         ? data.notifications
         : defaults.notifications,
+    changeLog: Array.isArray(data?.changeLog) ? data.changeLog : defaults.changeLog,
     updatedAt: data?.updatedAt || defaults.updatedAt,
   }
 }
@@ -294,6 +298,23 @@ export const useFarmStore = defineStore('farm', () => {
   let appSettingsUnsub = null
   let activeFarmId = null
 
+  // 이 기기에서 변경 이력에 표시할 이름(로그인 없이 기기별로 로컬에만 저장, 농장 데이터와 별도)
+  const actorName = ref('')
+  try {
+    actorName.value = localStorage.getItem(ACTOR_NAME_LS_KEY) || ''
+  } catch {
+    /* noop */
+  }
+
+  function setActorName(name) {
+    actorName.value = (name || '').trim()
+    try {
+      localStorage.setItem(ACTOR_NAME_LS_KEY, actorName.value)
+    } catch {
+      /* noop */
+    }
+  }
+
   const today = computed(() => new Date())
   const weekStart = computed(() => startOfWeek(today.value, { weekStartsOn: 1 }))
   const weekEnd = computed(() => endOfWeek(today.value, { weekStartsOn: 1 }))
@@ -372,6 +393,103 @@ export const useFarmStore = defineStore('farm', () => {
     persistLocal()
     scheduleFirestoreWrite()
     gcOrphanPhotos()
+  }
+
+  // ── 변경 이력(감사 로그) ──────────────────────────────────────────────────────
+  // 같은 항목을 짧은 시간 안에 다시 바꾸면(예: 작업 상태를 예정→진행중→완료로 연달아 클릭)
+  // 한 줄로 합쳐서 기록한다. 그 시간이 지나면 서로 다른 사건으로 보고 각각 기록한다.
+  const CHANGE_LOG_MERGE_WINDOW_MS = 60 * 1000
+
+  // 값 하나를 로그에 넣기 좋은 짧은 문자열로 정리한다(너무 길면 잘라서 문서 용량을 아낀다).
+  function truncateForLog(value) {
+    if (value === undefined || value === null || value === '') return '(없음)'
+    const text = String(value)
+    return text.length > 60 ? `${text.slice(0, 60)}…` : text
+  }
+
+  // before/after 두 객체를 fieldLabels({필드키: 표시이름})에 정의된 필드만 비교해
+  // 바뀐 필드만 { 필드키: { label, from, to } } 형태로 모아 돌려준다.
+  function diffFields(before, after, fieldLabels) {
+    const fields = {}
+    for (const [key, label] of Object.entries(fieldLabels)) {
+      const prevValue = before?.[key] ?? ''
+      const nextValue = after?.[key] ?? ''
+      if (prevValue !== nextValue) {
+        fields[key] = { label, from: before?.[key], to: after?.[key] }
+      }
+    }
+    return fields
+  }
+
+  // diffFields 결과를 "표시이름: 이전값 → 새값, ..." 형태의 문자열로 렌더링한다.
+  function formatFieldDiff(fields) {
+    return Object.values(fields)
+      .map((f) => `${f.label}: ${truncateForLog(f.from)} → ${truncateForLog(f.to)}`)
+      .join(', ')
+  }
+
+  // 위 두 개를 한 번에 — 대부분의 호출부는 병합(refId) 없이 문자열 요약만 필요하다.
+  function describeChanges(before, after, fieldLabels) {
+    return formatFieldDiff(diffFields(before, after, fieldLabels))
+  }
+
+  // 재배동 id를 이름으로 바꿔서 diff에 노출한다(원본 객체는 건드리지 않음).
+  function withGreenhouseName(item) {
+    const greenhouse = state.value.facilities.find((f) => f.id === item?.greenhouseId)
+    return { ...item, greenhouseId: greenhouse?.name || item?.greenhouseId || '' }
+  }
+
+  // action: 'add' | 'update' | 'delete' | 'stock-in' | 'stock-out'
+  // detail: "필드: 이전값 → 새값, ..." 형태의 사람이 읽을 수 있는 변경 요약(선택)
+  // mergeInfo: { refId, fields } 를 넘기면 — 바로 위 기록이 같은 항목(같은 entity+refId)의
+  // update이고 CHANGE_LOG_MERGE_WINDOW_MS 안이면 새 줄을 추가하지 않고 그 기록을 갱신한다.
+  // (예: 상태를 예정→진행중→완료로 두 번 클릭해도 "상태: 예정 → 완료" 한 줄만 남는다.
+  //  값이 원래대로 돌아오면 — 예: 예정→진행중→예정 — 순변화가 없으므로 기록 자체를 지운다.)
+  function logChange(entity, name, action, detail = '', mergeInfo = null) {
+    if (mergeInfo?.refId && action === 'update') {
+      const prevEntries = Array.isArray(state.value.changeLog) ? state.value.changeLog : []
+      const top = prevEntries[0]
+      const withinWindow = top && Date.now() - new Date(top.at).getTime() < CHANGE_LOG_MERGE_WINDOW_MS
+      if (top && withinWindow && top.entity === entity && top.refId === mergeInfo.refId && top.action === 'update') {
+        const mergedFields = { ...(top.fields || {}) }
+        for (const [key, field] of Object.entries(mergeInfo.fields)) {
+          mergedFields[key] = { label: field.label, from: mergedFields[key]?.from ?? field.from, to: field.to }
+        }
+        // 값이 결국 원래대로 돌아온 필드는 변화가 없으므로 뺀다(예: A→B→A).
+        const netFields = Object.fromEntries(
+          Object.entries(mergedFields).filter(([, f]) => (f.from ?? '') !== (f.to ?? '')),
+        )
+        if (Object.keys(netFields).length === 0) {
+          state.value.changeLog = prevEntries.slice(1)
+          return
+        }
+        state.value.changeLog = [
+          {
+            ...top,
+            name: name || top.name,
+            at: new Date().toISOString(),
+            actor: actorName.value || top.actor,
+            detail: formatFieldDiff(netFields),
+            fields: netFields,
+          },
+          ...prevEntries.slice(1),
+        ]
+        return
+      }
+    }
+
+    const entry = {
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+      entity,
+      name: name || '',
+      action,
+      actor: actorName.value || '',
+      detail: detail || '',
+      ...(mergeInfo?.refId ? { refId: mergeInfo.refId, fields: mergeInfo.fields } : {}),
+    }
+    const prev = Array.isArray(state.value.changeLog) ? state.value.changeLog : []
+    state.value.changeLog = [entry, ...prev].slice(0, CHANGE_LOG_LIMIT)
   }
 
   function loadLocal() {
@@ -621,32 +739,56 @@ export const useFarmStore = defineStore('farm', () => {
     const index = state.value.facilities.findIndex((item) => item.id === payload.id)
 
     if (index >= 0) {
+      const before = { ...state.value.facilities[index] }
       state.value.facilities[index] = { ...state.value.facilities[index], ...payload }
+      const fields = diffFields(before, state.value.facilities[index], { name: '이름', notes: '메모' })
+      logChange('재배동', state.value.facilities[index].name, 'update', formatFieldDiff(fields), { refId: payload.id, fields })
     } else {
-      state.value.facilities.push({ ...payload, id: payload.id || crypto.randomUUID() })
+      const created = { ...payload, id: payload.id || crypto.randomUUID() }
+      state.value.facilities.push(created)
+      logChange('재배동', created.name, 'add')
     }
 
     await persistAll()
   }
 
   async function removeFacility(id) {
+    const target = state.value.facilities.find((item) => item.id === id)
     state.value.facilities = state.value.facilities.filter((item) => item.id !== id)
     state.value.seedlings = state.value.seedlings.filter((item) => item.greenhouseId !== id)
     state.value.issues = state.value.issues.filter((item) => item.greenhouseId !== id)
+    if (target) logChange('재배동', target.name, 'delete')
     await persistAll()
+  }
+
+  function seedlingLabel(seedling) {
+    const greenhouse = state.value.facilities.find((item) => item.id === seedling?.greenhouseId)
+    return [seedling?.variety, greenhouse?.name].filter(Boolean).join(' · ') || '묘목'
   }
 
   async function upsertSeedling(payload) {
     const index = state.value.seedlings.findIndex((item) => item.id === payload.id)
 
     if (index >= 0) {
+      const before = { ...state.value.seedlings[index] }
       state.value.seedlings[index] = { ...state.value.seedlings[index], ...payload }
+      const after = state.value.seedlings[index]
+      const fields = diffFields(withGreenhouseName(before), withGreenhouseName(after), {
+        variety: '품종',
+        rootstock: '대목',
+        plantedAt: '식재일',
+        greenhouseId: '재배동',
+        notes: '메모',
+      })
+      logChange('묘목', seedlingLabel(after), 'update', formatFieldDiff(fields), { refId: payload.id, fields })
     } else {
-      state.value.seedlings.push({
+      const created = {
         ...payload,
         id: payload.id || crypto.randomUUID(),
         growthLogs: Array.isArray(payload.growthLogs) ? payload.growthLogs : [],
-      })
+      }
+      state.value.seedlings.push(created)
+      logChange('묘목', seedlingLabel(created), 'add')
     }
 
     await persistAll()
@@ -660,11 +802,14 @@ export const useFarmStore = defineStore('farm', () => {
         growthLogs: Array.isArray(payload.growthLogs) ? payload.growthLogs : [],
       })
     }
+    if (payloads.length > 0) logChange('묘목', `${payloads.length}그루 일괄 추가`, 'add')
     await persistAll()
   }
 
   async function removeSeedling(id) {
+    const target = state.value.seedlings.find((item) => item.id === id)
     state.value.seedlings = state.value.seedlings.filter((item) => item.id !== id)
+    if (target) logChange('묘목', seedlingLabel(target), 'delete')
     await persistAll()
   }
 
@@ -720,17 +865,29 @@ export const useFarmStore = defineStore('farm', () => {
     const index = state.value.tasks.findIndex((item) => item.id === payload.id)
 
     if (index >= 0) {
+      const before = { ...state.value.tasks[index] }
       state.value.tasks[index] = {
         ...state.value.tasks[index],
         ...payload,
       }
+      const fields = diffFields(before, state.value.tasks[index], {
+        title: '제목',
+        dueDate: '기한',
+        frequency: '주기',
+        category: '분류',
+        priority: '우선순위',
+        status: '상태',
+        progress: '진행률',
+        notes: '메모',
+      })
+      logChange('작업', state.value.tasks[index].title, 'update', formatFieldDiff(fields), { refId: payload.id, fields })
     } else {
       const dupKey = `${payload.title}|${payload.dueDate}`
       const alreadyExists = state.value.tasks.some(
         (t) => `${t.title}|${t.dueDate}` === dupKey,
       )
       if (!alreadyExists) {
-        state.value.tasks.push({
+        const created = {
           ...payload,
           id: payload.id || crypto.randomUUID(),
           logs: Array.isArray(payload.logs) ? payload.logs : [],
@@ -738,7 +895,9 @@ export const useFarmStore = defineStore('farm', () => {
           progress: Number(payload.progress || 0),
           autoGenerated: payload.autoGenerated === true,
           scheduleRuleId: payload.scheduleRuleId || null,
-        })
+        }
+        state.value.tasks.push(created)
+        logChange('작업', created.title, 'add')
       }
     }
 
@@ -746,7 +905,9 @@ export const useFarmStore = defineStore('farm', () => {
   }
 
   async function removeTask(id) {
+    const target = state.value.tasks.find((item) => item.id === id)
     state.value.tasks = state.value.tasks.filter((item) => item.id !== id)
+    if (target) logChange('작업', target.title, 'delete')
     await persistAll()
   }
 
@@ -802,17 +963,29 @@ export const useFarmStore = defineStore('farm', () => {
     const index = state.value.issues.findIndex((item) => item.id === payload.id)
 
     if (index >= 0) {
+      const before = { ...state.value.issues[index] }
       state.value.issues[index] = normalizeIssue({
         ...state.value.issues[index],
         ...payload,
       })
+      const after = state.value.issues[index]
+      const fields = diffFields(withGreenhouseName(before), withGreenhouseName(after), {
+        title: '제목',
+        status: '상태',
+        occurredAt: '발생일',
+        symptoms: '증상',
+        greenhouseId: '재배동',
+      })
+      logChange('문제', after.title, 'update', formatFieldDiff(fields), { refId: payload.id, fields })
     } else {
-      state.value.issues.unshift({
+      const created = normalizeIssue({
         ...payload,
         id: payload.id || crypto.randomUUID(),
         resolutionSteps: Array.isArray(payload.resolutionSteps) ? payload.resolutionSteps : [],
         photos: Array.isArray(payload.photos) ? payload.photos : [],
       })
+      state.value.issues.unshift(created)
+      logChange('문제', created.title, 'add')
     }
 
     await persistAll()
@@ -865,7 +1038,9 @@ export const useFarmStore = defineStore('farm', () => {
   }
 
   async function removeIssue(id) {
+    const target = state.value.issues.find((item) => item.id === id)
     state.value.issues = state.value.issues.filter((item) => item.id !== id)
+    if (target) logChange('문제', target.title, 'delete')
     await persistAll()
   }
 
@@ -874,22 +1049,29 @@ export const useFarmStore = defineStore('farm', () => {
     const index = state.value.usageGuides.findIndex((item) => item.id === payload.id)
 
     if (index >= 0) {
+      const before = { ...state.value.usageGuides[index] }
       state.value.usageGuides[index] = normalizeUsageGuide({
         ...state.value.usageGuides[index],
         ...payload,
       })
+      const fields = diffFields(before, state.value.usageGuides[index], { title: '제목', description: '설명' })
+      logChange('사용법', state.value.usageGuides[index].title, 'update', formatFieldDiff(fields), { refId: payload.id, fields })
     } else {
-      state.value.usageGuides.push(normalizeUsageGuide({
+      const created = normalizeUsageGuide({
         ...payload,
         id: payload.id || crypto.randomUUID(),
-      }))
+      })
+      state.value.usageGuides.push(created)
+      logChange('사용법', created.title, 'add')
     }
 
     await persistAll()
   }
 
   async function removeUsageGuide(id) {
+    const target = state.value.usageGuides.find((item) => item.id === id)
     state.value.usageGuides = state.value.usageGuides.filter((item) => item.id !== id)
+    if (target) logChange('사용법', target.title, 'delete')
     await persistAll()
   }
 
@@ -1196,6 +1378,7 @@ export const useFarmStore = defineStore('farm', () => {
 
     if (generatedTasks.length) {
       state.value.tasks.push(...generatedTasks)
+      logChange('작업', `자동 생성 작업 ${generatedTasks.length}건`, 'add')
       if (persist) {
         await persistAll()
       }
@@ -1234,16 +1417,23 @@ export const useFarmStore = defineStore('farm', () => {
     const index = state.value.ancillaries.findIndex((item) => item.id === payload.id)
 
     if (index >= 0) {
+      const before = { ...state.value.ancillaries[index] }
       state.value.ancillaries[index] = { ...state.value.ancillaries[index], ...payload }
+      const fields = diffFields(before, state.value.ancillaries[index], { name: '이름', type: '유형', notes: '메모' })
+      logChange('시설·장비', state.value.ancillaries[index].name, 'update', formatFieldDiff(fields), { refId: payload.id, fields })
     } else {
-      state.value.ancillaries.push({ ...payload, id: payload.id || crypto.randomUUID() })
+      const created = { ...payload, id: payload.id || crypto.randomUUID() }
+      state.value.ancillaries.push(created)
+      logChange('시설·장비', created.name, 'add')
     }
 
     await persistAll()
   }
 
   async function removeAncillary(id) {
+    const target = state.value.ancillaries.find((item) => item.id === id)
     state.value.ancillaries = state.value.ancillaries.filter((item) => item.id !== id)
+    if (target) logChange('시설·장비', target.name, 'delete')
     await persistAll()
   }
 
@@ -1255,26 +1445,38 @@ export const useFarmStore = defineStore('farm', () => {
 
     if (index >= 0) {
       // 메타데이터만 갱신 (재고/이력은 입출고로만 변경)
+      const before = { ...state.value.inventory[index] }
       const { txns, ...meta } = payload
       state.value.inventory[index] = normalizeInventoryItem({
         ...state.value.inventory[index],
         ...meta,
       })
+      const updated = state.value.inventory[index]
+      const fields = diffFields(before, updated, {
+        name: '이름',
+        pesticideType: '구분',
+        actionGroup: '계통',
+        productName: '제품명',
+        notes: '비고',
+      })
+      logChange(`${updated.category}재고`, updated.name, 'update', formatFieldDiff(fields), { refId: payload.id, fields })
     } else {
-      state.value.inventory.push(
-        normalizeInventoryItem({
-          ...payload,
-          id: payload.id || crypto.randomUUID(),
-          txns: [],
-        }),
-      )
+      const created = normalizeInventoryItem({
+        ...payload,
+        id: payload.id || crypto.randomUUID(),
+        txns: [],
+      })
+      state.value.inventory.push(created)
+      logChange(`${created.category}재고`, created.name, 'add')
     }
 
     await persistAll()
   }
 
   async function removeInventoryItem(id) {
+    const target = state.value.inventory.find((item) => item.id === id)
     state.value.inventory = state.value.inventory.filter((item) => item.id !== id)
+    if (target) logChange(`${target.category}재고`, target.name, 'delete')
     await persistAll()
   }
 
@@ -1287,16 +1489,23 @@ export const useFarmStore = defineStore('farm', () => {
     const qty = Math.abs(Number(amount) || 0)
     if (qty === 0) return
 
+    const resolvedType = type === '사용' ? '사용' : '입고'
     item.txns = item.txns || []
     item.txns.unshift({
       id: crypto.randomUUID(),
       date: date || new Date().toISOString(),
-      type: type === '사용' ? '사용' : '입고',
+      type: resolvedType,
       volume: volume || '기본',
       expiryDate: expiryDate || '',
       amount: qty,
       note: note || '',
     })
+
+    logChange(
+      `${item.category}재고`,
+      `${item.name} ${qty}${volume ? ` (${volume})` : ''}`,
+      resolvedType === '사용' ? 'stock-out' : 'stock-in',
+    )
 
     await persistAll()
   }
@@ -1308,6 +1517,8 @@ export const useFarmStore = defineStore('farm', () => {
     const txn = item.txns.find((entry) => (entry.id || entry.date) === txnId)
     if (!txn) return
 
+    const before = { ...txn }
+
     if (patch.date) txn.date = patch.date
     if (patch.type !== undefined) txn.type = patch.type === '사용' ? '사용' : '입고'
     if (patch.volume !== undefined) txn.volume = patch.volume || '기본'
@@ -1318,6 +1529,15 @@ export const useFarmStore = defineStore('farm', () => {
     }
     if (patch.note !== undefined) txn.note = patch.note
 
+    const fields = diffFields(before, txn, {
+      date: '일자',
+      type: '구분',
+      volume: '규격',
+      expiryDate: '유효기간',
+      amount: '수량',
+      note: '비고',
+    })
+    logChange(`${item.category}재고`, `${item.name} 입출고 수정`, 'update', formatFieldDiff(fields), { refId: `${itemId}:${txnId}`, fields })
     await persistAll()
   }
 
@@ -1326,6 +1546,7 @@ export const useFarmStore = defineStore('farm', () => {
     if (!item || !Array.isArray(item.txns)) return
 
     item.txns = item.txns.filter((entry) => (entry.id || entry.date) !== txnId)
+    logChange(`${item.category}재고`, `${item.name} 입출고 삭제`, 'delete')
     await persistAll()
   }
 
@@ -1334,44 +1555,71 @@ export const useFarmStore = defineStore('farm', () => {
   // 항목을 하나씩 지우면 매번 저장이 일어나므로, 한 번에 비우고 한 번만 저장한다.
   // 개별 삭제와 같은 연쇄 삭제 규칙을 그대로 따른다(사진 정리는 persistAll이 알아서 한다).
   async function resetFacilities() {
+    const count = state.value.facilities.length
     const ids = new Set(state.value.facilities.map((item) => item.id))
     state.value.facilities = []
     state.value.seedlings = state.value.seedlings.filter((item) => !ids.has(item.greenhouseId))
     state.value.issues = state.value.issues.filter((item) => !ids.has(item.greenhouseId))
+    if (count > 0) logChange('재배동', `전체 초기화 (${count}개)`, 'delete')
     await persistAll()
   }
 
   async function resetAncillaries() {
+    const count = state.value.ancillaries.length
     state.value.ancillaries = []
+    if (count > 0) logChange('시설·장비', `전체 초기화 (${count}개)`, 'delete')
     await persistAll()
   }
 
   async function resetSeedlings() {
+    const count = state.value.seedlings.length
     state.value.seedlings = []
+    if (count > 0) logChange('묘목', `전체 초기화 (${count}그루)`, 'delete')
     await persistAll()
   }
 
   // 반복 규칙을 남겨두면 다음 실행 때 스케줄러가 작업을 다시 만들어 초기화가 무의미해진다.
   async function resetTasks() {
+    const count = state.value.tasks.length
     state.value.tasks = []
     state.value.scheduleRules = []
     state.value.notifications = {}
+    if (count > 0) logChange('작업', `전체 초기화 (${count}건)`, 'delete')
     await persistAll()
   }
 
   async function resetIssues() {
+    const count = state.value.issues.length
     state.value.issues = []
+    if (count > 0) logChange('문제', `전체 초기화 (${count}건)`, 'delete')
     await persistAll()
   }
 
   async function resetUsageGuides() {
+    const count = state.value.usageGuides.length
     state.value.usageGuides = []
+    if (count > 0) logChange('사용법', `전체 초기화 (${count}건)`, 'delete')
     await persistAll()
   }
 
   // 재고는 비료·농약이 한 배열에 섞여 있으므로 분류별로만 비운다.
   async function resetInventoryCategory(category) {
+    const count = state.value.inventory.filter((item) => item.category === category).length
     state.value.inventory = state.value.inventory.filter((item) => item.category !== category)
+    if (count > 0) logChange(`${category}재고`, `전체 초기화 (${count}개)`, 'delete')
+    await persistAll()
+  }
+
+  // ── 변경 이력 삭제 (관리 모드에서 기능을 켜둔 경우에만 화면에 노출된다) ───────────
+  // 이 삭제 동작 자체는 새 변경 이력을 남기지 않는다(이력을 정리하는 행위라 다시 이력이
+  // 쌓이면 정리한 보람이 없다). "초기화"와 달리 흔적을 남기지 않고 그대로 지운다.
+  async function removeChangeLogEntry(id) {
+    state.value.changeLog = (state.value.changeLog || []).filter((entry) => entry.id !== id)
+    await persistAll()
+  }
+
+  async function clearChangeLog() {
+    state.value.changeLog = []
     await persistAll()
   }
 
@@ -1391,6 +1639,8 @@ export const useFarmStore = defineStore('farm', () => {
     BACKUP_OBJECT_KEYS.forEach((key) => {
       data[key] = state.value[key] && typeof state.value[key] === 'object' ? state.value[key] : {}
     })
+    // 변경 이력은 다른 항목과 달리 복원 시 통째로 덮어쓰지 않고 현재 이력과 합쳐서 보존한다(아래 restoreBackup 참고).
+    data.changeLog = Array.isArray(state.value.changeLog) ? state.value.changeLog : []
 
     return {
       type: BACKUP_TYPE,
@@ -1445,6 +1695,7 @@ export const useFarmStore = defineStore('farm', () => {
       payload?.data?.photos && typeof payload.data.photos === 'object'
         ? Object.keys(payload.data.photos).length
         : 0
+    summary.changeLog = Array.isArray(payload?.data?.changeLog) ? payload.data.changeLog.length : 0
     return summary
   }
 
@@ -1469,10 +1720,30 @@ export const useFarmStore = defineStore('farm', () => {
     normalized.issues = normalized.issues.map((issue) => normalizeIssue(issue))
     normalized.inventory = normalized.inventory.map((item) => normalizeInventoryItem(item))
     normalized.usageGuides = normalized.usageGuides.map((guide) => normalizeUsageGuide(guide))
+
+    // 변경 이력은 백업 시점 스냅샷으로 덮어쓰면 그 사이에 쌓인 최근 기록이 사라진다.
+    // 그래서 다른 항목처럼 통째로 교체하지 않고, id 기준으로 중복 없이 합쳐서 보존한다.
+    const incomingLog = Array.isArray(payload.data.changeLog) ? payload.data.changeLog : []
+    if (incomingLog.length > 0) {
+      const seenIds = new Set()
+      normalized.changeLog = [...incomingLog, ...state.value.changeLog]
+        .filter((entry) => {
+          if (!entry?.id || seenIds.has(entry.id)) return false
+          seenIds.add(entry.id)
+          return true
+        })
+        .sort((a, b) => (b.at || '').localeCompare(a.at || ''))
+        .slice(0, CHANGE_LOG_LIMIT)
+    } else {
+      normalized.changeLog = state.value.changeLog
+    }
+
     state.value = { ...normalized, appSettings: normalizeAppSettings(mergedAppSettings) }
 
     try { localStorage.setItem(APP_SETTINGS_LS_KEY, JSON.stringify(state.value.appSettings)) } catch {}
     scheduleAppSettingsWrite()
+
+    logChange('전체', `백업 복원${payload.exportedAt ? ` (백업일: ${String(payload.exportedAt).slice(0, 10)})` : ''}`, 'update')
 
     // 신버전(v3) 백업: 사진 본문(base64) 복원
     const photosMap = payload.data?.photos
@@ -1594,5 +1865,10 @@ export const useFarmStore = defineStore('farm', () => {
     isValidBackup,
     backupSummary,
     restoreBackup,
+    actorName,
+    setActorName,
+    logChange,
+    removeChangeLogEntry,
+    clearChangeLog,
   }
 })

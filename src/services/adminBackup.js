@@ -4,6 +4,7 @@ import {
 import { db } from './firebase.js'
 
 const BACKUP_TYPE = 'citrus-admin-backup'
+const CHANGE_LOG_LIMIT = 300 // farmStore.js의 값과 맞춘다
 
 // sharedCache 중 사용자가 만든 데이터라 다시 만들 수 없는 것들.
 // (pesticide:all·detail-index·병해충 캐시 등은 공공데이터에서 다시 받으면 되므로 백업에 넣지 않는다)
@@ -101,7 +102,24 @@ export async function restoreAllFarmsBackup(payload) {
       await setDoc(doc(db, 'farms', farmId), farmPayload.meta, { merge: true })
     }
     if (farmPayload.farmData) {
-      await setDoc(doc(db, 'farms', farmId, 'data', 'farmData'), farmPayload.farmData, { merge: true })
+      // 변경 이력(changeLog)은 백업 시점 스냅샷으로 통째로 덮어쓰면 그 사이에 쌓인 기록이 사라진다.
+      // farmData 문서 안에 같이 들어있으므로, 쓰기 전에 현재 값과 id 기준으로 합쳐서 보존한다.
+      const farmDataToWrite = { ...farmPayload.farmData }
+      const incomingLog = Array.isArray(farmDataToWrite.changeLog) ? farmDataToWrite.changeLog : []
+      if (incomingLog.length > 0) {
+        const currentSnap = await getDoc(doc(db, 'farms', farmId, 'data', 'farmData'))
+        const currentLog = Array.isArray(currentSnap.data()?.changeLog) ? currentSnap.data().changeLog : []
+        const seenIds = new Set()
+        farmDataToWrite.changeLog = [...incomingLog, ...currentLog]
+          .filter((entry) => {
+            if (!entry?.id || seenIds.has(entry.id)) return false
+            seenIds.add(entry.id)
+            return true
+          })
+          .sort((a, b) => (b.at || '').localeCompare(a.at || ''))
+          .slice(0, CHANGE_LOG_LIMIT)
+      }
+      await setDoc(doc(db, 'farms', farmId, 'data', 'farmData'), farmDataToWrite, { merge: true })
     }
     if (farmPayload.availablePesticide) {
       await setDoc(doc(db, 'farms', farmId, 'data', 'availablePesticide'), farmPayload.availablePesticide, { merge: true })

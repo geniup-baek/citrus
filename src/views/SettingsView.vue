@@ -45,6 +45,78 @@ async function toggleGrownVariety(variety) {
 // 농장 모드에서는 저장·백업 탭만 사용할 수 있다(농장/분류·항목/동작은 시스템 관리 모드 전용).
 const activeTab = ref(farmsStore.isAdminMode ? 'categories' : 'storage')
 
+// ── 변경 이력(감사 로그) ────────────────────────────────────────────────────────
+const actorNameInput = ref(store.actorName)
+
+function saveActorName() {
+  store.setActorName(actorNameInput.value)
+  actorNameInput.value = store.actorName
+}
+
+const historyEntityFilter = ref('전체')
+
+const historyEntities = computed(() => {
+  const seen = new Set()
+  for (const entry of store.state.changeLog || []) seen.add(entry.entity)
+  return ['전체', ...seen]
+})
+
+const filteredChangeLog = computed(() => {
+  const list = Array.isArray(store.state.changeLog) ? store.state.changeLog : []
+  return historyEntityFilter.value === '전체'
+    ? list
+    : list.filter((entry) => entry.entity === historyEntityFilter.value)
+})
+
+const historyActionLabels = {
+  add: '추가',
+  update: '수정',
+  delete: '삭제',
+  'stock-in': '입고',
+  'stock-out': '사용',
+}
+
+function historyActionLabel(action) {
+  return historyActionLabels[action] || action
+}
+
+function historyActionClass(action) {
+  return `history-badge-${action}`
+}
+
+function formatHistoryAt(iso) {
+  try {
+    return new Date(iso).toLocaleString('ko-KR', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return ''
+  }
+}
+
+const showChangeLogDeleteButton = computed(() =>
+  policyStore.policy.enableChangeLogDeleteFeature && recSettingsStore.settings.showChangeLogDeleteButtons,
+)
+
+async function removeChangeLogEntry(id) {
+  await store.removeChangeLogEntry(id)
+}
+
+async function clearAllChangeLog() {
+  const total = store.state.changeLog?.length ?? 0
+  if (!total) return
+  const ok = await confirm({
+    title: '변경 이력 삭제 확인',
+    message: `변경 이력 ${total}건을 모두 삭제합니다. 되돌릴 수 없습니다. 계속할까요?`,
+    confirmLabel: '전체 삭제',
+  })
+  if (!ok) return
+  await store.clearChangeLog()
+}
+
 // ── 농장 관리 ────────────────────────────────────────────────────────────────
 const editingFarmId = ref(null)
 const farmEditName = ref('')
@@ -256,6 +328,7 @@ const datasetLabels = {
   usageGuides: () => localeStore.t('nav.usageGuides'),
   treatments: () => '방제기록',
   availablePesticides: () => '가용농약',
+  changeLog: () => '변경 이력',
 }
 
 function extendedSummary(payload) {
@@ -532,6 +605,7 @@ function saveEdit(key, i, isPair) {
         </template>
         <button class="tab-btn" :class="{ active: activeTab === 'behavior' }" type="button" @click="activeTab = 'behavior'">동작</button>
         <button class="tab-btn" :class="{ active: activeTab === 'storage' }" type="button" @click="activeTab = 'storage'">저장·백업</button>
+        <button v-if="!farmsStore.isAdminMode" class="tab-btn" :class="{ active: activeTab === 'history' }" type="button" @click="activeTab = 'history'">변경 이력</button>
       </div>
 
       <!-- ═══ 농장 ═══════════════════════════════════════════════════════════ -->
@@ -853,6 +927,30 @@ function saveEdit(key, i, isPair) {
               "초기화"는 해당 목록을 통째로 삭제하며 되돌릴 수 없습니다. "사용 안 함"이면 농장 설정의 "초기화 버튼 표시" 항목도 감춰지고 초기화 버튼은 어느 농장에서도 나타나지 않습니다.
             </p>
           </div>
+
+          <div class="sub-card">
+            <div class="settings-group-head">
+              <h3>변경 이력 삭제 기능</h3>
+            </div>
+            <p class="muted settings-group-hint">
+              "변경 이력" 탭에서 개별 항목 또는 전체 이력을 삭제하는 기능을 사용할지 설정합니다.
+            </p>
+            <div class="inline-filters">
+              <button
+                type="button"
+                :class="{ ghost: policyStore.policy.enableChangeLogDeleteFeature }"
+                @click="policyStore.policy.enableChangeLogDeleteFeature = false"
+              >사용 안 함</button>
+              <button
+                type="button"
+                :class="{ ghost: !policyStore.policy.enableChangeLogDeleteFeature }"
+                @click="policyStore.policy.enableChangeLogDeleteFeature = true"
+              >사용</button>
+            </div>
+            <p class="muted text-sm" style="margin-top: 0.5rem;">
+              삭제한 변경 이력은 되돌릴 수 없습니다. "사용 안 함"이면 농장 설정의 "삭제 버튼 표시" 항목도 감춰지고 삭제 버튼은 어느 농장에서도 나타나지 않습니다.
+            </p>
+          </div>
         </template>
 
         <!-- 농장 모드: 이 농장에만 적용되는 정책 -->
@@ -946,6 +1044,31 @@ function saveEdit(key, i, isPair) {
             </div>
             <p class="muted text-sm" style="margin-top: 0.5rem;">
               "초기화"는 이 농장의 해당 목록을 통째로 삭제하며 되돌릴 수 없습니다. 평소에는 "표시 안 함"으로 두고, 데이터를 새로 만들어야 할 때만 잠시 켜세요.
+            </p>
+          </div>
+
+          <!-- 변경 이력 삭제 기능도 시스템 관리 모드에서 켜 둔 경우에만 농장별로 표시 여부를 고를 수 있다. -->
+          <div v-if="policyStore.policy.enableChangeLogDeleteFeature" class="sub-card">
+            <div class="settings-group-head">
+              <h3>변경 이력 삭제 버튼 표시</h3>
+            </div>
+            <p class="muted settings-group-hint">
+              "변경 이력" 탭에 개별/전체 삭제 버튼을 표시할지 설정합니다. (현재 농장에만 적용됩니다)
+            </p>
+            <div class="inline-filters">
+              <button
+                type="button"
+                :class="{ ghost: recSettingsStore.settings.showChangeLogDeleteButtons }"
+                @click="recSettingsStore.settings.showChangeLogDeleteButtons = false"
+              >표시 안 함</button>
+              <button
+                type="button"
+                :class="{ ghost: !recSettingsStore.settings.showChangeLogDeleteButtons }"
+                @click="recSettingsStore.settings.showChangeLogDeleteButtons = true"
+              >표시</button>
+            </div>
+            <p class="muted text-sm" style="margin-top: 0.5rem;">
+              삭제한 변경 이력은 되돌릴 수 없습니다. 평소에는 "표시 안 함"으로 두고, 이력을 정리해야 할 때만 잠시 켜세요.
             </p>
           </div>
         </template>
@@ -1064,6 +1187,80 @@ function saveEdit(key, i, isPair) {
               <button class="ghost" type="button" :disabled="restoring" @click="cancelRestore">{{ localeStore.t('common.cancel') }}</button>
             </div>
           </div>
+        </div>
+      </template>
+
+      <!-- ═══ 변경 이력 ═══════════════════════════════════════════════════════ -->
+      <template v-if="!farmsStore.isAdminMode && activeTab === 'history'">
+        <div class="sub-card">
+          <div class="settings-group-head">
+            <h3>내 이름 표시</h3>
+          </div>
+          <p class="muted settings-group-hint">
+            이 기기에서 변경 이력에 남길 이름입니다. 로그인 없이 기기에만 저장되며, 다른 기기와 공유되지 않습니다.
+          </p>
+          <div class="row-actions">
+            <input
+              v-model="actorNameInput"
+              class="settings-edit-input"
+              type="text"
+              placeholder="예: 홍길동"
+              style="max-width: 14rem;"
+              @keydown.enter.prevent="saveActorName"
+              @blur="saveActorName"
+            />
+            <button class="ghost compact-btn" type="button" @click="saveActorName">저장</button>
+          </div>
+        </div>
+
+        <div class="sub-card">
+          <div class="settings-group-head">
+            <h3>변경 이력</h3>
+            <div class="row-actions">
+              <span class="pill">{{ filteredChangeLog.length }}건</span>
+              <button
+                v-if="showChangeLogDeleteButton && store.state.changeLog?.length"
+                class="danger compact-btn"
+                type="button"
+                @click="clearAllChangeLog"
+              >전체 삭제</button>
+            </div>
+          </div>
+          <p class="muted settings-group-hint">
+            재배동·시설장비·묘목·작업·문제·재고·사용법·방제이력의 추가·수정·삭제 및 입출고 기록입니다. 최근 300건까지 보관됩니다.
+          </p>
+
+          <div class="inline-filters history-filters">
+            <button
+              v-for="entity in historyEntities"
+              :key="entity"
+              type="button"
+              :class="{ ghost: historyEntityFilter !== entity }"
+              @click="historyEntityFilter = entity"
+            >{{ entity }}</button>
+          </div>
+
+          <ul v-if="filteredChangeLog.length" class="list clean compact history-list">
+            <li v-for="entry in filteredChangeLog" :key="entry.id" class="list-item">
+              <div class="history-item">
+                <span class="pill">{{ entry.entity }}</span>
+                <span class="history-badge" :class="historyActionClass(entry.action)">{{ historyActionLabel(entry.action) }}</span>
+                <span class="history-name">{{ entry.name }}</span>
+                <span class="muted history-meta">
+                  {{ formatHistoryAt(entry.at) }}<template v-if="entry.actor"> · {{ entry.actor }}</template>
+                </span>
+                <button
+                  v-if="showChangeLogDeleteButton"
+                  class="ghost compact-btn history-delete-btn"
+                  type="button"
+                  title="이 항목 삭제"
+                  @click="removeChangeLogEntry(entry.id)"
+                >삭제</button>
+              </div>
+              <p v-if="entry.detail" class="muted history-detail">{{ entry.detail }}</p>
+            </li>
+          </ul>
+          <p v-else class="muted text-sm">아직 기록된 변경 이력이 없습니다.</p>
         </div>
       </template>
     </div>

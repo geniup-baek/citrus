@@ -928,6 +928,46 @@ button.pill:hover {
 .match-ok   { background: var(--tone-yellow-bg); color: var(--tone-yellow-text); border-color: var(--tone-yellow-border); }
 .match-none { background: #f9fafb; color: var(--muted); border-color: var(--line); }
 
+/* ── 변경 이력(감사 로그) ─────────────────────────────────────────────────── */
+.history-filters {
+  margin-bottom: 0.6rem;
+}
+
+.history-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.history-name {
+  font-weight: 600;
+}
+
+.history-detail {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+}
+
+.history-meta {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.history-badge {
+  font-size: 0.72rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-weight: 600;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.history-badge-add       { background: var(--tone-green-bg); color: var(--tone-green-text); border-color: var(--tone-green-border); }
+.history-badge-update     { background: var(--tone-blue-bg); color: var(--tone-blue-text); border-color: var(--tone-blue-border); }
+.history-badge-delete     { background: var(--tone-red-bg); color: var(--tone-red-text); border-color: var(--tone-red-border); }
+.history-badge-stock-in   { background: var(--tone-green-bg); color: var(--tone-green-text); border-color: var(--tone-green-border); }
+.history-badge-stock-out  { background: var(--tone-orange-bg); color: var(--tone-orange-text); border-color: var(--tone-orange-border); }
+
 /* 미연결 필터 버튼 (방제이력·가용농약·농약재고 공용) */
 .ap-unmatched-btn {
   height: var(--filter-ctl-h);

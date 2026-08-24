@@ -5,6 +5,33 @@ import {
   collection, query, orderBy, onSnapshot,
   addDoc, deleteDoc, doc, updateDoc, Timestamp,
 } from 'firebase/firestore'
+import { useFarmStore } from './farmStore.js'
+
+function treatmentLabel(record) {
+  return [record?.date, record?.brandName].filter(Boolean).join(' ')
+}
+
+const TREATMENT_FIELD_LABELS = { date: '날짜', brandName: '농약', moa: '계통', category: '구분', memo: '메모' }
+
+// farmStore.diffFields와 동일한 형태({필드키: {label, from, to}})로 돌려준다 —
+// logChange의 짧은 시간 내 재수정 병합(refId+fields)이 여기서도 동작하도록.
+function diffTreatmentFields(before, after) {
+  const fields = {}
+  for (const [key, label] of Object.entries(TREATMENT_FIELD_LABELS)) {
+    const prevValue = before?.[key] ?? ''
+    const nextValue = after?.[key] ?? ''
+    if (prevValue !== nextValue) {
+      fields[key] = { label, from: before?.[key], to: after?.[key] }
+    }
+  }
+  return fields
+}
+
+function formatTreatmentFieldDiff(fields) {
+  return Object.values(fields)
+    .map((f) => `${f.label}: ${f.from || '(없음)'} → ${f.to || '(없음)'}`)
+    .join(', ')
+}
 
 function lsKey(farmId) {
   return `citrus:treatments:${farmId}`
@@ -53,7 +80,7 @@ export const useTreatmentStore = defineStore('treatment', () => {
     }
   }
 
-  async function addTreatment(record) {
+  async function addTreatment(record, { silent = false } = {}) {
     if (firebaseEnabled && db) {
       await addDoc(collectionRef(), {
         ...record,
@@ -68,9 +95,11 @@ export const useTreatmentStore = defineStore('treatment', () => {
       treatments.value = sortDesc([item, ...treatments.value])
       saveLS(treatments.value)
     }
+    if (!silent) useFarmStore().logChange('방제이력', treatmentLabel(record), 'add')
   }
 
   async function updateTreatment(id, record) {
+    const before = treatments.value.find(t => t.id === id)
     if (firebaseEnabled && db) {
       await updateDoc(doc(db, 'farms', activeFarmId, 'treatments', id), record)
     } else {
@@ -79,9 +108,12 @@ export const useTreatmentStore = defineStore('treatment', () => {
       )
       saveLS(treatments.value)
     }
+    const fields = diffTreatmentFields(before, record)
+    useFarmStore().logChange('방제이력', treatmentLabel(record), 'update', formatTreatmentFieldDiff(fields), { refId: id, fields })
   }
 
   async function replaceAllTreatments(records) {
+    const prevCount = treatments.value.length
     if (firebaseEnabled && db) {
       for (const t of treatments.value) {
         await deleteDoc(doc(db, 'farms', activeFarmId, 'treatments', t.id))
@@ -96,15 +128,22 @@ export const useTreatmentStore = defineStore('treatment', () => {
       )
       saveLS(treatments.value)
     }
+    if (records.length === 0) {
+      if (prevCount > 0) useFarmStore().logChange('방제이력', `전체 초기화 (${prevCount}건)`, 'delete')
+    } else {
+      useFarmStore().logChange('방제이력', `일괄 교체 (${records.length}건)`, 'update')
+    }
   }
 
   async function deleteTreatment(id) {
+    const target = treatments.value.find(t => t.id === id)
     if (firebaseEnabled && db) {
       await deleteDoc(doc(db, 'farms', activeFarmId, 'treatments', id))
     } else {
       treatments.value = treatments.value.filter(t => t.id !== id)
       saveLS(treatments.value)
     }
+    if (target) useFarmStore().logChange('방제이력', treatmentLabel(target), 'delete')
   }
 
   return { treatments, ready, init, addTreatment, updateTreatment, deleteTreatment, replaceAllTreatments }
