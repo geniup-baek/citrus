@@ -506,6 +506,8 @@ async function saveEditLog(seedling) {
 }
 
 async function deleteLog(seedling, log) {
+  const ok = await confirm({ message: '이 생육 기록을 삭제합니다. 되돌릴 수 없습니다.' })
+  if (!ok) return
   await store.removeSeedlingLog(seedling.id, logKey(log))
   if (editingLogId.value === logKey(log)) cancelEditLog()
 }

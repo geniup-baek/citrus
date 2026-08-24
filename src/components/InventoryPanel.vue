@@ -258,6 +258,8 @@ async function recordTxn(item) {
 }
 
 async function deleteTxn(item, txn) {
+  const ok = await confirm({ message: '이 입출고 기록을 삭제합니다. 되돌릴 수 없습니다.' })
+  if (!ok) return
   await store.removeInventoryTxn(item.id, txnKey(txn))
   if (editingTxnId.value === txnKey(txn)) cancelEditTxn()
 }

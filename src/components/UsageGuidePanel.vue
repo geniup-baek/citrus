@@ -362,6 +362,8 @@ async function saveEditStep(guide) {
 }
 
 async function deleteStep(guide, step) {
+  const ok = await confirm({ message: '이 단계를 삭제합니다. 되돌릴 수 없습니다.' })
+  if (!ok) return
   await store.removeUsageGuideStep(guide.id, step.id)
   if (editingStepId.value === step.id) cancelEditStep()
 }

@@ -102,6 +102,8 @@ const showChangeLogDeleteButton = computed(() =>
 )
 
 async function removeChangeLogEntry(id) {
+  const ok = await confirm({ message: '이 변경 이력 항목을 삭제합니다. 되돌릴 수 없습니다.' })
+  if (!ok) return
   await store.removeChangeLogEntry(id)
 }
 
@@ -558,7 +560,9 @@ function addPesticideType() {
   errors.value.pesticideTypes = ''
 }
 
-function removeOption(key, item) {
+async function removeOption(key, item) {
+  const ok = await confirm({ message: `'${itemName(item)}' 항목을 삭제합니다. 되돌릴 수 없습니다.` })
+  if (!ok) return
   const current = store.state.appSettings[key] || []
   store.updateAppSettings({ [key]: current.filter((v) => itemName(v) !== itemName(item)) })
 }
