@@ -1,0 +1,212 @@
+# 유지보수 가이드
+
+이 문서는 이 프로젝트를 처음 맡아 유지보수하게 될 사람을 위한 문서입니다. 설치·배포 방법은 [README.md](README.md)를 참고하세요. 이 문서는 "어떻게 실행하는가"가 아니라 **"왜 이렇게 만들어져 있는가", "무엇을 조심해야 하는가"**를 다룹니다.
+
+---
+
+## 1. 이 앱은 무엇인가
+
+감귤 농장 운영을 위한 협업 도구(PWA)입니다. 로그인이 없고, 같은 농장을 보는 사람은 모두 같은 Firestore 데이터를 실시간으로 공유합니다. 주요 기능:
+
+- 재배동·시설장비·묘목 관리
+- 작업(할 일) 계획과 반복 일정, 진행 기록
+- 문제(병해충 등) 발생·해결 기록, 유사 사례 추천
+- 비료·농약 재고(입출고 이력 기반)
+- 방제이력, 농약 추천(공공데이터 기반), 가용농약 관리
+- 병해충·농약 지식 자료(용어집, 사용법 안내 등)
+- 변경 이력(감사 로그) — 누가 언제 무엇을 바꿨는지
+- 백업/복원, PWA 오프라인 지원
+
+**농장은 여러 개 등록될 수 있고, 농장마다 데이터가 완전히 분리**됩니다. 병해충·농약 공공데이터와 분류·항목 설정만 모든 농장이 공유합니다.
+
+---
+
+## 2. 로그인이 없는 앱이라는 것의 의미 (가장 중요한 전제)
+
+이 앱을 유지보수하기 전에 반드시 이해해야 하는 구조적 전제입니다.
+
+- **인증이 없습니다.** Firebase Auth를 쓰지 않습니다. `firestore.rules`는 모든 경로에 대해 `allow read, write: if true`입니다 — 즉 **Firestore 설정값(`VITE_FIREBASE_*`)을 아는 사람은 누구나 전체 데이터를 읽고 쓰고 지울 수 있습니다.** 이건 의도적인 설계(소규모 팀 내부용 협업 도구)이지, 실수로 빠진 게 아닙니다. 하지만 실제 서비스로 키우거나 외부에 노출한다면 **가장 먼저 손봐야 할 부분**입니다.
+- **농장/시스템관리 PIN은 진짜 인증이 아닙니다.** `src/components/FarmSelectView.vue`의 PIN 입력은 "실수로 다른 농장에 들어가는 것을 막는" 가벼운 확인 절차일 뿐입니다. 시스템 관리 PIN은 `.env.local`의 `VITE_ADMIN_PIN`에 있습니다(빌드에 포함되므로 클라이언트에서 그대로 노출됨 — 민감한 값이 아니라는 뜻입니다).
+- **변경 이력(감사 로그)의 "누가"도 로그인 기반이 아닙니다.** 기기별로 로컬에 저장하는 자율 입력 이름(`citrus:actor-name`, localStorage만, Firestore 동기화 안 함)입니다. 신뢰할 수 있는 신원 증명이 아니라 "참고용" 표시입니다.
+
+---
+
+## 3. 기술 스택
+
+- Vue 3 (`<script setup>`) + Vue Router(해시 히스토리) + Pinia
+- Firebase Firestore (실시간 동기화), Firebase Hosting은 사용하지 않고 **GitHub Pages**에 배포(`.github/workflows/deploy.yml`, main 브랜치 push 시 자동)
+- `vite-plugin-pwa` (오프라인 캐싱 + 설치 가능한 PWA)
+- 외부 공공데이터: 농약안전정보시스템(PIS, `src/services/pesticide.js`), 국가농작물병해충관리시스템(NCPMS, `src/services/ncpms.js`) — 개발 모드에서만 Vite 프록시로 직접 호출 가능, **운영 빌드에서는 호출 불가**(아래 8장 참고)
+- 테스트 프레임워크·린터 설정 없음 (package.json에 별도 스크립트 없음)
+
+실행:
+
+```bash
+npm install
+npm run dev      # 로컬 개발 서버
+npm run build    # 운영 빌드 (dist/)
+npm run preview  # 빌드 결과 미리보기
+```
+
+---
+
+## 4. 앱 진입 흐름
+
+1. `main.js`: Vue 앱 생성 → Pinia/Router 장착 → mount → **마운트 후** 공공데이터 공유 캐시(`sharedCache/*`) 7종을 Firestore에서 당겨옴 → PWA 서비스워커 등록.
+2. `App.vue` `onMounted`: `farmsStore.init()`, `appPolicyStore.init()`, `farmStore.initAppSettings()`를 동시에 실행(이 셋은 농장과 무관하게 항상 필요).
+3. `farmsStore.activeFarm.id`가 정해지는 순간(`watch`, `immediate: true`) — **농장 전환/관리모드 전환은 항상 전체 페이지 새로고침(`window.location.reload()`)으로 처리**하므로 이 watch는 실질적으로 "앱 시작 시 1회"만 의미 있게 동작합니다 — 다음 순서로 농장별 스토어를 초기화합니다:
+   `farmStore.init(farmId)` → `treatmentStore.init(farmId)` → `availablePesticideStore.init(farmId)` → `recommendSettingsStore.init(farmId)`
+4. 화면 분기: 로딩 중 → 마이그레이션 오류 → `FarmSelectView`(농장이 없거나 아직 선택 안 함) → 일반 앱 화면.
+
+시스템 관리 모드에서는 농장별 스토어가 초기화되지 않으므로, 라우터 가드(`src/router/index.js`)가 관리 모드에서 `/resources`, `/settings` 외의 경로 접근을 막고 `/resources`로 돌려보냅니다.
+
+---
+
+## 5. 스토어 지도
+
+| 스토어 | 범위 | Firestore 경로 | 역할 |
+|---|---|---|---|
+| `farmsStore.js` | 전역(농장 목록) | `farms/{farmId}`, 마이그레이션 플래그 `shared/appMeta` | 농장 생성/이름변경/로고/PIN/삭제(소프트)/복원, 관리모드 전환. **농장 "데이터"는 다루지 않음** |
+| `farmStore.js` | 농장 1개 | `farms/{farmId}/data/farmData` | 재배동·시설장비·묘목·작업·문제·재고·사용법·**변경이력(changeLog)**. 앱에서 가장 크고 중심적인 스토어 |
+| `treatmentStore.js` | 농장 1개 | `farms/{farmId}/treatments/{id}` | 방제이력(방제 스프레이 기록). 문서 하나가 아니라 **레코드별 컬렉션**이라 다른 스토어와 저장 방식이 다름 |
+| `availablePesticideStore.js` | 농장 1개 | `farms/{farmId}/data/availablePesticide` | "가용농약" = 구입가능 텍스트 입력 + 재고 데이터를 합쳐서 만든 실사용 가능 농약 목록 |
+| `recommendSettingsStore.js` | 농장 1개(정책) + 기기 로컬(취향) | `farms/{farmId}/data/recommendSettings` | 농약 추천 정책(MOA 충돌일수, 연간 최대 사용횟수 등), 재배 품종, **"초기화 버튼 표시"/"변경이력 삭제 버튼 표시" 같은 농장별 기능 노출 여부** |
+| `appPolicyStore.js` | 전역(모든 농장·모든 기기) | `sharedCache/app:policy` | 농장과 무관한 전역 정책 — **"초기화 기능"/"변경이력 삭제 기능" 자체를 켤지 끌지**, 농약 직접등록 허용 범위, PDF 자동 인쇄 등 |
+| `localeStore.js` | — | — | 사실상 다국어가 아니라 **한국어 메시지 상수 모듈**(`i18n/messages.js`)에 대한 `t(path, params)` 래퍼. 다른 언어 파일 없음 |
+
+`farmStore.state`(단수)와 `farmsStore.farms`(복수)는 이름이 비슷해서 혼동하기 쉽습니다 — **`farmStore`는 "지금 선택된 농장의 데이터", `farmsStore`는 "농장이라는 개체 자체의 목록"**입니다.
+
+---
+
+## 6. 핵심 관례 (새 기능을 추가하기 전에 알아야 할 패턴)
+
+### 6.1 CRUD 패턴: `upsertX` / `removeX` + `persistAll()`
+
+`farmStore.js`의 모든 변경 함수는 이 모양을 따릅니다:
+
+```js
+async function upsertFacility(payload) {
+  const index = state.value.facilities.findIndex((item) => item.id === payload.id)
+  if (index >= 0) {
+    // 수정
+  } else {
+    // 추가 (crypto.randomUUID()로 id 생성)
+  }
+  await persistAll()
+}
+```
+
+`persistAll()`이 하는 일: `updatedAt` 갱신 → `localStorage` 즉시 저장 → Firestore에 **500ms 디바운스** 쓰기 예약 → 참조 없는 사진 정리(`gcOrphanPhotos`). **새 변경 함수를 추가할 때는 반드시 마지막에 `persistAll()`을 호출**해야 합니다. 그렇지 않으면 로컬 상태만 바뀌고 다른 기기/새로고침에는 반영되지 않습니다.
+
+⚠️ **주의 (실제로 겪은 문제):** `persistAll()`은 비동기이지만 500ms 디바운스 후에야 실제 Firestore 쓰기가 일어납니다. 자동화 테스트나 스크립트에서 값을 바꾼 뒤 곧바로 브라우저를 닫거나 새로고침하면, 로컬에서는 반영된 것처럼 보여도 **Firestore에는 아직 쓰이지 않아** 다음 로드 때 이전 값으로 되돌아간 것처럼 보일 수 있습니다. 검증할 때는 마지막 변경 후 최소 1~2초 이상 기다린 뒤 새로고침해서 확인하세요.
+
+### 6.2 변경 이력(감사 로그) — `changeLog`
+
+`farmStore.state.changeLog`는 `{ id, at, entity, name, action, actor, detail, refId?, fields? }` 형태 항목의 배열이며, **최근 300건(`CHANGE_LOG_LIMIT`)까지만 보관**됩니다(Firestore 문서 1MiB 한도 보호용). 기록은 `logChange(entity, name, action, detail, mergeInfo)` 함수 하나를 통해서만 이루어집니다.
+
+- `action`은 `'add' | 'update' | 'delete' | 'stock-in' | 'stock-out'` 중 하나입니다.
+- `detail`은 `"필드: 이전값 → 새값, ..."` 형태의 사람이 읽을 수 있는 요약이며, `diffFields()` + `formatFieldDiff()`로 만듭니다.
+- **60초 병합 규칙**: 같은 항목(같은 `entity` + `refId`)을 60초 안에 다시 수정하면 새 줄을 추가하지 않고 기존 줄을 갱신합니다(예: 작업 상태를 예정→진행중→완료로 연달아 클릭해도 "상태: 예정 → 완료" 한 줄만 남음). 값이 원래대로 되돌아오면(순변화 없음) 그 기록 자체를 지웁니다. 이 로직이 `logChange` 내부에 있습니다.
+- **새 엔티티(예: 새로운 목록 타입)를 추가하면서 changeLog에도 기록하고 싶다면** 다음을 해야 합니다:
+  1. 해당 `upsertX`/`removeX`의 수정 분기에서 `diffFields(before, after, { 필드키: '표시이름', ... })`로 `fields`를 만들고, `logChange(entity, name, 'update', formatFieldDiff(fields), { refId: payload.id, fields })` 호출.
+  2. 추가/삭제 분기에서는 `logChange(entity, name, 'add'|'delete')`만 호출(병합 대상이 아니므로 `mergeInfo` 불필요).
+  3. 대량 처리(예: 일괄 추가, 자동 생성)는 **항목마다 로그를 남기지 말고 요약 1건**으로 남기세요(`addSeedlingsBatch`, `runTaskScheduler`의 패턴 참고) — 안 그러면 300건 캡이 순식간에 채워집니다.
+- 변경 이력 자체를 지우는 `removeChangeLogEntry`/`clearChangeLog`는 **새 로그를 남기지 않습니다**(정리 행위가 다시 이력을 쌓으면 의미가 없어서 의도적으로 그렇게 만들었습니다).
+- UI는 `SettingsView.vue`의 "변경 이력" 탭(`activeTab === 'history'`, 농장 모드에서만 노출)에 있습니다.
+
+### 6.3 백업/복원
+
+- 농장별 백업(`farmStore.exportBackup/restoreBackup`)은 화이트리스트(`BACKUP_ARRAY_KEYS`/`BACKUP_OBJECT_KEYS`) 기반이라, **새 필드를 추가해도 자동으로 백업되지 않습니다** — 백업에 포함시키려면 그 목록에 추가해야 합니다.
+- `changeLog`는 예외적으로 다른 항목처럼 통째로 덮어쓰지 않고, **id 기준으로 현재 값과 합쳐서(merge) 보존**합니다(오래된 백업을 복원해도 그 사이의 최근 이력이 사라지지 않도록). 복원 자체도 changeLog에 "백업 복원" 한 줄을 남깁니다.
+- `treatments`(방제이력)와 `availablePesticide`는 `farmStore` 밖의 별도 스토어 데이터라, `SettingsView.vue`의 `exportBackup()`/`confirmRestore()`에서 **수동으로 합쳐서/나눠서** 처리합니다. 새로운 농장 범위 스토어를 추가한다면 이 두 함수도 같이 고쳐야 합니다.
+- 관리자 전체 백업(`services/adminBackup.js`)은 개별 스토어를 거치지 않고 **Firestore 문서를 통째로** 복사합니다. 그래서 `changeLog`도 저절로 포함되는데, 복원 시 오래된 스냅샷이 최근 이력을 지우지 않도록 여기서도 별도로 merge 처리를 해줍니다(`restoreAllFarmsBackup` 안의 `changeLog` 병합 코드 참고).
+
+### 6.4 기능 게이팅 2단계 패턴 ("초기화", "변경이력 삭제"가 쓰는 방식)
+
+되돌릴 수 없는 파괴적 기능(초기화, 변경이력 삭제)은 항상 이 2단계 스위치로 노출합니다:
+
+1. **`appPolicyStore.policy.XxxFeature`** (전역, 시스템 관리 모드에서만 설정) — 기능 자체를 켤지/끌지. 꺼져 있으면 아래 2번 설정 자체가 화면에서 사라짐.
+2. **`recommendSettingsStore.settings.showXxxButtons`** (농장별) — 1번이 켜져 있을 때만 설정 가능하며, 이 농장에서 실제로 버튼을 보여줄지 결정.
+3. 실제 버튼은 `computed(() => policyStore.policy.XxxFeature && recSettingsStore.settings.showXxxButtons)` 조건으로 노출합니다(`FacilitiesPanel.vue`의 `showResetButton`, `SettingsView.vue`의 `showChangeLogDeleteButton` 참고).
+
+새로운 위험한 기능을 추가할 때는 이 패턴을 그대로 따르는 것을 권장합니다 — 기본값은 항상 `false`(사용 안 함/표시 안 함)로 둡니다.
+
+### 6.5 공공데이터 캐싱 (PIS/NCPMS)
+
+- `services/pesticide.js`(PIS, 농약 정보)와 `services/ncpms.js`(NCPMS, 병해충 정보)는 개발 중에는 Vite dev 프록시(`/agri-api`, `/ncpms-api`)로 실제 API를 호출하지만, **운영 빌드(GitHub Pages)에서는 이 프록시가 없어서 직접 호출이 불가능**합니다.
+- 그래서 "누군가의 로컬 개발 환경 또는 관리자가 한 번 API를 호출해서 캐시를 만들고, 그 캐시를 Firestore `sharedCache/{key}`에 올려두면, 운영 환경의 모든 사용자는 그 캐시만 읽는다"는 구조입니다(`services/cache.js`의 `withCache`/`pushSharedCache`/`pullSharedCache`).
+- 이 캐시들은 **만료되지 않습니다.** 공공데이터가 갱신됐는데 캐시가 오래됐다면, 개발 환경에서 설정(동작 탭)의 "공공데이터 상세정보 전체 가져오기"를 실행해 캐시를 새로 만들고 공유해야 합니다.
+- `VITE_AGRI_API_KEY`가 없으면 `pesticide.js`는 **12개짜리 목업 데이터**로 동작합니다(개발 편의용, 실제 키 발급 후 제거 예정이라는 주석이 있음 — 아직 제거되지 않았다면 확인해볼 것).
+
+---
+
+## 7. 알고 있어야 할 제약/한계
+
+- **Firestore 문서 1MiB 한도.** `changeLog`(300건 캡), 농약 상세정보 인덱스(`t/f/n/c` 같은 한 글자 키로 압축) 등 여러 곳에서 이 한도를 피하려는 설계가 보입니다. 새 필드를 대량으로 문서 안에 추가할 때는 이 한도를 항상 의식하세요.
+- **사진은 `farmData` 문서 안에 들어있지 않습니다.** 전역 `photos/{photoId}` 컬렉션에 base64로 별도 저장되고, `farmStore.js`의 `gcOrphanPhotos()`/`collectInlinePhotos()`가 참조 없는 사진을 정리합니다. 사진을 참조하는 새 필드를 추가한다면 이 GC 로직도 그 필드를 인식하게 고쳐야 누수가 안 생깁니다.
+- **`localeStore`는 실제로는 다국어가 아닙니다.** 언젠가 진짜 다국어 지원이 필요해지면 지금의 "메시지 트리 + 문자열 치환" 구조를 다시 설계해야 합니다.
+- **NCPMS 예측 API(`getPrediction`)에 운영 도메인이 하드코딩**되어 있습니다(`https://citrus-collab-2026.web.app`). GitHub Pages 배포 주소나 커스텀 도메인이 바뀌면 이 부분이 깨집니다.
+- **테스트 코드가 없습니다.** 이 세션에서 새 기능을 검증할 때는 Playwright로 즉석 스크립트를 작성해 브라우저를 띄워 직접 클릭해보는 방식으로 확인했습니다(`package.json`에 등록된 정식 테스트 스위트는 아님). 회귀 테스트를 자동화하고 싶다면 이 부분부터 갖추는 것을 고려해보세요.
+- **작업(Task) 제목이 겹칠 수 있습니다.** 반복 작업(스케줄 규칙으로 자동 생성)은 같은 제목에 날짜만 다른 여러 인스턴스로 존재합니다. 특정 작업을 찾아 조작할 때 제목만으로 찾으면 잘못된 인스턴스를 건드릴 수 있으니 `id`나 `dueDate`까지 같이 확인하세요.
+- **농장 전환은 항상 전체 새로고침입니다.** SPA 안에서 상태만 바꿔서 농장을 전환하지 않습니다(`farmsStore.selectFarm`/`enterAdminMode`/`exitToSelector`가 모두 `window.location.reload()`를 호출). 의도된 설계이니 "왜 새로고침이 일어나지?" 하고 버그로 오해하지 마세요.
+
+---
+
+## 8. 자주 마주칠 만한 상황
+
+| 상황 | 원인/확인할 곳 |
+|---|---|
+| 방금 바꾼 값이 새로고침하면 사라짐 | Firestore 쓰기 디바운스(500ms)가 끝나기 전에 새로고침했을 가능성. 잠시 기다려보고 다시 확인 |
+| 시스템 관리 모드 진입이 안 됨 | `.env.local`의 `VITE_ADMIN_PIN` 확인. 값이 없으면 PIN 없이 바로 진입, 있으면 정확히 그 값 입력 |
+| 새 기능을 만들었는데 백업 파일에 안 들어있음 | `farmStore.js`의 `BACKUP_ARRAY_KEYS`/`BACKUP_OBJECT_KEYS`(또는 `SettingsView.vue`의 `datasetLabels`/`extendedSummary`)에 추가했는지 확인 |
+| 농약/병해충 검색 결과가 이상하게 옛날 데이터 | `sharedCache/*` 캐시가 오래됨. 개발 환경에서 전체 가져오기를 다시 실행해 캐시 갱신 필요 |
+| 변경 이력에 이상하게 많은 항목이 한 번에 쌓임 | 일괄 처리(대량 추가/자동 생성) 코드에서 항목별로 `logChange`를 부르고 있는지 확인 — 요약 1건으로 바꿔야 함 |
+| "초기화"/"변경이력 삭제" 버튼이 안 보임 | 설정 > 동작 탭에서 시스템 관리 모드 스위치(전역)와 농장 모드 스위치(농장별)가 **둘 다** 켜져 있는지 확인(6.4 참고) |
+
+---
+
+## 9. 새 데이터 종류(엔티티)를 추가할 때 체크리스트
+
+1. `src/data/defaults.js`에 기본값 추가(필요하다면).
+2. `farmStore.js`의 `createDefaultFarmData()`/`normalizeFarmData()`에 필드 추가(구버전 데이터 호환을 위해 `Array.isArray` 가드 필수).
+3. `upsertX`/`removeX` 함수 작성 — 6.1 패턴대로, 마지막에 `persistAll()`.
+4. 변경 이력에 남기고 싶다면 6.2 패턴대로 `diffFields`+`logChange` 연결.
+5. 백업 대상에 넣고 싶다면 6.3 패턴대로 `BACKUP_ARRAY_KEYS` 등에 추가.
+6. UI 패널 작성 — 기존 패널(`FacilitiesPanel.vue` 등)의 목록/편집폼/사진첨부 구조를 참고하면 스타일이 일관됩니다.
+7. 파괴적 기능(초기화 등)이 필요하다면 6.4의 2단계 게이팅 패턴을 그대로 사용.
+8. 새 스토어를 만들었다면 `App.vue`의 초기화 순서(4장)에 추가하고, `farmsStore.js`의 `permanentlyDeleteFarm`(농장 완전 삭제 시 이 데이터도 지워야 함)도 확인.
+
+---
+
+## 10. 파일 맵
+
+```
+src/
+├── main.js                 앱 부트스트랩, 공유 캐시 pull, PWA 등록
+├── App.vue                 스토어 초기화 순서, 화면 분기(로딩/농장선택/앱)
+├── router/index.js         라우트 정의, 관리모드 접근 가드
+├── stores/
+│   ├── farmsStore.js       농장 목록/생성/PIN/삭제, 관리모드 전환
+│   ├── farmStore.js        ★ 농장 데이터 전체 + 변경이력(changeLog) — 가장 중요한 파일
+│   ├── treatmentStore.js   방제이력(컬렉션 기반, farmData와 별도 저장)
+│   ├── availablePesticideStore.js  가용농약(구입가능목록+재고 병합)
+│   ├── recommendSettingsStore.js   농장별 정책/취향, 기능 노출 스위치
+│   ├── appPolicyStore.js   전역 정책, 파괴적 기능 on/off 스위치
+│   └── localeStore.js      메시지 상수 조회(사실상 한국어 전용)
+├── services/
+│   ├── firebase.js         firebaseEnabled 판단, 로컬 전용 모드 스위치
+│   ├── pesticide.js        PIS(농약안전정보) API 래퍼 + 캐시 + 목업
+│   ├── ncpms.js             NCPMS(병해충관리) API 래퍼 + 캐시
+│   ├── cache.js             localStorage+Firestore 공유 캐시 공통 로직
+│   ├── recommend.js         농약 추천 알고리즘(순수 함수)
+│   └── adminBackup.js       관리자 전체 백업/복원(Firestore 문서 통째로)
+├── components/              농장별 데이터 편집 패널들(재배동/묘목/재고/사용법 등)
+├── views/                   라우트별 화면(대시보드/농장현황/작업/문제/방제추천/설정)
+├── composables/             useConfirm, useIsMobile, useTaskNotifier 등 재사용 로직
+├── utils/                   dataExport(CSV/인쇄), imageProcessing(사진 압축)
+├── data/defaults.js         초기 시드 데이터, 기본 분류·항목 값
+└── i18n/messages.js         화면에 쓰이는 한국어 문자열 전체
+
+firestore.rules             ⚠️ 모든 경로 완전 개방(인증 없음)
+.env.local                  Firebase 설정, PIS/NCPMS API 키, 관리자 PIN(모두 클라이언트에 노출됨)
+```
