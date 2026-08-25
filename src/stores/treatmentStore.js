@@ -21,7 +21,8 @@ function diffTreatmentFields(before, after) {
     const prevValue = before?.[key] ?? ''
     const nextValue = after?.[key] ?? ''
     if (prevValue !== nextValue) {
-      fields[key] = { label, from: before?.[key], to: after?.[key] }
+      // Firestore는 undefined 값이 섞인 문서를 통째로 거부하므로 null로 채운다.
+      fields[key] = { label, from: before?.[key] ?? null, to: after?.[key] ?? null }
     }
   }
   return fields
