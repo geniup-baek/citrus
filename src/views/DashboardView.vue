@@ -64,9 +64,6 @@ function issueStatusLabel(value) {
   return map[value] || value
 }
 
-function frequencyLabel(value) {
-  return value
-}
 </script>
 
 <template>
@@ -148,7 +145,7 @@ function frequencyLabel(value) {
                 <template v-if="task.category">{{ task.category }} · </template>{{ localeStore.t('common.due') }} {{ prettyDate(task.dueDate) }}
               </p>
             </div>
-            <span class="pill">{{ frequencyLabel(task.frequency) }}</span>
+            <span class="pill">{{ task.frequency }}</span>
           </router-link>
         </li>
         <li v-if="!upcoming.length" class="muted">{{ localeStore.t('dashboard.noUpcoming') }}</li>

@@ -3,7 +3,7 @@ import { uuid } from '../../utils/uuid.js'
 import { diffFields, formatFieldDiff, withDisplayFields, snapshotForRevert, truncateForLog } from '../../utils/changeLogUtils.js'
 
 export function createSeedlingActions(ctx) {
-  const { state, persistAll, logChange, facilityNameById } = ctx
+  const { state, persist, logChange, facilityNameById } = ctx
 
   function seedlingLabel(seedling) {
     const greenhouse = state.value.facilities.find((item) => item.id === seedling?.greenhouseId)
@@ -37,7 +37,7 @@ export function createSeedlingActions(ctx) {
       logChange('묘목', seedlingLabel(created), 'add')
     }
 
-    await persistAll()
+    await persist('seedlings')
   }
 
   async function addSeedlingsBatch(payloads) {
@@ -49,14 +49,14 @@ export function createSeedlingActions(ctx) {
       })
     }
     if (payloads.length > 0) logChange('묘목', `${payloads.length}그루 일괄 추가`, 'add')
-    await persistAll()
+    await persist('seedlings')
   }
 
   async function removeSeedling(id) {
     const target = state.value.seedlings.find((item) => item.id === id)
     state.value.seedlings = state.value.seedlings.filter((item) => item.id !== id)
     if (target) logChange('묘목', seedlingLabel(target), 'delete', '', { snapshot: snapshotForRevert(target) })
-    await persistAll()
+    await persist('seedlings')
   }
 
   async function addSeedlingLog(seedlingId, note, photos = []) {
@@ -74,7 +74,7 @@ export function createSeedlingActions(ctx) {
     })
     logChange('묘목 생육기록', seedlingLabel(seedling), 'add', truncateForLog(note))
 
-    await persistAll()
+    await persist('seedlings')
   }
 
   async function updateSeedlingLog(seedlingId, logId, patch) {
@@ -103,7 +103,7 @@ export function createSeedlingActions(ctx) {
       fields,
     })
 
-    await persistAll()
+    await persist('seedlings')
   }
 
   async function removeSeedlingLog(seedlingId, logId) {
@@ -120,14 +120,14 @@ export function createSeedlingActions(ctx) {
         snapshot: snapshotForRevert(target),
       })
     }
-    await persistAll()
+    await persist('seedlings')
   }
 
   async function resetSeedlings() {
     const count = state.value.seedlings.length
     state.value.seedlings = []
     if (count > 0) logChange('묘목', `전체 초기화 (${count}그루)`, 'delete')
-    await persistAll()
+    await persist('seedlings')
   }
 
   return {

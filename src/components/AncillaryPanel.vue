@@ -4,11 +4,10 @@ import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
-import { compressImageFile } from '../utils/imageProcessing'
-import { uuid } from '../utils/uuid.js'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
-import { useLightboxBack } from '../composables/useLightboxBack'
+import { useLightbox } from '../composables/useLightbox'
+import { useFilesToPreviews } from '../composables/usePhotoPreviews'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -47,8 +46,8 @@ const form = reactive({
 const formPhotos = ref([])
 const photoPreviews = ref([])
 const compressionReport = ref('')
-const lightboxPhoto = ref(null)
-useLightboxBack(lightboxPhoto)
+const { lightboxPhoto, openLightbox, closeLightbox } = useLightbox()
+const { filesToPreviews } = useFilesToPreviews('ancillary.compressedReport')
 
 function moved(arr, i, dir) {
   const j = i + dir
@@ -94,45 +93,6 @@ watch(
 )
 
 // ── 사진 헬퍼 ────────────────────────────────────────────────────────────────
-async function filesToPreviews(files) {
-  let originalTotal = 0
-  let compressedTotal = 0
-
-  const previews = await Promise.all(
-    files.map(async (file) => {
-      const compressed = await compressImageFile(file, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.78,
-        outputType: 'image/jpeg',
-      })
-      originalTotal += compressed.originalSize
-      compressedTotal += compressed.compressedSize
-      return {
-        id: uuid(),
-        name: file.name,
-        dataUrl: compressed.dataUrl,
-        contentType: compressed.contentType,
-        size: compressed.compressedSize,
-        width: compressed.width,
-        height: compressed.height,
-        originalSize: compressed.originalSize,
-      }
-    }),
-  )
-
-  const report = previews.length
-    ? localeStore.t('ancillary.compressedReport', {
-        count: previews.length,
-        from: Math.round(originalTotal / 1024),
-        to: Math.round(compressedTotal / 1024),
-        ratio: originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100,
-      })
-    : ''
-
-  return { previews, report }
-}
-
 async function handlePhotoChange(event) {
   const files = Array.from(event.target.files || []).slice(0, 5)
   const { previews, report } = await filesToPreviews(files)
@@ -146,14 +106,6 @@ function removePreviewPhoto(id) {
 
 function removeExistingPhoto(id) {
   formPhotos.value = formPhotos.value.filter((p) => p.id !== id)
-}
-
-function openLightbox(photo) {
-  lightboxPhoto.value = photo
-}
-
-function closeLightbox() {
-  lightboxPhoto.value = null
 }
 
 function clearForm() {

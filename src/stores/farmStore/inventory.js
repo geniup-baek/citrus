@@ -3,10 +3,10 @@
 // 현재 재고(로트별 수량)는 txns로부터 계산하므로 단일 출처라 편집/삭제가 단순하다.
 import { uuid } from '../../utils/uuid.js'
 import { diffFields, formatFieldDiff, snapshotForRevert } from '../../utils/changeLogUtils.js'
-import { normalizeInventoryItem } from './normalize.js'
+import { normalizeInventoryItem } from '../../utils/farmDataSchema.js'
 
 export function createInventoryActions(ctx) {
-  const { state, persistAll, logChange } = ctx
+  const { state, persist, logChange } = ctx
 
   async function upsertInventoryItem(payload) {
     const index = state.value.inventory.findIndex((item) => item.id === payload.id)
@@ -40,14 +40,14 @@ export function createInventoryActions(ctx) {
       logChange(`${created.category}재고`, created.name, 'add')
     }
 
-    await persistAll()
+    await persist('inventory')
   }
 
   async function removeInventoryItem(id) {
     const target = state.value.inventory.find((item) => item.id === id)
     state.value.inventory = state.value.inventory.filter((item) => item.id !== id)
     if (target) logChange(`${target.category}재고`, target.name, 'delete', '', { snapshot: snapshotForRevert(target) })
-    await persistAll()
+    await persist('inventory')
   }
 
   // 입출고 1건 기록. 로트는 (규격 volume + 유효기간 expiryDate)로 식별된다.
@@ -77,7 +77,7 @@ export function createInventoryActions(ctx) {
       resolvedType === '사용' ? 'stock-out' : 'stock-in',
     )
 
-    await persistAll()
+    await persist('inventory')
   }
 
   async function updateInventoryTxn(itemId, txnId, patch) {
@@ -111,7 +111,7 @@ export function createInventoryActions(ctx) {
       refId: `${itemId}:${txnId}`,
       fields,
     })
-    await persistAll()
+    await persist('inventory')
   }
 
   async function removeInventoryTxn(itemId, txnId) {
@@ -126,7 +126,7 @@ export function createInventoryActions(ctx) {
         snapshot: snapshotForRevert(target),
       })
     }
-    await persistAll()
+    await persist('inventory')
   }
 
   // 재고는 비료·농약이 한 배열에 섞여 있으므로 분류별로만 비운다.
@@ -134,7 +134,7 @@ export function createInventoryActions(ctx) {
     const count = state.value.inventory.filter((item) => item.category === category).length
     state.value.inventory = state.value.inventory.filter((item) => item.category !== category)
     if (count > 0) logChange(`${category}재고`, `전체 초기화 (${count}개)`, 'delete')
-    await persistAll()
+    await persist('inventory')
   }
 
   return {

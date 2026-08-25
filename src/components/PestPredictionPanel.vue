@@ -3,7 +3,8 @@ import { ref, onMounted } from 'vue'
 import { getPrediction, normalizePrediction, getPredictionFromCache } from '../services/ncpms.js'
 import { useLocaleStore } from '../stores/localeStore'
 import { useFarmsStore } from '../stores/farmsStore.js'
-import { withCache, formatFetchedAt } from '../services/cache.js'
+import { withCache } from '../services/cache.js'
+import CacheStatusBanner from './CacheStatusBanner.vue'
 
 const localeStore = useLocaleStore()
 const farmsStore = useFarmsStore()
@@ -61,16 +62,12 @@ onMounted(() => {
     <span style="white-space: pre-line;">{{ error }}</span>
   </div>
 
-  <div v-if="cacheInfo" class="cache-banner" :class="{ 'cache-warn': cacheInfo.error }">
-    <span class="cache-banner-icon">{{ cacheInfo.error ? '⚠' : 'ℹ' }}</span>
-    <span v-if="cacheInfo.error" class="cache-banner-msg">API 오류 · </span>
-    <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 데이터</span>
-    <div v-if="farmsStore.isAdminMode" class="cache-banner-actions">
-      <button class="cache-refresh-btn" :disabled="loading" @click="fetchPrediction">
-        {{ loading ? '가져오는 중...' : '최신 정보 가져오기' }}
-      </button>
-    </div>
-  </div>
+  <CacheStatusBanner
+    :cache-info="cacheInfo"
+    :loading="loading"
+    :show-refresh="farmsStore.isAdminMode"
+    @refresh="fetchPrediction"
+  />
 
   <div v-if="!loading && !predItems.length && !error" class="no-cache-state">
     <p>저장된 예측 데이터가 없습니다.</p>

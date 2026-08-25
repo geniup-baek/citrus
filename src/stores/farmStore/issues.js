@@ -1,7 +1,7 @@
 // 문제 CRUD + 해결단계 CRUD + 유사 사례 추천 + 전체 초기화.
 import { uuid } from '../../utils/uuid.js'
 import { diffFields, formatFieldDiff, withDisplayFields, snapshotForRevert, truncateForLog } from '../../utils/changeLogUtils.js'
-import { normalizeIssue } from './normalize.js'
+import { normalizeIssue } from '../../utils/farmDataSchema.js'
 
 function scoreSimilarity(base, sample) {
   const tokenize = (text) =>
@@ -68,7 +68,7 @@ function scoreTokenSetSimilarity(sourceSet, targetSet) {
 }
 
 export function createIssueActions(ctx) {
-  const { state, persistAll, logChange, facilityNameById } = ctx
+  const { state, persist, logChange, facilityNameById } = ctx
 
   async function upsertIssue(payload) {
     const index = state.value.issues.findIndex((item) => item.id === payload.id)
@@ -101,7 +101,7 @@ export function createIssueActions(ctx) {
       logChange('문제', created.title, 'add')
     }
 
-    await persistAll()
+    await persist('issues')
   }
 
   async function addIssueResolutionStep(issueId, note, photos = []) {
@@ -118,7 +118,7 @@ export function createIssueActions(ctx) {
       photos: Array.isArray(photos) ? photos : [],
     })
     logChange('문제 해결단계', issue.title, 'add', truncateForLog(note))
-    await persistAll()
+    await persist('issues')
   }
 
   async function updateIssueResolutionStep(issueId, stepId, patch) {
@@ -145,7 +145,7 @@ export function createIssueActions(ctx) {
       refId: `${issueId}:${stepId}`,
       fields,
     })
-    await persistAll()
+    await persist('issues')
   }
 
   async function removeIssueResolutionStep(issueId, stepId) {
@@ -162,21 +162,21 @@ export function createIssueActions(ctx) {
         snapshot: snapshotForRevert(target),
       })
     }
-    await persistAll()
+    await persist('issues')
   }
 
   async function removeIssue(id) {
     const target = state.value.issues.find((item) => item.id === id)
     state.value.issues = state.value.issues.filter((item) => item.id !== id)
     if (target) logChange('문제', target.title, 'delete', '', { snapshot: snapshotForRevert(target) })
-    await persistAll()
+    await persist('issues')
   }
 
   async function resetIssues() {
     const count = state.value.issues.length
     state.value.issues = []
     if (count > 0) logChange('문제', `전체 초기화 (${count}건)`, 'delete')
-    await persistAll()
+    await persist('issues')
   }
 
   function suggestSimilarIssues(query) {

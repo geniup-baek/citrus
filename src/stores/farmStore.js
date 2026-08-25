@@ -1,10 +1,13 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { endOfMonth, endOfWeek, isSameDay, parseISO, startOfMonth, startOfWeek } from 'date-fns'
-import { doc, onSnapshot, setDoc } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db, firebaseEnabled } from '../services/firebase'
 import { defaultAppSettings } from '../data/defaults'
-import { createDefaultFarmData, normalizeAppSettings, normalizeFarmData, normalizeInventoryItem, normalizeIssue, normalizeRule, normalizeScheduleSettings, normalizeUsageGuide, farmStorageKey } from './farmStore/normalize.js'
+import {
+  createDefaultFarmData, normalizeAppSettings, normalizeFarmData, farmStorageKey,
+  DOMAIN_SYNC, DOMAIN_KEYS, domainFields,
+} from '../utils/farmDataSchema.js'
 import { createChangeLogActions } from './farmStore/changeLog.js'
 import { createRevertActions } from './farmStore/revert.js'
 import { createPhotoActions } from './farmStore/photos.js'
@@ -21,6 +24,9 @@ import { createBackupActions } from './farmStore/backup.js'
 // 이 파일은 스토어의 배관(초기화·저장·구독)과 각 도메인 모듈을 엮는 역할만 한다.
 // 실제 CRUD 로직은 ./farmStore/*.js에 도메인별로 나뉘어 있다 — 전체 구조는
 // MAINTENANCE.md의 "스토어 지도"와 src/stores/farmStore/ 폴더의 파일 목록을 참고.
+//
+// 농장 데이터는 farms/{farmId}/data/{도메인키} 문서로 나뉘어 저장된다(도메인 목록은
+// src/utils/farmDataSchema.js의 DOMAIN_SYNC 참고) — 예전엔 farmData 문서 하나에 전부 있었다.
 
 const APP_SETTINGS_LS_KEY = 'citrus:app-settings' // 공통(농장 무관) 분류·항목 설정
 const ACTOR_NAME_LS_KEY = 'citrus:actor-name' // 이 기기에서 변경 이력에 표시할 이름(기기별 로컬 저장, 서버 동기화 안 함)
@@ -28,7 +34,7 @@ const ACTOR_NAME_LS_KEY = 'citrus:actor-name' // 이 기기에서 변경 이력�
 export const useFarmStore = defineStore('farm', () => {
   const initialized = ref(false)
   const state = ref({ ...createDefaultFarmData(), appSettings: { ...defaultAppSettings } })
-  const unsubscriber = ref(null)
+  let unsubscribers = []
   let appSettingsUnsub = null
   let activeFarmId = null
 
@@ -85,6 +91,9 @@ export const useFarmStore = defineStore('farm', () => {
     }),
   )
 
+  // 로컬(오프라인 폴백/로컬 전용 모드) 캐시는 지금도 농장 데이터 전체를 문서 하나 분량으로
+  // 묶어 저장한다 — localStorage엔 1 MiB 같은 문서 용량 한도가 없고, 기기 하나짜리라
+  // Firestore처럼 동시 쓰기 충돌도 없으므로 굳이 나눌 이유가 없다.
   function persistLocal() {
     if (!activeFarmId) return
     const { appSettings, ...farmData } = state.value
@@ -92,18 +101,22 @@ export const useFarmStore = defineStore('farm', () => {
     localStorage.setItem(APP_SETTINGS_LS_KEY, JSON.stringify(appSettings))
   }
 
-  let firestoreDebounceTimer = null
+  // 도메인 키(farmDataSchema.js의 DOMAIN_SYNC 참고)마다 독립적으로 디바운스한다 — 재배동을
+  // 수정한 직후 작업을 수정해도 서로의 예약된 저장을 취소하지 않는다.
+  const firestoreDebounceTimers = {}
 
-  function scheduleFirestoreWrite() {
+  function scheduleFirestoreWriteForDomain(key) {
     if (!firebaseEnabled || !db || !activeFarmId) return
-    clearTimeout(firestoreDebounceTimer)
-    firestoreDebounceTimer = setTimeout(async () => {
+    clearTimeout(firestoreDebounceTimers[key])
+    firestoreDebounceTimers[key] = setTimeout(async () => {
       try {
-        const { appSettings, ...farmData } = state.value
-        const ref = doc(db, 'farms', activeFarmId, 'data', 'farmData')
-        await setDoc(ref, farmData, { merge: true })
+        const payload = {}
+        domainFields(key).forEach((field) => { payload[field] = state.value[field] })
+        payload.updatedAt = state.value.updatedAt
+        const ref = doc(db, 'farms', activeFarmId, 'data', key)
+        await setDoc(ref, payload, { merge: true })
       } catch (e) {
-        console.warn('[farmStore] Firestore write failed, will retry on next change.', e)
+        console.warn(`[farmStore] Firestore 저장 실패(${key} 문서), 다음 변경 때 다시 시도합니다.`, e)
       }
     }, 500)
   }
@@ -122,10 +135,16 @@ export const useFarmStore = defineStore('farm', () => {
     }, 500)
   }
 
-  async function persistAll() {
+  // 도메인 모듈이 데이터를 바꾼 뒤 호출한다. domainKeys로 실제 바뀐 문서만 지정하면
+  // 그 문서(들)만 Firestore에 쓴다 — changeLog는 거의 모든 변경에 함께 남으므로 항상 포함한다.
+  // domainKeys를 생략하면 changeLog만(예: 이력 자체를 지우는 동작), 'all'이면 전체 문서를 쓴다.
+  async function persist(domainKeys) {
     state.value.updatedAt = new Date().toISOString()
     persistLocal()
-    scheduleFirestoreWrite()
+    const keys = new Set(['changeLog'])
+    const list = domainKeys === 'all' ? DOMAIN_KEYS : Array.isArray(domainKeys) ? domainKeys : [domainKeys]
+    list.filter(Boolean).forEach((key) => keys.add(key))
+    keys.forEach((key) => scheduleFirestoreWriteForDomain(key))
     photoActions.gcOrphanPhotos()
   }
 
@@ -133,7 +152,7 @@ export const useFarmStore = defineStore('farm', () => {
   const { logChange, facilityNameById } = createChangeLogActions(state, actorName)
 
   // ── 사진 분산 저장 ───────────────────────────────────────────────────────────
-  const photoActions = createPhotoActions(state, persistAll)
+  const photoActions = createPhotoActions(state, persist)
 
   function loadLocal() {
     const raw = localStorage.getItem(farmStorageKey(activeFarmId))
@@ -166,6 +185,28 @@ export const useFarmStore = defineStore('farm', () => {
     })
   }
 
+  // 이 농장이 아직 신버전(도메인별) 문서로 옮겨지지 않았으면 한 번만 옮긴다.
+  // - 완전 신규 농장(구버전 문서도 없음): 각 문서를 기본값으로 새로 만든다.
+  // - 기존 농장(구버전 farmData 문서 있음): 그 데이터를 도메인별로 나눠 옮겨 쓴다.
+  // 구버전 farmData 문서는 안전을 위해 지우지 않고 그대로 남겨둔다(farmsStore.js의 기존
+  // 마이그레이션 관례와 동일 — 되돌아갈 여지를 남겨둔다).
+  async function ensureFarmDocumentsExist(farmId) {
+    const facilitiesSnap = await getDoc(doc(db, 'farms', farmId, 'data', 'facilities'))
+    if (facilitiesSnap.exists()) return // 이미 신버전으로 옮겨진 농장
+
+    const legacySnap = await getDoc(doc(db, 'farms', farmId, 'data', 'farmData'))
+    const legacy = legacySnap.exists() ? legacySnap.data() : null
+    const now = new Date().toISOString()
+
+    await Promise.all(
+      DOMAIN_KEYS.map((key) => {
+        const payload = DOMAIN_SYNC[key](legacy)
+        payload.updatedAt = now
+        return setDoc(doc(db, 'farms', farmId, 'data', key), payload)
+      }),
+    )
+  }
+
   // farmId: 활성 농장 id. farmsStore에서 결정되어 App.vue가 넘겨준다.
   async function init(farmId) {
     if (initialized.value) {
@@ -174,32 +215,40 @@ export const useFarmStore = defineStore('farm', () => {
     activeFarmId = farmId
 
     if (firebaseEnabled && db) {
-      const ref = doc(db, 'farms', farmId, 'data', 'farmData')
+      await ensureFarmDocumentsExist(farmId)
 
-      unsubscriber.value = onSnapshot(ref, async (snapshot) => {
-        if (snapshot.exists()) {
-          const normalized = normalizeFarmData(snapshot.data())
-          normalized.scheduleRules = normalized.scheduleRules.map((rule) => normalizeRule(rule))
-          normalized.scheduleSettings = normalizeScheduleSettings(normalized.scheduleSettings)
-          normalized.issues = normalized.issues.map((issue) => normalizeIssue(issue))
-          normalized.inventory = normalized.inventory.map((item) => normalizeInventoryItem(item))
-          normalized.usageGuides = normalized.usageGuides.map((guide) => normalizeUsageGuide(guide))
+      // 신버전 문서 8개를 각각 구독한다. 최초 로드 때 전부 한 번씩 도착한 뒤에야
+      // "사진 참조 스냅샷 기준점 잡기 + 인라인 사진 이전"을 한 번 수행한다
+      // (하나만 보고 판단하면 아직 안 들어온 다른 문서의 사진 참조를 놓칠 수 있다).
+      const loadedKeys = new Set()
+      let firstSyncDone = false
+
+      DOMAIN_KEYS.forEach((key) => {
+        const ref = doc(db, 'farms', farmId, 'data', key)
+        const unsub = onSnapshot(ref, async (snapshot) => {
+          const normalized = DOMAIN_SYNC[key](snapshot.exists() ? snapshot.data() : null)
           state.value = { ...state.value, ...normalized }
           persistLocal()
-          photoActions.resetKnownPhotoIds()
-          await photoActions.migrateInlinePhotos()
-        } else {
-          state.value = { ...state.value, ...createDefaultFarmData() }
-          await persistAll()
-        }
+
+          if (!snapshot.exists()) {
+            // ensureFarmDocumentsExist가 먼저 만들어두므로 정상 경로에선 거의 없지만,
+            // 문서가 구독 시작 이후 지워지는 등의 예외 상황에 대한 안전망이다.
+            await persist(key)
+          }
+
+          if (!firstSyncDone) {
+            loadedKeys.add(key)
+            if (loadedKeys.size === DOMAIN_KEYS.length) {
+              firstSyncDone = true
+              photoActions.resetKnownPhotoIds()
+              await photoActions.migrateInlinePhotos()
+            }
+          }
+        })
+        unsubscribers.push(unsub)
       })
     } else {
       loadLocal()
-      state.value.scheduleRules = state.value.scheduleRules.map((rule) => normalizeRule(rule))
-      state.value.scheduleSettings = normalizeScheduleSettings(state.value.scheduleSettings)
-      state.value.issues = state.value.issues.map((issue) => normalizeIssue(issue))
-      state.value.inventory = state.value.inventory.map((item) => normalizeInventoryItem(item))
-      state.value.usageGuides = state.value.usageGuides.map((guide) => normalizeUsageGuide(guide))
       photoActions.resetKnownPhotoIds()
       await schedulerActions.runTaskScheduler({
         daysAhead: state.value.scheduleSettings.generationDays,
@@ -212,10 +261,10 @@ export const useFarmStore = defineStore('farm', () => {
   }
 
   function cleanup() {
-    if (typeof unsubscriber.value === 'function') {
-      unsubscriber.value()
-      unsubscriber.value = null
-    }
+    unsubscribers.forEach((unsub) => {
+      if (typeof unsub === 'function') unsub()
+    })
+    unsubscribers = []
     if (typeof appSettingsUnsub === 'function') {
       appSettingsUnsub()
       appSettingsUnsub = null
@@ -233,7 +282,7 @@ export const useFarmStore = defineStore('farm', () => {
   // photoCache 등은 photos.js에서 만든 것을 그대로 넘긴다.
   const ctx = {
     state,
-    persistAll,
+    persist,
     logChange,
     facilityNameById,
     photoCache: photoActions.photoCache,
@@ -256,7 +305,7 @@ export const useFarmStore = defineStore('farm', () => {
 
   // 되돌리기는 위 도메인 모듈들의 upsert/update 함수를 그대로 호출해야 하므로,
   // 전부 만들어진 뒤 마지막에 registry로 묶어 넘긴다(순환 참조 회피).
-  const revertActions = createRevertActions(state, persistAll, {
+  const revertActions = createRevertActions(state, persist, {
     upsertFacility: facilityActions.upsertFacility,
     upsertAncillary: ancillaryActions.upsertAncillary,
     upsertSeedling: seedlingActions.upsertSeedling,

@@ -5,7 +5,7 @@ import { diffFields, formatFieldDiff, snapshotForRevert, truncateForLog } from '
 import { toKey } from './scheduler.js'
 
 export function createTaskActions(ctx) {
-  const { state, persistAll, logChange } = ctx
+  const { state, persist, logChange } = ctx
 
   async function upsertTask(payload) {
     const index = state.value.tasks.findIndex((item) => item.id === payload.id)
@@ -47,14 +47,14 @@ export function createTaskActions(ctx) {
       }
     }
 
-    await persistAll()
+    await persist('tasks')
   }
 
   async function removeTask(id) {
     const target = state.value.tasks.find((item) => item.id === id)
     state.value.tasks = state.value.tasks.filter((item) => item.id !== id)
     if (target) logChange('작업', target.title, 'delete', '', { snapshot: snapshotForRevert(target) })
-    await persistAll()
+    await persist('tasks')
   }
 
   async function addTaskLog(taskId, note, photos = []) {
@@ -72,7 +72,7 @@ export function createTaskActions(ctx) {
     })
     logChange('작업 진행기록', task.title, 'add', truncateForLog(note))
 
-    await persistAll()
+    await persist('tasks')
   }
 
   async function updateTaskLog(taskId, logId, patch) {
@@ -100,7 +100,7 @@ export function createTaskActions(ctx) {
       fields,
     })
 
-    await persistAll()
+    await persist('tasks')
   }
 
   async function removeTaskLog(taskId, logId) {
@@ -117,7 +117,7 @@ export function createTaskActions(ctx) {
         snapshot: snapshotForRevert(target),
       })
     }
-    await persistAll()
+    await persist('tasks')
   }
 
   // 반복 규칙을 남겨두면 다음 실행 때 스케줄러가 작업을 다시 만들어 초기화가 무의미해진다.
@@ -127,12 +127,12 @@ export function createTaskActions(ctx) {
     state.value.scheduleRules = []
     state.value.notifications = {}
     if (count > 0) logChange('작업', `전체 초기화 (${count}건)`, 'delete')
-    await persistAll()
+    await persist('tasks')
   }
 
   async function markTaskNotified(taskId, dateString) {
     state.value.notifications[taskId] = toKey(dateString)
-    await persistAll()
+    await persist('tasks')
   }
 
   function getTaskLastNotified(taskId) {

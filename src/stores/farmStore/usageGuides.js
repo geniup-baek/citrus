@@ -3,12 +3,12 @@ import { doc, getDoc } from 'firebase/firestore'
 import { db, firebaseEnabled } from '../../services/firebase'
 import { uuid } from '../../utils/uuid.js'
 import { diffFields, formatFieldDiff, snapshotForRevert, truncateForLog } from '../../utils/changeLogUtils.js'
-import { normalizeUsageGuide } from './normalize.js'
+import { normalizeUsageGuide } from '../../utils/farmDataSchema.js'
 
 const USAGE_GUIDE_FILE_TYPE = 'citrus-usage-guide'
 
 export function createUsageGuideActions(ctx) {
-  const { state, persistAll, logChange, photoCache, savePhotos } = ctx
+  const { state, persist, logChange, photoCache, savePhotos } = ctx
 
   async function upsertUsageGuide(payload) {
     const index = state.value.usageGuides.findIndex((item) => item.id === payload.id)
@@ -30,19 +30,19 @@ export function createUsageGuideActions(ctx) {
       logChange('사용법', created.title, 'add')
     }
 
-    await persistAll()
+    await persist('usageGuides')
   }
 
   async function removeUsageGuide(id) {
     const target = state.value.usageGuides.find((item) => item.id === id)
     state.value.usageGuides = state.value.usageGuides.filter((item) => item.id !== id)
     if (target) logChange('사용법', target.title, 'delete', '', { snapshot: snapshotForRevert(target) })
-    await persistAll()
+    await persist('usageGuides')
   }
 
   async function reorderUsageGuides(newList) {
     state.value.usageGuides = newList
-    await persistAll()
+    await persist('usageGuides')
   }
 
   async function addUsageGuideStep(guideId, text, photos = []) {
@@ -54,7 +54,7 @@ export function createUsageGuideActions(ctx) {
       { id: uuid(), text, photos: Array.isArray(photos) ? photos : [] },
     ]
     logChange('사용법 단계', guide.title, 'add', truncateForLog(text))
-    await persistAll()
+    await persist('usageGuides')
   }
 
   async function updateUsageGuideStep(guideId, stepId, patch) {
@@ -73,7 +73,7 @@ export function createUsageGuideActions(ctx) {
       refId: `${guideId}:${stepId}`,
       fields,
     })
-    await persistAll()
+    await persist('usageGuides')
   }
 
   async function removeUsageGuideStep(guideId, stepId) {
@@ -88,7 +88,7 @@ export function createUsageGuideActions(ctx) {
         snapshot: snapshotForRevert(target),
       })
     }
-    await persistAll()
+    await persist('usageGuides')
   }
 
   async function reorderUsageGuideSteps(guideId, newSteps) {
@@ -96,7 +96,7 @@ export function createUsageGuideActions(ctx) {
     if (!guide) return
 
     guide.steps = newSteps
-    await persistAll()
+    await persist('usageGuides')
   }
 
   // 사진 본문(base64)까지 포함해 다른 농장에서도 그대로 복원되는 자기완결적 파일을 만든다.
@@ -192,7 +192,7 @@ export function createUsageGuideActions(ctx) {
     const count = state.value.usageGuides.length
     state.value.usageGuides = []
     if (count > 0) logChange('사용법', `전체 초기화 (${count}건)`, 'delete')
-    await persistAll()
+    await persist('usageGuides')
   }
 
   return {

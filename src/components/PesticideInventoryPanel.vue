@@ -13,6 +13,7 @@ import { useFarmsStore } from '../stores/farmsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { confirmFilteredExport, downloadCsv, exportFileName, openPrintReport } from '../utils/dataExport.js'
 import { uuid } from '../utils/uuid.js'
+import PesticideLinkResults from './PesticideLinkResults.vue'
 
 const store      = useFarmStore()
 const localeStr  = useLocaleStore()
@@ -726,17 +727,13 @@ async function printReport() {
               @input="searchLinkCandidates(linkQuery)"
             />
             <div v-if="linkResults.length" class="link-results">
-              <div
-                v-for="r in linkResults"
-                :key="r.key"
-                class="link-result-item"
-                @click="applyLink(item, r)"
-              >
-                <span class="link-result-brand">{{ r.brandName }}</span>
-                <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(resolveType(r.pesticideType))">{{ resolveType(r.pesticideType) }}</span>
-                <span v-if="r.modeOfActions?.[0]" class="moa-badge" :style="{ background: moaColor(r.modeOfActions[0]) }">{{ r.modeOfActions[0] }}</span>
-                <span class="link-result-pest">{{ pestSummary(r) }}</span>
-              </div>
+              <PesticideLinkResults :results="linkResults" :item-key="(r) => r.key" @apply="(r) => applyLink(item, r)">
+                <template #badges="{ item: r }">
+                  <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(resolveType(r.pesticideType))">{{ resolveType(r.pesticideType) }}</span>
+                  <span v-if="r.modeOfActions?.[0]" class="moa-badge" :style="{ background: moaColor(r.modeOfActions[0]) }">{{ r.modeOfActions[0] }}</span>
+                </template>
+                <template #pest="{ item: r }">{{ pestSummary(r) }}</template>
+              </PesticideLinkResults>
             </div>
             <p v-else-if="linkQuery.trim().length > 1" class="muted text-sm" style="padding:0.4rem 0;">
               검색 결과 없음 — 공공데이터 농약정보를 먼저 가져와야 합니다.
@@ -892,17 +889,13 @@ async function printReport() {
           <input v-model="form.name" required type="text" :placeholder="t('pesticideInventory.namePlaceholder')" @input="onNameInput" />
         </label>
         <div v-if="invMatchResults.length" class="inv-api-panel">
-          <div
-            v-for="r in invMatchResults"
-            :key="r.key"
-            class="inv-api-item"
-            @mousedown.prevent="applyInvMatch(r)"
-          >
-            <span class="inv-api-brand">{{ r.brandName }}</span>
-            <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(resolveType(r.pesticideType))">{{ resolveType(r.pesticideType) }}</span>
-            <span v-if="r.modeOfActions?.[0]" class="moa-badge" :style="{ background: moaColor(r.modeOfActions[0]) }">{{ r.modeOfActions[0] }}</span>
-            <span class="inv-api-pest">{{ pestSummary(r) }}</span>
-          </div>
+          <PesticideLinkResults :results="invMatchResults" :item-key="(r) => r.key" @apply="applyInvMatch">
+            <template #badges="{ item: r }">
+              <span v-if="r.pesticideType" class="cat-badge" :class="categoryClass(resolveType(r.pesticideType))">{{ resolveType(r.pesticideType) }}</span>
+              <span v-if="r.modeOfActions?.[0]" class="moa-badge" :style="{ background: moaColor(r.modeOfActions[0]) }">{{ r.modeOfActions[0] }}</span>
+            </template>
+            <template #pest="{ item: r }">{{ pestSummary(r) }}</template>
+          </PesticideLinkResults>
         </div>
         <label>{{ t('pesticideInventory.pesticideType') }}
           <select v-model="form.pesticideType">
@@ -956,16 +949,6 @@ async function printReport() {
   background: var(--bg);
   margin-top: -0.25rem; margin-bottom: 0.25rem;
 }
-.inv-api-item {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem;
-  padding: 0.38rem 0.65rem; cursor: pointer; font-size: 0.83rem;
-  border-bottom: 1px solid var(--line);
-}
-.inv-api-item:last-child { border-bottom: none; }
-.inv-api-item:hover { background: var(--surface-strong); }
-.inv-api-brand { font-weight: 600; }
-.inv-api-pest { font-size: 0.76rem; color: var(--muted); margin-left: auto; }
-
 /* 농약정보 연결 버튼 */
 .link-btn-active { background: var(--primary) !important; color: var(--primary-ink) !important; border-color: var(--primary) !important; }
 
@@ -990,13 +973,4 @@ async function printReport() {
 }
 .link-search-input:focus { background: var(--surface); }
 .link-results { max-height: 200px; overflow-y: auto; }
-.link-result-item {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem;
-  padding: 0.38rem 0.65rem; cursor: pointer; font-size: 0.83rem;
-  border-bottom: 1px solid var(--line);
-}
-.link-result-item:last-child { border-bottom: none; }
-.link-result-item:hover { background: var(--surface-strong); }
-.link-result-brand { font-weight: 600; }
-.link-result-pest { font-size: 0.76rem; color: var(--muted); margin-left: auto; }
 </style>

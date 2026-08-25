@@ -1,70 +1,94 @@
-// 농장 데이터의 기본값·정규화 — state를 전혀 참조하지 않는 순수 함수만 모아둔다.
-// (init/loadLocal/onSnapshot/restoreBackup 등 "외부에서 들어온 데이터를 안전한 모양으로
-// 맞추는" 지점에서 공통으로 쓰인다.)
+// 농장 데이터의 기본값·정규화 + Firestore 문서 분할 지도 — state를 전혀 참조하지 않는
+// 순수 함수만 모아둔다(init/loadLocal/onSnapshot/restoreBackup 등 "외부에서 들어온 데이터를
+// 안전한 모양으로 맞추는" 지점에서 공통으로 쓰인다).
+//
+// farmStore.js·farmStore/*.js(issues.js·inventory.js·usageGuides.js·scheduler.js·backup.js)뿐
+// 아니라 farmsStore.js(농장 완전 삭제)·services/adminBackup.js(관리자 백업)처럼 farmStore 묶음
+// 바깥에서도 "농장 데이터가 어느 문서에 나뉘어 있는지"를 알아야 하는 코드가 있어 여기(utils/)에
+// 둔다 — src/utils/changeLogUtils.js가 treatmentStore.js 때문에 옮겨진 것과 같은 이유.
 import {
   annualTaskTemplates,
   defaultAncillaries,
   defaultAppSettings,
   defaultFacilities,
   defaultIssues,
-  defaultScheduleSettings,
   defaultScheduleRules,
   defaultSeedlings,
   defaultTasks,
   defaultInventory,
   defaultUsageGuides,
-} from '../../data/defaults'
-import { uuid } from '../../utils/uuid.js'
+} from '../data/defaults'
+import { uuid } from './uuid.js'
 
 export function farmStorageKey(farmId) {
   return `citrus-farm-${farmId}-v1`
 }
 
+// ── Firestore 문서 분할 지도 ──────────────────────────────────────────────────
+// 농장 데이터는 예전엔 farms/{farmId}/data/farmData 문서 하나에 전부 들어있었다.
+// 지금은 아래 키마다 farms/{farmId}/data/{key} 문서를 따로 둔다 — 항목 하나를 고칠 때
+// 문서 전체(다른 모든 항목 + 변경 이력)를 통째로 다시 쓰지 않게 하기 위함이다
+// (Firestore 1 MiB 한도 여유, undefined 값 하나가 전체 저장을 막는 사고의 파급 범위 축소,
+// 실시간 구독이 실제로 바뀐 부분에만 반응하도록 하는 목적 모두 포함).
+//
+// 각 함수는 "그 문서 자신의 저장된 데이터(or 구버전 통합 문서, or null)"를 받아 자신이
+// 담당하는 state 필드만 정규화해 돌려준다 — 이 반환 객체의 키 목록이 곧 그 문서가
+// 실제로 어떤 state 필드를 담는지의 유일한 근거다(domainFields가 여기서 뽑아낸다).
+export const DOMAIN_SYNC = {
+  facilities: (d) => ({
+    facilities: Array.isArray(d?.facilities) ? d.facilities : [...defaultFacilities],
+  }),
+  ancillaries: (d) => ({
+    ancillaries: Array.isArray(d?.ancillaries) ? d.ancillaries : [...defaultAncillaries],
+  }),
+  seedlings: (d) => ({
+    seedlings: Array.isArray(d?.seedlings) ? d.seedlings : [...defaultSeedlings],
+  }),
+  tasks: (d) => ({
+    tasks: Array.isArray(d?.tasks) ? d.tasks : [...defaultTasks],
+    scheduleRules: (Array.isArray(d?.scheduleRules) ? d.scheduleRules : [...defaultScheduleRules]).map(normalizeRule),
+    scheduleSettings: normalizeScheduleSettings(d?.scheduleSettings),
+    notifications: d?.notifications && typeof d.notifications === 'object' ? d.notifications : {},
+  }),
+  issues: (d) => ({
+    issues: (Array.isArray(d?.issues) ? d.issues : [...defaultIssues]).map(normalizeIssue),
+  }),
+  inventory: (d) => ({
+    inventory: (Array.isArray(d?.inventory) ? d.inventory : [...defaultInventory]).map(normalizeInventoryItem),
+  }),
+  usageGuides: (d) => ({
+    usageGuides: (Array.isArray(d?.usageGuides) ? d.usageGuides : [...defaultUsageGuides]).map(normalizeUsageGuide),
+  }),
+  changeLog: (d) => ({
+    changeLog: Array.isArray(d?.changeLog) ? d.changeLog : [],
+  }),
+}
+
+export const DOMAIN_KEYS = Object.keys(DOMAIN_SYNC)
+
+// 이 문서(key)가 실제로 담고 있는 state 필드 이름 목록. Firestore에 쓸 때 state에서
+// 어떤 필드를 뽑아 담을지 여기서 결정한다(정규화 함수와 같은 소스라 어긋날 일이 없다).
+export function domainFields(key) {
+  return Object.keys(DOMAIN_SYNC[key](null))
+}
+
 // ── 농장별 데이터 (facilities…notifications) ─────────────────────────────────
+// annualTaskTemplates는 앱에 고정된 상수라 Firestore에 저장하지 않는다(정규화 시에도
+// 저장된 값을 무시하고 항상 최신 상수로 채운다) — 이전엔 매번 그대로 다시 저장되던 죽은 데이터였다.
 export function createDefaultFarmData() {
-  return {
-    facilities: [...defaultFacilities],
-    ancillaries: [...defaultAncillaries],
-    seedlings: [...defaultSeedlings],
-    tasks: [...defaultTasks],
-    scheduleRules: [...defaultScheduleRules],
-    scheduleSettings: { ...defaultScheduleSettings },
-    issues: [...defaultIssues],
-    inventory: [...defaultInventory],
-    usageGuides: [...defaultUsageGuides],
-    annualTaskTemplates: [...annualTaskTemplates],
-    notifications: {},
-    changeLog: [],
-    updatedAt: new Date().toISOString(),
-  }
+  const merged = {}
+  DOMAIN_KEYS.forEach((key) => Object.assign(merged, DOMAIN_SYNC[key](null)))
+  merged.annualTaskTemplates = [...annualTaskTemplates]
+  merged.updatedAt = new Date().toISOString()
+  return merged
 }
 
 export function normalizeFarmData(data) {
-  const defaults = createDefaultFarmData()
-
-  return {
-    facilities: Array.isArray(data?.facilities) ? data.facilities : defaults.facilities,
-    ancillaries: Array.isArray(data?.ancillaries) ? data.ancillaries : defaults.ancillaries,
-    seedlings: Array.isArray(data?.seedlings) ? data.seedlings : defaults.seedlings,
-    tasks: Array.isArray(data?.tasks) ? data.tasks : defaults.tasks,
-    scheduleRules: Array.isArray(data?.scheduleRules)
-      ? data.scheduleRules
-      : defaults.scheduleRules,
-    scheduleSettings:
-      data?.scheduleSettings && typeof data.scheduleSettings === 'object'
-        ? { ...defaults.scheduleSettings, ...data.scheduleSettings }
-        : defaults.scheduleSettings,
-    issues: Array.isArray(data?.issues) ? data.issues : defaults.issues,
-    inventory: Array.isArray(data?.inventory) ? data.inventory : defaults.inventory,
-    usageGuides: Array.isArray(data?.usageGuides) ? data.usageGuides : defaults.usageGuides,
-    annualTaskTemplates: [...annualTaskTemplates],
-    notifications:
-      data?.notifications && typeof data.notifications === 'object'
-        ? data.notifications
-        : defaults.notifications,
-    changeLog: Array.isArray(data?.changeLog) ? data.changeLog : defaults.changeLog,
-    updatedAt: data?.updatedAt || defaults.updatedAt,
-  }
+  const merged = {}
+  DOMAIN_KEYS.forEach((key) => Object.assign(merged, DOMAIN_SYNC[key](data)))
+  merged.annualTaskTemplates = [...annualTaskTemplates]
+  merged.updatedAt = data?.updatedAt || new Date().toISOString()
+  return merged
 }
 
 // ── 공통(농장 무관) 분류·항목 설정 ─────────────────────────────────────────────

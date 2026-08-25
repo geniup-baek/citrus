@@ -21,11 +21,12 @@ import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
-import { compressImageFile } from '../utils/imageProcessing'
-import { uuid } from '../utils/uuid.js'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
-import { useLightboxBack } from '../composables/useLightboxBack'
+import { useLightbox } from '../composables/useLightbox'
+import { useFilesToPreviews } from '../composables/usePhotoPreviews'
+import TaskSchedulerPanel from '../components/TaskSchedulerPanel.vue'
+import TaskTemplatePanel from '../components/TaskTemplatePanel.vue'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -64,7 +65,6 @@ const taskMode = ref('single')  // 'single' | 'rule'  (작업 추가 탭 내부 
 const viewMode = ref('list')
 const showForm = ref(false)  // 편집 모드 (재고 페이지와 동일: 우측 패널 + 항목 편집/삭제 노출)
 const selectedTaskId = ref('')
-const schedulerEditingId = ref('')
 
 const { isMobile } = useIsMobile()
 const formOpen = ref(false) // 우측 패널(추가/상세/템플릿) 표시 여부 — 토글로 닫으면 추가 폼도 숨긴다
@@ -78,14 +78,13 @@ const formTarget = computed(() => {
   }
   return viewMode.value === 'calendar' ? '#task-form-top-calendar' : '#task-form-top-list'
 })
-const templateResult = ref('')
 const deduplicateResult = ref('')
 
 // 작업 로그 사진 첨부
 const logPhotoPreviews = ref([])
 const logCompressionReport = ref('')
-const lightboxPhoto = ref(null)
-useLightboxBack(lightboxPhoto)
+const { lightboxPhoto, openLightbox, closeLightbox } = useLightbox()
+const { filesToPreviews } = useFilesToPreviews('tasks.compressedReport')
 
 // 진행 기록 인라인 패널 (목록 항목의 '로그' 버튼)
 const expandedTaskId = ref('')
@@ -103,13 +102,6 @@ const calendarMonth = ref(new Date())
 const calendarSelectedDate = ref(null)
 
 const DAY_HEADERS = ['월', '화', '수', '목', '금', '토', '일']
-
-const SEASONS = [
-  { key: 'winter',   label: localeStore.t('tasks.seasonWinter'),   months: [12, 1, 2] },
-  { key: 'spring',   label: localeStore.t('tasks.seasonSpring'),   months: [3, 4, 5] },
-  { key: 'earlySum', label: localeStore.t('tasks.seasonEarlySum'), months: [6, 7] },
-  { key: 'sumFall',  label: localeStore.t('tasks.seasonSumFall'),  months: [8, 9, 10, 11] },
-]
 
 // ── 폼 ─────────────────────────────────────────────────────────────────────
 const form = reactive({
@@ -134,37 +126,8 @@ const logForm = reactive({
   note: '',
 })
 
-const schedulerForm = reactive({
-  id: '',
-  title: '',
-  category: '',
-  frequency: '매주',
-  interval: 1,
-  dayOfWeek: 1,
-  dayOfMonth: 1,
-  startDate: '',
-  endDate: '',
-  enabled: true,
-})
-
-
 // ── computed ────────────────────────────────────────────────────────────────
 const taskCategories = computed(() => store.state.appSettings?.taskCategories ?? ['기타'])
-
-const weekdayOptions = computed(() => [
-  { label: localeStore.t('tasks.monday'), value: 1 },
-  { label: localeStore.t('tasks.tuesday'), value: 2 },
-  { label: localeStore.t('tasks.wednesday'), value: 3 },
-  { label: localeStore.t('tasks.thursday'), value: 4 },
-  { label: localeStore.t('tasks.friday'), value: 5 },
-  { label: localeStore.t('tasks.saturday'), value: 6 },
-  { label: localeStore.t('tasks.sunday'), value: 7 },
-])
-
-
-const scheduleRules = computed(() => store.state.scheduleRules)
-
-const intervalUnit = computed(() => FREQUENCY_UNIT[schedulerForm.frequency] || '일')
 
 const selectedTask = computed(() =>
   store.state.tasks.find((t) => t.id === selectedTaskId.value),
@@ -172,18 +135,6 @@ const selectedTask = computed(() =>
 
 const expandedTask = computed(() =>
   store.state.tasks.find((t) => t.id === expandedTaskId.value),
-)
-
-const templatesBySeason = computed(() =>
-  SEASONS.map((s) => ({
-    ...s,
-    templates: (store.state.annualTaskTemplates || [])
-      .filter((t) => s.months.includes(t.recommendedMonth))
-      .sort((a, b) => {
-        const order = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        return order.indexOf(a.recommendedMonth) - order.indexOf(b.recommendedMonth)
-      }),
-  })),
 )
 
 // 날짜 안전 파서
@@ -328,19 +279,6 @@ watch([filteredTasks, selectedDayTasks, viewMode], () => {
 })
 
 // ── 헬퍼 함수 ──────────────────────────────────────────────────────────────
-function weekdayLabel(value) {
-  return weekdayOptions.value.find((d) => d.value === value)?.label || value
-}
-
-const FREQUENCY_UNIT = { 매일: '일', 매주: '주', 매월: '개월' }
-
-// 주기가 1이면 "매일/매주/매월" 그대로, 2 이상이면 "N일마다" 식으로 표시한다.
-function frequencyLabel(rule) {
-  const unit = FREQUENCY_UNIT[rule.frequency] || ''
-  const interval = Math.max(1, Number(rule.interval) || 1)
-  return interval > 1 ? `${interval}${unit}마다` : rule.frequency
-}
-
 function priorityDotClass(priority) {
   if (priority === '높음') return 'priority-dot high'
   if (priority === '낮음') return 'priority-dot low'
@@ -464,7 +402,6 @@ async function resetAllTasks() {
   })
   if (!ok) return
   await store.resetTasks()
-  clearSchedulerForm()
   exitEdit()
 }
 
@@ -506,46 +443,6 @@ function logKey(log) {
   return log.id || log.date
 }
 
-// 파일 → 압축된 미리보기 + 리포트
-async function filesToPreviews(files) {
-  let originalTotal = 0
-  let compressedTotal = 0
-
-  const previews = await Promise.all(
-    files.map(async (file) => {
-      const compressed = await compressImageFile(file, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.78,
-        outputType: 'image/jpeg',
-      })
-      originalTotal += compressed.originalSize
-      compressedTotal += compressed.compressedSize
-      return {
-        id: uuid(),
-        name: file.name,
-        dataUrl: compressed.dataUrl,
-        contentType: compressed.contentType,
-        size: compressed.compressedSize,
-        width: compressed.width,
-        height: compressed.height,
-        originalSize: compressed.originalSize,
-      }
-    }),
-  )
-
-  const report = previews.length
-    ? localeStore.t('tasks.compressedReport', {
-        count: previews.length,
-        from: Math.round(originalTotal / 1024),
-        to: Math.round(compressedTotal / 1024),
-        ratio: originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100,
-      })
-    : ''
-
-  return { previews, report }
-}
-
 async function handleLogPhotoChange(event) {
   const files = Array.from(event.target.files || []).slice(0, 5)
   const { previews, report } = await filesToPreviews(files)
@@ -555,14 +452,6 @@ async function handleLogPhotoChange(event) {
 
 function removeLogPreviewPhoto(id) {
   logPhotoPreviews.value = logPhotoPreviews.value.filter((p) => p.id !== id)
-}
-
-function openLightbox(photo) {
-  lightboxPhoto.value = photo
-}
-
-function closeLightbox() {
-  lightboxPhoto.value = null
 }
 
 async function updateProgress() {
@@ -640,71 +529,6 @@ async function deleteLog(log) {
   if (editingLogId.value === logKey(log)) cancelEditLog()
 }
 
-// ── 반복 규칙 ────────────────────────────────────────────────────────────────
-function clearSchedulerForm() {
-  schedulerForm.id = ''
-  schedulerForm.title = ''
-  schedulerForm.category = taskCategories.value[0] ?? ''
-  schedulerForm.frequency = '매주'
-  schedulerForm.interval = 1
-  schedulerForm.dayOfWeek = 1
-  schedulerForm.dayOfMonth = 1
-  schedulerForm.startDate = format(new Date(), 'yyyy-MM-dd')
-  schedulerForm.endDate = ''
-  schedulerForm.enabled = true
-  schedulerEditingId.value = ''
-}
-
-function editSchedulerRule(rule) {
-  schedulerForm.id = rule.id
-  schedulerForm.title = rule.title
-  schedulerForm.category = rule.category
-  schedulerForm.frequency = rule.frequency
-  schedulerForm.interval = rule.interval
-  schedulerForm.dayOfWeek = rule.dayOfWeek
-  schedulerForm.dayOfMonth = rule.dayOfMonth
-  schedulerForm.startDate = rule.startDate
-  schedulerForm.endDate = rule.endDate || ''
-  schedulerForm.enabled = rule.enabled !== false
-  schedulerEditingId.value = rule.id
-}
-
-async function saveScheduleRule() {
-  await store.upsertScheduleRule({
-    id: schedulerForm.id,
-    title: schedulerForm.title,
-    category: schedulerForm.category,
-    frequency: schedulerForm.frequency,
-    interval: Number(schedulerForm.interval),
-    dayOfWeek: Number(schedulerForm.dayOfWeek),
-    dayOfMonth: Number(schedulerForm.dayOfMonth),
-    startDate: schedulerForm.startDate,
-    endDate: schedulerForm.endDate,
-    enabled: schedulerForm.enabled,
-  })
-  clearSchedulerForm()
-  await store.runTaskScheduler({
-    daysAhead: store.state.scheduleSettings?.generationDays ?? 21,
-    duplicatePolicy: store.state.scheduleSettings?.duplicatePolicy ?? 'rule-and-date',
-    persist: true,
-  })
-}
-
-async function confirmDeleteScheduleRule(rule) {
-  const ok = await confirm({ message: localeStore.t('confirm.scheduleRule', { title: rule.title }) })
-  if (ok) await removeScheduleRule(rule.id)
-}
-
-async function removeScheduleRule(id) {
-  await store.removeScheduleRule(id)
-  if (schedulerEditingId.value === id) clearSchedulerForm()
-  await store.runTaskScheduler({
-    daysAhead: store.state.scheduleSettings?.generationDays ?? 21,
-    duplicatePolicy: store.state.scheduleSettings?.duplicatePolicy ?? 'rule-and-date',
-    persist: true,
-  })
-}
-
 async function runDeduplicate() {
   const count = await store.deduplicateTasks()
   deduplicateResult.value = count > 0
@@ -712,17 +536,15 @@ async function runDeduplicate() {
     : localeStore.t('tasks.deduplicateNone')
 }
 
-// ── 계절 작업 템플릿 ────────────────────────────────────────────────────────
-async function createFromTemplate(tpl) {
-  await store.createTaskFromTemplate(tpl.id)
+// 계절 작업 템플릿(TaskTemplatePanel)에서 작업을 만들면 왼쪽 보드를 연간 필터로 전환한다
+// — 템플릿 목록 자체와 달리 이 전환은 보드(부모) 소관이라 이벤트로 받는다.
+function handleTemplateCreated() {
   filter.value = 'annual'
-  templateResult.value = `'${tpl.title}' 작업이 추가됐습니다. 왼쪽 보드의 '연간' 필터에서 확인하세요.`
 }
 
 // ── 초기값 ──────────────────────────────────────────────────────────────────
 form.dueDate = format(new Date(), 'yyyy-MM-dd')
 form.category = taskCategories.value[0] ?? ''
-clearSchedulerForm()
 </script>
 
 <template>
@@ -1047,82 +869,7 @@ clearSchedulerForm()
         </template>
 
         <!-- ① - B  반복 규칙 -->
-        <template v-if="taskMode === 'rule'">
-          <p class="muted text-sm" style="margin-bottom: 0.75rem;">{{ localeStore.t('tasks.ruleDesc') }}</p>
-
-          <!-- 등록된 규칙 목록 -->
-          <ul class="list clean compact" style="margin-bottom: 1rem;">
-            <li v-for="rule in scheduleRules" :key="rule.id" class="list-item card-like">
-              <div>
-                <p class="item-title" style="font-size: 0.9rem;">
-                  <span v-if="!rule.enabled" class="pill text-xs" style="margin-right: 0.3rem;">{{ localeStore.t('tasks.ruleDisabled') }}</span>
-                  {{ rule.title }}
-                </p>
-                <p class="item-meta">
-                  {{ rule.category }} · {{ frequencyLabel(rule) }}
-                  <template v-if="rule.frequency === '매주'">({{ weekdayLabel(rule.dayOfWeek) }}요일)</template>
-                  <template v-if="rule.frequency === '매월'">(매월 {{ rule.dayOfMonth }}일)</template>
-                </p>
-                <p class="muted text-sm">{{ rule.startDate }} ~ {{ rule.endDate || localeStore.t('common.ongoing') }}</p>
-              </div>
-              <div class="row-actions">
-                <button class="ghost" @click="editSchedulerRule(rule)">{{ localeStore.t('common.edit') }}</button>
-                <button class="danger" @click="confirmDeleteScheduleRule(rule)">{{ localeStore.t('common.delete') }}</button>
-              </div>
-            </li>
-            <li v-if="!scheduleRules.length" class="muted text-sm">{{ localeStore.t('tasks.noRules') }}</li>
-          </ul>
-
-          <!-- 규칙 추가/편집 폼 -->
-          <h3 class="section-title">{{ schedulerEditingId ? localeStore.t('tasks.updateRule') : localeStore.t('tasks.saveRule') }}</h3>
-          <form class="stack-form" @submit.prevent="saveScheduleRule">
-            <label>{{ localeStore.t('tasks.ruleTitle') }}
-              <input v-model="schedulerForm.title" required type="text" :placeholder="localeStore.t('tasks.ruleTitlePlaceholder')" />
-            </label>
-            <label>{{ localeStore.t('tasks.category') }}
-              <select v-model="schedulerForm.category">
-                <option v-for="c in taskCategories" :key="c" :value="c">{{ c }}</option>
-              </select>
-            </label>
-            <div class="row-scheduler-grid">
-              <label>{{ localeStore.t('tasks.frequency') }}
-                <select v-model="schedulerForm.frequency">
-                  <option value="매일">{{ localeStore.t('tasks.frequencyDaily') }}</option>
-                  <option value="매주">{{ localeStore.t('tasks.frequencyWeekly') }}</option>
-                  <option value="매월">{{ localeStore.t('tasks.frequencyMonthly') }}</option>
-                </select>
-              </label>
-              <label>{{ localeStore.t('tasks.interval') }} ({{ intervalUnit }})
-                <input v-model="schedulerForm.interval" min="1" type="number" />
-              </label>
-              <label v-if="schedulerForm.frequency === '매주'">{{ localeStore.t('tasks.weekday') }}
-                <select v-model="schedulerForm.dayOfWeek">
-                  <option v-for="d in weekdayOptions" :key="d.value" :value="d.value">{{ d.label }}요일</option>
-                </select>
-              </label>
-              <label v-if="schedulerForm.frequency === '매월'">{{ localeStore.t('tasks.dayOfMonth') }}
-                <input v-model="schedulerForm.dayOfMonth" min="1" max="31" type="number" />
-              </label>
-            </div>
-            <div class="row-scheduler-grid">
-              <label>{{ localeStore.t('tasks.startDate') }}
-                <input v-model="schedulerForm.startDate" required type="date" />
-              </label>
-              <label>{{ localeStore.t('tasks.endDateOptional') }}
-                <input v-model="schedulerForm.endDate" type="date" />
-              </label>
-            </div>
-            <label class="inline-checkbox">
-              <input v-model="schedulerForm.enabled" type="checkbox" />
-              {{ localeStore.t('tasks.enableRule') }}
-            </label>
-            <div class="row-actions">
-              <button type="submit">{{ schedulerEditingId ? localeStore.t('common.change') : localeStore.t('common.add') }}</button>
-              <button v-if="schedulerEditingId" class="ghost" type="button" @click="clearSchedulerForm">{{ localeStore.t('common.cancel') }}</button>
-            </div>
-          </form>
-
-        </template>
+        <TaskSchedulerPanel v-if="taskMode === 'rule'" />
       </template>
 
       <!-- ② 작업 상세 + 편집 + 진행 기록 -->
@@ -1166,29 +913,7 @@ clearSchedulerForm()
       </template>
 
       <!-- ③ 계절 작업 템플릿 -->
-      <template v-if="rightPanel === 'template'">
-        <p class="muted text-sm" style="margin-bottom: 0.75rem;">{{ localeStore.t('tasks.templateDesc') }}</p>
-
-        <div v-for="season in templatesBySeason" :key="season.key" class="season-group">
-          <p v-if="season.templates.length" class="season-label">{{ season.label }}</p>
-          <ul v-if="season.templates.length" class="list clean">
-            <li v-for="tpl in season.templates" :key="tpl.id" class="list-item card-like">
-              <div>
-                <div class="row-actions" style="gap: 0.35rem; margin-bottom: 0.2rem;">
-                  <p class="item-title" style="font-size: 0.92rem; margin: 0;">{{ tpl.title }}</p>
-                  <span class="pill text-xs" style="padding: 0.1rem 0.5rem;">{{ tpl.category }}</span>
-                </div>
-                <p class="item-meta text-sm">{{ tpl.recommendedMonth }}월 · {{ tpl.notes }}</p>
-              </div>
-              <button class="ghost" style="white-space: nowrap; flex-shrink: 0;" @click="createFromTemplate(tpl)">
-                {{ localeStore.t('tasks.create') }}
-              </button>
-            </li>
-          </ul>
-        </div>
-
-        <p v-if="templateResult" class="muted text-sm" style="margin-top: 0.5rem;">{{ templateResult }}</p>
-      </template>
+      <TaskTemplatePanel v-if="rightPanel === 'template'" @created="handleTemplateCreated" />
     </article>
     </Teleport>
   </section>

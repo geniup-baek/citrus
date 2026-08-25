@@ -1,14 +1,13 @@
 <script setup>
 import { computed, nextTick, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
-import { compressImageFile } from '../utils/imageProcessing'
-import { uuid } from '../utils/uuid.js'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
-import { useLightboxBack } from '../composables/useLightboxBack'
+import { useLightbox } from '../composables/useLightbox'
+import { useFilesToPreviews } from '../composables/usePhotoPreviews'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -21,8 +20,8 @@ const showForm = ref(false)
 const showResetButton = computed(() =>
   policyStore.policy.enableResetFeature && recSettingsStore.settings.showResetButtons,
 )
-const lightboxPhoto = ref(null)
-useLightboxBack(lightboxPhoto)
+const { lightboxPhoto, openLightbox, closeLightbox } = useLightbox()
+const { filesToPreviews } = useFilesToPreviews('issues.compressedReport')
 
 const { isMobile } = useIsMobile()
 const formOpen = ref(false) // 폼(추가/편집) 표시 여부 — 토글로 닫으면 추가 폼도 숨긴다
@@ -86,9 +85,6 @@ function greenhouseName(greenhouseId) {
   )
 }
 
-function issueStatusLabel(value) {
-  return value
-}
 
 const ISSUE_STATUS_ORDER = ['조사중', '대응중', '해결']
 
@@ -98,55 +94,12 @@ async function cycleIssueStatus(issue) {
   await store.upsertIssue({ ...issue, status: next })
 }
 
-function openLightbox(photo) {
-  lightboxPhoto.value = photo
-}
-
-function closeLightbox() {
-  lightboxPhoto.value = null
-}
-
 async function handlePhotoChange(event) {
   const files = Array.from(event.target.files || [])
   photoFiles.value = files.slice(0, 5)
-
-  let originalTotal = 0
-  let compressedTotal = 0
-
-  photoPreviews.value = await Promise.all(
-    photoFiles.value.map(async (file) => {
-      const compressed = await compressImageFile(file, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.78,
-        outputType: 'image/jpeg',
-      })
-      originalTotal += compressed.originalSize
-      compressedTotal += compressed.compressedSize
-      return {
-        id: uuid(),
-        name: file.name,
-        dataUrl: compressed.dataUrl,
-        contentType: compressed.contentType,
-        size: compressed.compressedSize,
-        width: compressed.width,
-        height: compressed.height,
-        originalSize: compressed.originalSize,
-      }
-    }),
-  )
-
-  if (photoPreviews.value.length) {
-    const ratio = originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100
-    compressionReport.value = localeStore.t('issues.compressedReport', {
-      count: photoPreviews.value.length,
-      from: Math.round(originalTotal / 1024),
-      to: Math.round(compressedTotal / 1024),
-      ratio,
-    })
-  } else {
-    compressionReport.value = ''
-  }
+  const { previews, report } = await filesToPreviews(photoFiles.value)
+  photoPreviews.value = previews
+  compressionReport.value = report
 }
 
 function removePreviewPhoto(id) {
@@ -256,46 +209,6 @@ async function saveIssue() {
   })
 
   clearForm()
-}
-
-// 파일 → 압축된 미리보기 + 리포트
-async function filesToPreviews(files) {
-  let originalTotal = 0
-  let compressedTotal = 0
-
-  const previews = await Promise.all(
-    files.map(async (file) => {
-      const compressed = await compressImageFile(file, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.78,
-        outputType: 'image/jpeg',
-      })
-      originalTotal += compressed.originalSize
-      compressedTotal += compressed.compressedSize
-      return {
-        id: uuid(),
-        name: file.name,
-        dataUrl: compressed.dataUrl,
-        contentType: compressed.contentType,
-        size: compressed.compressedSize,
-        width: compressed.width,
-        height: compressed.height,
-        originalSize: compressed.originalSize,
-      }
-    }),
-  )
-
-  const report = previews.length
-    ? localeStore.t('issues.compressedReport', {
-        count: previews.length,
-        from: Math.round(originalTotal / 1024),
-        to: Math.round(compressedTotal / 1024),
-        ratio: originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100,
-      })
-    : ''
-
-  return { previews, report }
 }
 
 function toggleLogPanel(issue) {
@@ -463,7 +376,7 @@ clearForm()
             </div>
           </div>
           <div class="row-actions">
-            <button class="pill" :class="{ danger: issue.status !== '해결' }" :title="localeStore.t('tasks.statusChange')" @click="cycleIssueStatus(issue)">{{ issueStatusLabel(issue.status) }}</button>
+            <button class="pill" :class="{ danger: issue.status !== '해결' }" :title="localeStore.t('tasks.statusChange')" @click="cycleIssueStatus(issue)">{{ issue.status }}</button>
             <button :class="{ ghost: expandedId !== issue.id }" type="button" @click="toggleLogPanel(issue)">{{ localeStore.t('issues.resolution') }} {{ expandedId === issue.id ? '▲' : '▼' }}</button>
             <template v-if="showForm">
               <button :class="{ ghost: editingId !== issue.id }" @click="editIssue(issue)">{{ localeStore.t('common.edit') }}</button>

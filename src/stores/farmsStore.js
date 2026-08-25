@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db, firebaseEnabled } from '../services/firebase.js'
 import { uuid } from '../utils/uuid.js'
+import { DOMAIN_KEYS } from '../utils/farmDataSchema.js'
 
 const LS_ACTIVE = 'citrus:active-farm'
 const LS_MODE = 'citrus:app-mode' // '' | 'farm' | 'admin'. localStorage에 키 자체가 없으면(null) "한 번도 선택한 적 없음"으로 취급한다.
@@ -175,7 +176,11 @@ export const useFarmsStore = defineStore('farms', () => {
   async function permanentlyDeleteFarm(id) {
     const treatSnap = await getDocs(collection(db, 'farms', id, 'treatments'))
     await Promise.all(treatSnap.docs.map((d) => deleteDoc(d.ref)))
-    await deleteDoc(doc(db, 'farms', id, 'data', 'farmData'))
+    // farmData는 구버전(단일 문서) 잔재, 나머지는 도메인별 신버전 문서(src/utils/farmDataSchema.js의
+    // DOMAIN_SYNC) — 마이그레이션 시점과 무관하게 둘 다 지운다(둘 중 하나만 있을 수도 있어서).
+    await Promise.all(
+      ['farmData', ...DOMAIN_KEYS].map((key) => deleteDoc(doc(db, 'farms', id, 'data', key))),
+    )
     await deleteDoc(doc(db, 'farms', id, 'data', 'availablePesticide'))
     await deleteDoc(doc(db, 'farms', id, 'data', 'recommendSettings'))
     await deleteDoc(doc(db, 'farms', id))

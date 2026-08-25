@@ -10,7 +10,7 @@ import {
   parseISO,
 } from 'date-fns'
 import { uuid } from '../../utils/uuid.js'
-import { normalizeRule, normalizeScheduleSettings } from './normalize.js'
+import { normalizeRule, normalizeScheduleSettings } from '../../utils/farmDataSchema.js'
 
 function monthsDiff(fromDate, toDate) {
   return (toDate.getFullYear() - fromDate.getFullYear()) * 12 + (toDate.getMonth() - fromDate.getMonth())
@@ -61,7 +61,7 @@ export function toKey(dateString) {
 }
 
 export function createSchedulerActions(ctx) {
-  const { state, persistAll, logChange } = ctx
+  const { state, persist, logChange } = ctx
 
   async function upsertScheduleRule(payload) {
     const normalized = normalizeRule(payload)
@@ -79,12 +79,12 @@ export function createSchedulerActions(ctx) {
       })
     }
 
-    await persistAll()
+    await persist('tasks')
   }
 
   async function removeScheduleRule(id) {
     state.value.scheduleRules = state.value.scheduleRules.filter((rule) => rule.id !== id)
-    await persistAll()
+    await persist('tasks')
   }
 
   async function updateScheduleSettings(payload) {
@@ -92,7 +92,7 @@ export function createSchedulerActions(ctx) {
       ...state.value.scheduleSettings,
       ...payload,
     })
-    await persistAll()
+    await persist('tasks')
   }
 
   function isDuplicateTask(normalizedRule, dueDate, duplicatePolicy) {
@@ -113,7 +113,7 @@ export function createSchedulerActions(ctx) {
     )
   }
 
-  async function runTaskScheduler({ daysAhead, duplicatePolicy, persist = true } = {}) {
+  async function runTaskScheduler({ daysAhead, duplicatePolicy, persist: shouldPersist = true } = {}) {
     const resolvedDays = Math.max(1, Number(daysAhead || state.value.scheduleSettings.generationDays || 21))
     const resolvedPolicy = duplicatePolicy || state.value.scheduleSettings.duplicatePolicy || 'rule-and-date'
     const todayDate = new Date()
@@ -156,8 +156,8 @@ export function createSchedulerActions(ctx) {
     if (generatedTasks.length) {
       state.value.tasks.push(...generatedTasks)
       logChange('작업', `자동 생성 작업 ${generatedTasks.length}건`, 'add')
-      if (persist) {
-        await persistAll()
+      if (shouldPersist) {
+        await persist('tasks')
       }
     }
 
@@ -173,7 +173,7 @@ export function createSchedulerActions(ctx) {
       seen.add(key)
       return true
     })
-    await persistAll()
+    await persist('tasks')
     return before - state.value.tasks.length
   }
 

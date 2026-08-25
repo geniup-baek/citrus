@@ -460,6 +460,27 @@ export function searchGroupedFromFullCache({ pestName = '', targetPest = '', pes
   }
 }
 
+// 목록(SVC01)은 같은 상표명이 대상 병해충 수만큼 레코드로 나뉘어 있으므로, 상표명 기준으로
+// 묶어서 한 건씩만 돌려준다(병해충은 요약 문자열로 합쳐 기존 flat 필드 형태로 맞춘다).
+// 방제이력·가용농약 탭이 상표명 검색 결과를 이 하나의 평평한 모양으로 함께 쓴다.
+function pestSummaryText(targetPests) {
+  const shown = targetPests.slice(0, 3).join(', ')
+  const rest = targetPests.length - 3
+  return rest > 0 ? `${shown} 외 ${rest}종` : shown
+}
+
+export function searchGroupedFlat(query, pageSize) {
+  const result = searchGroupedFromFullCache({ pestName: query, page: 1, pageSize })
+  return (result?.list ?? []).map(g => ({
+    brandName: g.brandName,
+    pesticideType: g.pesticideType,
+    modeOfAction: g.modeOfActions[0] || '',
+    targetPest: pestSummaryText(g.targetPests),
+    pestiCode: g.key,
+    diseaseUseSeq: '',
+  }))
+}
+
 // 독성 등급 (농약관리법 기준 4단계, 높은 순서)
 export const TOXIC_GRADES = ['맹독성', '고독성', '보통독성', '저독성']
 

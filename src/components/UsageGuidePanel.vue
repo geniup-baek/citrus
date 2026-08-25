@@ -4,11 +4,10 @@ import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
-import { compressImageFile } from '../utils/imageProcessing'
-import { uuid } from '../utils/uuid.js'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
-import { useLightboxBack } from '../composables/useLightboxBack'
+import { useLightbox } from '../composables/useLightbox'
+import { useFilesToPreviews } from '../composables/usePhotoPreviews'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -42,8 +41,8 @@ const form = reactive({
   description: '',
 })
 
-const lightboxPhoto = ref(null)
-useLightboxBack(lightboxPhoto)
+const { lightboxPhoto, openLightbox, closeLightbox } = useLightbox()
+const { filesToPreviews } = useFilesToPreviews('usageGuides.compressedReport')
 
 // 작업 단계 인라인 패널 (편집 모드와 무관하게 항상 열람 가능 — 문제 탭의 "조치" 패턴과 동일).
 // 패널을 펼치면 기본은 표시 모드이고, "편집" 버튼을 눌러야 단계 추가·수정·삭제·순서 변경이 가능해진다.
@@ -153,54 +152,6 @@ async function handleImportFile(event) {
     console.error('[UsageGuidePanel] 사용법 불러오기 실패', e)
     importError.value = '올바른 사용법 파일이 아닙니다.'
   }
-}
-
-// ── 사진 헬퍼 (재배동 패널과 동일한 압축 규격) ──────────────────────────────────
-async function filesToPreviews(files) {
-  let originalTotal = 0
-  let compressedTotal = 0
-
-  const previews = await Promise.all(
-    files.map(async (file) => {
-      const compressed = await compressImageFile(file, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.78,
-        outputType: 'image/jpeg',
-      })
-      originalTotal += compressed.originalSize
-      compressedTotal += compressed.compressedSize
-      return {
-        id: uuid(),
-        name: file.name,
-        dataUrl: compressed.dataUrl,
-        contentType: compressed.contentType,
-        size: compressed.compressedSize,
-        width: compressed.width,
-        height: compressed.height,
-        originalSize: compressed.originalSize,
-      }
-    }),
-  )
-
-  const report = previews.length
-    ? localeStore.t('usageGuides.compressedReport', {
-        count: previews.length,
-        from: Math.round(originalTotal / 1024),
-        to: Math.round(compressedTotal / 1024),
-        ratio: originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100,
-      })
-    : ''
-
-  return { previews, report }
-}
-
-function openLightbox(photo) {
-  lightboxPhoto.value = photo
-}
-
-function closeLightbox() {
-  lightboxPhoto.value = null
 }
 
 // ── 사용법(가이드) 폼 ────────────────────────────────────────────────────────

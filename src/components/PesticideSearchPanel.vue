@@ -6,7 +6,8 @@ import { useFarmsStore } from '../stores/farmsStore.js'
 import { useAppPolicyStore } from '../stores/appPolicyStore.js'
 import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, searchFromFullCache, searchGroupedFromFullCache, splitTargetPests, getTypesFromCache, getDetailCoverage, allPesticideRecords, formatPreHarvest, formatMaxApplications, saveManualPesticide, deleteManualPesticide, loadManualEntries, blankManualUsage, getDetailSummaryFromCache, DETAIL_INDEX_KEY, TOXIC_GRADES, FISH_TOXIC_GRADES } from '../services/pesticide'
 import { confirm } from '../composables/useConfirm'
-import { withCache, formatFetchedAt, pullSharedCache } from '../services/cache.js'
+import { withCache, pullSharedCache } from '../services/cache.js'
+import CacheStatusBanner from './CacheStatusBanner.vue'
 
 const localeStore = useLocaleStore()
 const settingsStore = useRecommendSettingsStore()
@@ -450,21 +451,16 @@ onMounted(async () => {
   </div>
 
   <p v-if="error" class="error-msg">{{ t('pest.apiError') }} {{ error }}</p>
-  <div v-if="cacheInfo" class="cache-banner" :class="{ 'cache-warn': cacheInfo.error }">
-    <span class="cache-banner-icon">{{ cacheInfo.error ? '⚠' : 'ℹ' }}</span>
-    <span v-if="cacheInfo.error" class="cache-banner-msg">API 오류 · </span>
-    <span class="cache-banner-time">{{ formatFetchedAt(cacheInfo.fetchedAt) }} 기준 데이터</span>
-    <div v-if="farmsStore.isAdminMode" class="cache-banner-actions">
-      <button class="cache-refresh-btn" :disabled="loading" @click="fetchLatest">
-        {{ loading ? '가져오는 중...' : '최신 정보 가져오기' }}
-      </button>
-      <button class="cache-refresh-btn" :disabled="isMock || detailsWarming" @click="fetchAllDetails">
-        {{ detailsWarming
-          ? `상세정보 가져오는 중... (${detailsProgress?.done ?? 0}/${detailsProgress?.total ?? 0}, 건너뜀 ${detailsProgress?.skipped ?? 0})`
-          : `상세정보 전체 가져오기 (${settingsStore.settings.skipCachedPesticideDetails ? '이미 있는 항목 건너뛰기' : '전체 새로 가져오기'})` }}
-      </button>
-    </div>
-  </div>
+  <CacheStatusBanner :cache-info="cacheInfo" :loading="loading" :show-refresh="farmsStore.isAdminMode">
+    <button class="cache-refresh-btn" type="button" :disabled="loading" @click="fetchLatest">
+      {{ loading ? '가져오는 중...' : '최신 정보 가져오기' }}
+    </button>
+    <button class="cache-refresh-btn" type="button" :disabled="isMock || detailsWarming" @click="fetchAllDetails">
+      {{ detailsWarming
+        ? `상세정보 가져오는 중... (${detailsProgress?.done ?? 0}/${detailsProgress?.total ?? 0}, 건너뜀 ${detailsProgress?.skipped ?? 0})`
+        : `상세정보 전체 가져오기 (${settingsStore.settings.skipCachedPesticideDetails ? '이미 있는 항목 건너뛰기' : '전체 새로 가져오기'})` }}
+    </button>
+  </CacheStatusBanner>
   <div v-if="!loading && !error && !cacheInfo && displayGroups.length === 0" class="no-cache-state">
     <p>저장된 데이터가 없습니다.</p>
     <button v-if="farmsStore.isAdminMode" :disabled="loading" @click="fetchLatest">최신 정보 가져오기</button>
@@ -708,7 +704,6 @@ onMounted(async () => {
 }
 .dlabel { color: var(--muted); }
 .detail-no-cache { font-size: 0.82rem; color: var(--muted); padding: 0.25rem 0; }
-.moa-detail { display: flex; align-items: center; gap: 0.5rem; }
 
 .rec-count {
   font-size: 0.7rem;

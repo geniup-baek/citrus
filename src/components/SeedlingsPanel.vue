@@ -5,11 +5,10 @@ import { useFarmStore } from '../stores/farmStore'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
-import { compressImageFile } from '../utils/imageProcessing'
-import { uuid } from '../utils/uuid.js'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
-import { useLightboxBack } from '../composables/useLightboxBack'
+import { useLightbox } from '../composables/useLightbox'
+import { useFilesToPreviews } from '../composables/usePhotoPreviews'
 
 // 재배동 목록에서 '묘목 보기'로 넘어온 경우, 그 재배동으로 미리 필터링해서 보여준다.
 const props = defineProps({
@@ -43,8 +42,8 @@ const showAddLog = ref(false)
 const logNote = ref('')
 const logPhotoPreviews = ref([])
 const logCompressionReport = ref('')
-const lightboxPhoto = ref(null)
-useLightboxBack(lightboxPhoto)
+const { lightboxPhoto, openLightbox, closeLightbox } = useLightbox()
+const { filesToPreviews } = useFilesToPreviews('seedlings.compressedReport')
 
 // 성장 기록 편집
 const editingLogId = ref('')
@@ -354,53 +353,6 @@ function formatLogDate(dateStr) {
   } catch {
     return dateStr
   }
-}
-
-async function filesToPreviews(files) {
-  let originalTotal = 0
-  let compressedTotal = 0
-
-  const previews = await Promise.all(
-    files.map(async (file) => {
-      const compressed = await compressImageFile(file, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.78,
-        outputType: 'image/jpeg',
-      })
-      originalTotal += compressed.originalSize
-      compressedTotal += compressed.compressedSize
-      return {
-        id: uuid(),
-        name: file.name,
-        dataUrl: compressed.dataUrl,
-        contentType: compressed.contentType,
-        size: compressed.compressedSize,
-        width: compressed.width,
-        height: compressed.height,
-        originalSize: compressed.originalSize,
-      }
-    }),
-  )
-
-  const report = previews.length
-    ? localeStore.t('seedlings.compressedReport', {
-        count: previews.length,
-        from: Math.round(originalTotal / 1024),
-        to: Math.round(compressedTotal / 1024),
-        ratio: originalTotal > 0 ? Math.round((compressedTotal / originalTotal) * 100) : 100,
-      })
-    : ''
-
-  return { previews, report }
-}
-
-function openLightbox(photo) {
-  lightboxPhoto.value = photo
-}
-
-function closeLightbox() {
-  lightboxPhoto.value = null
 }
 
 function toggleLogPanel(seedling) {

@@ -22,6 +22,7 @@ function revertTargetFor(state, registry, entity) {
 function subRecordTargetFor(state, registry, entity) {
   if (entity === '작업 진행기록') {
     return {
+      domainKey: 'tasks',
       findParent: (parentId) => state.value.tasks.find((t) => t.id === parentId),
       arrayKey: 'logs',
       update: registry.updateTaskLog,
@@ -30,6 +31,7 @@ function subRecordTargetFor(state, registry, entity) {
   }
   if (entity === '묘목 생육기록') {
     return {
+      domainKey: 'seedlings',
       findParent: (parentId) => state.value.seedlings.find((s) => s.id === parentId),
       arrayKey: 'growthLogs',
       update: registry.updateSeedlingLog,
@@ -38,6 +40,7 @@ function subRecordTargetFor(state, registry, entity) {
   }
   if (entity === '문제 해결단계') {
     return {
+      domainKey: 'issues',
       findParent: (parentId) => state.value.issues.find((i) => i.id === parentId),
       arrayKey: 'resolutionSteps',
       update: registry.updateIssueResolutionStep,
@@ -49,6 +52,7 @@ function subRecordTargetFor(state, registry, entity) {
   }
   if (entity === '사용법 단계') {
     return {
+      domainKey: 'usageGuides',
       findParent: (parentId) => state.value.usageGuides.find((g) => g.id === parentId),
       arrayKey: 'steps',
       update: registry.updateUsageGuideStep,
@@ -58,6 +62,7 @@ function subRecordTargetFor(state, registry, entity) {
   }
   if (entity.endsWith('재고 입출고')) {
     return {
+      domainKey: 'inventory',
       findParent: (parentId) => state.value.inventory.find((i) => i.id === parentId),
       arrayKey: 'txns',
       update: registry.updateInventoryTxn,
@@ -75,9 +80,9 @@ function parseSubRefId(refId) {
   return { parentId: refId.slice(0, sep), subId: refId.slice(sep + 1) }
 }
 
-// state/persistAll(핵심 저장 함수)과 registry(각 엔티티의 upsert/update 함수 모음)를 받아
+// state/persist(핵심 저장 함수)과 registry(각 엔티티의 upsert/update 함수 모음)를 받아
 // 되돌리기·이력 삭제 함수를 만든다.
-export function createRevertActions(state, persistAll, registry) {
+export function createRevertActions(state, persist, registry) {
   // 변경 이력 한 줄을 되돌린다.
   // - 수정(update): 그때 바뀐 필드만 이전 값으로 되돌린다(다른 필드는 지금 값 그대로 유지).
   // - 삭제(delete): 저장해둔 스냅샷으로 그 항목을 원래 id 그대로 복원한다.
@@ -145,7 +150,7 @@ export function createRevertActions(state, persistAll, registry) {
           return { ok: false, reason: '이미 같은 기록이 존재합니다.' }
         }
         subTarget.restore(parent, entry.snapshot)
-        await persistAll()
+        await persist(subTarget.domainKey)
         return { ok: true }
       }
 
@@ -160,12 +165,12 @@ export function createRevertActions(state, persistAll, registry) {
   // 쌓이면 정리한 보람이 없다). "초기화"와 달리 흔적을 남기지 않고 그대로 지운다.
   async function removeChangeLogEntry(id) {
     state.value.changeLog = (state.value.changeLog || []).filter((entry) => entry.id !== id)
-    await persistAll()
+    await persist() // changeLog만 바뀌었다 — persist()는 인자 없이도 changeLog는 항상 저장한다.
   }
 
   async function clearChangeLog() {
     state.value.changeLog = []
-    await persistAll()
+    await persist()
   }
 
   return { revertChangeLogEntry, removeChangeLogEntry, clearChangeLog }

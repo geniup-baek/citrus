@@ -2,6 +2,14 @@
 import { confirm } from '../composables/useConfirm'
 import { t } from '../stores/localeStore'
 
+// 오늘 날짜 (YYYY-MM-DD) — 내보내기 파일명·폼 기본값에 방제이력/농약추천/가용농약 탭이
+// 각자 갖고 있던 것을 여기로 모았다.
+export function today() {
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 const EXPORT_TEXT = {
   csv: { title: 'confirm.csvTitle', message: 'confirm.csvFiltered', label: 'common.download' },
   pdf: { title: 'confirm.pdfTitle', message: 'confirm.pdfFiltered', label: 'inventory.printReport' },
