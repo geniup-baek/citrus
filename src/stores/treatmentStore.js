@@ -33,6 +33,19 @@ function formatTreatmentFieldDiff(fields) {
     .join(', ')
 }
 
+// 삭제 전 데이터를 되돌리기용으로 저장해둔다(farmStore.snapshotForRevert와 같은 크기 보호).
+const MAX_SNAPSHOT_JSON_LENGTH = 8000
+function snapshotForRevert(record) {
+  if (!record) return null
+  try {
+    const json = JSON.stringify(record)
+    if (json.length > MAX_SNAPSHOT_JSON_LENGTH) return null
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
 function lsKey(farmId) {
   return `citrus:treatments:${farmId}`
 }
@@ -143,8 +156,39 @@ export const useTreatmentStore = defineStore('treatment', () => {
       treatments.value = treatments.value.filter(t => t.id !== id)
       saveLS(treatments.value)
     }
-    if (target) useFarmStore().logChange('방제이력', treatmentLabel(target), 'delete')
+    if (target) {
+      useFarmStore().logChange('방제이력', treatmentLabel(target), 'delete', '', { snapshot: snapshotForRevert(target) })
+    }
   }
 
-  return { treatments, ready, init, addTreatment, updateTreatment, deleteTreatment, replaceAllTreatments }
+  // 변경 이력의 "방제이력" 항목을 되돌린다. entity가 farmStore가 아니라 이 스토어 소속이라
+  // SettingsView에서 entity로 분기해 이 함수를 부른다(farmStore.revertChangeLogEntry와 대응).
+  async function revertTreatmentLogEntry(entry) {
+    if (entry.action === 'update') {
+      if (!entry.refId || !entry.fields) return { ok: false, reason: '되돌릴 정보가 없습니다.' }
+      if (!treatments.value.some((t) => t.id === entry.refId)) {
+        return { ok: false, reason: '이미 삭제된 항목이라 되돌릴 수 없습니다.' }
+      }
+      const patch = {}
+      for (const [key, field] of Object.entries(entry.fields)) {
+        patch[key] = field.from
+      }
+      await updateTreatment(entry.refId, patch)
+      return { ok: true }
+    }
+    if (entry.action === 'delete') {
+      if (!entry.snapshot) return { ok: false, reason: '되돌릴 정보가 저장되어 있지 않습니다.' }
+      const rest = Object.fromEntries(
+        Object.entries(entry.snapshot).filter(([k]) => k !== 'id' && k !== 'createdAt'),
+      )
+      await addTreatment(rest)
+      return { ok: true }
+    }
+    return { ok: false, reason: '이 종류의 기록은 되돌리기를 지원하지 않습니다.' }
+  }
+
+  return {
+    treatments, ready, init, addTreatment, updateTreatment, deleteTreatment, replaceAllTreatments,
+    revertTreatmentLogEntry,
+  }
 })

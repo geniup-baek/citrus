@@ -2,6 +2,7 @@
 import { computed, nextTick, reactive, ref } from 'vue'
 import { useFarmStore } from '../stores/farmStore'
 import { compressImageFile } from '../utils/imageProcessing'
+import { uuid } from '../utils/uuid.js'
 import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
@@ -123,7 +124,7 @@ async function handlePhotoChange(event) {
       originalTotal += compressed.originalSize
       compressedTotal += compressed.compressedSize
       return {
-        id: crypto.randomUUID(),
+        id: uuid(),
         name: file.name,
         dataUrl: compressed.dataUrl,
         contentType: compressed.contentType,
@@ -273,7 +274,7 @@ async function filesToPreviews(files) {
       originalTotal += compressed.originalSize
       compressedTotal += compressed.compressedSize
       return {
-        id: crypto.randomUUID(),
+        id: uuid(),
         name: file.name,
         dataUrl: compressed.dataUrl,
         contentType: compressed.contentType,

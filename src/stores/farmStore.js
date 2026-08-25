@@ -30,6 +30,7 @@ import {
   defaultUsageGuides,
 } from '../data/defaults'
 import { db, firebaseEnabled } from '../services/firebase'
+import { uuid } from '../utils/uuid.js'
 
 const APP_SETTINGS_LS_KEY = 'citrus:app-settings' // 공통(농장 무관) 분류·항목 설정
 const ACTOR_NAME_LS_KEY = 'citrus:actor-name' // 이 기기에서 변경 이력에 표시할 이름(기기별 로컬 저장, 서버 동기화 안 함)
@@ -139,7 +140,7 @@ function normalizeInventoryItem(item) {
   const fallbackVolume = item?.unit || '기본'
   const fallbackExpiry = item?.expiryDate || ''
   const txns = (Array.isArray(item?.txns) ? item.txns : []).map((t) => ({
-    id: t.id || crypto.randomUUID(),
+    id: t.id || uuid(),
     date: t.date || new Date().toISOString(),
     type: t.type === '사용' ? '사용' : '입고',
     volume: t.volume || fallbackVolume,
@@ -433,10 +434,34 @@ export const useFarmStore = defineStore('farm', () => {
     return formatFieldDiff(diffFields(before, after, fieldLabels))
   }
 
-  // 재배동 id를 이름으로 바꿔서 diff에 노출한다(원본 객체는 건드리지 않음).
-  function withGreenhouseName(item) {
-    const greenhouse = state.value.facilities.find((f) => f.id === item?.greenhouseId)
-    return { ...item, greenhouseId: greenhouse?.name || item?.greenhouseId || '' }
+  // fields의 특정 키를 화면 표시용 값으로 바꾼 사본을 만든다(저장되는 fields 자체는 원본 유지).
+  // resolvers: { 필드키: (원본값) => 표시값 }
+  function withDisplayFields(fields, resolvers) {
+    const out = {}
+    for (const [key, field] of Object.entries(fields)) {
+      const resolve = resolvers?.[key]
+      out[key] = resolve ? { ...field, from: resolve(field.from), to: resolve(field.to) } : field
+    }
+    return out
+  }
+
+  function facilityNameById(id) {
+    return state.value.facilities.find((f) => f.id === id)?.name || id || ''
+  }
+
+  // 삭제 전 데이터를 되돌리기용으로 저장해둔다. Firestore 문서 용량(1MiB)을 보호하기 위해
+  // 너무 큰 항목(입출고·성장기록 등이 아주 많은 경우)은 스냅샷 없이 삭제만 기록한다
+  // — 그런 항목은 삭제 자체는 이력에 남지만 "되돌리기" 버튼은 뜨지 않는다.
+  const MAX_SNAPSHOT_JSON_LENGTH = 8000
+  function snapshotForRevert(record) {
+    if (!record) return null
+    try {
+      const json = JSON.stringify(record)
+      if (json.length > MAX_SNAPSHOT_JSON_LENGTH) return null
+      return JSON.parse(json)
+    } catch {
+      return null
+    }
   }
 
   // action: 'add' | 'update' | 'delete' | 'stock-in' | 'stock-out'
@@ -445,6 +470,7 @@ export const useFarmStore = defineStore('farm', () => {
   // update이고 CHANGE_LOG_MERGE_WINDOW_MS 안이면 새 줄을 추가하지 않고 그 기록을 갱신한다.
   // (예: 상태를 예정→진행중→완료로 두 번 클릭해도 "상태: 예정 → 완료" 한 줄만 남는다.
   //  값이 원래대로 돌아오면 — 예: 예정→진행중→예정 — 순변화가 없으므로 기록 자체를 지운다.)
+  // mergeInfo.snapshot(action이 'delete'일 때)을 함께 넘기면 되돌리기(복원)에 쓰인다.
   function logChange(entity, name, action, detail = '', mergeInfo = null) {
     if (mergeInfo?.refId && action === 'update') {
       const prevEntries = Array.isArray(state.value.changeLog) ? state.value.changeLog : []
@@ -479,7 +505,7 @@ export const useFarmStore = defineStore('farm', () => {
     }
 
     const entry = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       at: new Date().toISOString(),
       entity,
       name: name || '',
@@ -487,6 +513,7 @@ export const useFarmStore = defineStore('farm', () => {
       actor: actorName.value || '',
       detail: detail || '',
       ...(mergeInfo?.refId ? { refId: mergeInfo.refId, fields: mergeInfo.fields } : {}),
+      ...(mergeInfo?.snapshot ? { snapshot: mergeInfo.snapshot } : {}),
     }
     const prev = Array.isArray(state.value.changeLog) ? state.value.changeLog : []
     state.value.changeLog = [entry, ...prev].slice(0, CHANGE_LOG_LIMIT)
@@ -744,7 +771,7 @@ export const useFarmStore = defineStore('farm', () => {
       const fields = diffFields(before, state.value.facilities[index], { name: '이름', notes: '메모' })
       logChange('재배동', state.value.facilities[index].name, 'update', formatFieldDiff(fields), { refId: payload.id, fields })
     } else {
-      const created = { ...payload, id: payload.id || crypto.randomUUID() }
+      const created = { ...payload, id: payload.id || uuid() }
       state.value.facilities.push(created)
       logChange('재배동', created.name, 'add')
     }
@@ -757,7 +784,8 @@ export const useFarmStore = defineStore('farm', () => {
     state.value.facilities = state.value.facilities.filter((item) => item.id !== id)
     state.value.seedlings = state.value.seedlings.filter((item) => item.greenhouseId !== id)
     state.value.issues = state.value.issues.filter((item) => item.greenhouseId !== id)
-    if (target) logChange('재배동', target.name, 'delete')
+    // 되돌리기는 재배동 자체만 복원한다 — 함께 지워진 묘목·문제까지는 복원하지 않는다.
+    if (target) logChange('재배동', target.name, 'delete', '', { snapshot: snapshotForRevert(target) })
     await persistAll()
   }
 
@@ -773,18 +801,20 @@ export const useFarmStore = defineStore('farm', () => {
       const before = { ...state.value.seedlings[index] }
       state.value.seedlings[index] = { ...state.value.seedlings[index], ...payload }
       const after = state.value.seedlings[index]
-      const fields = diffFields(withGreenhouseName(before), withGreenhouseName(after), {
+      // fields는 되돌리기에 쓰이므로 재배동 id를 그대로 담고, 표시용 문자열만 이름으로 바꾼다.
+      const fields = diffFields(before, after, {
         variety: '품종',
         rootstock: '대목',
         plantedAt: '식재일',
         greenhouseId: '재배동',
         notes: '메모',
       })
-      logChange('묘목', seedlingLabel(after), 'update', formatFieldDiff(fields), { refId: payload.id, fields })
+      const displayFields = withDisplayFields(fields, { greenhouseId: facilityNameById })
+      logChange('묘목', seedlingLabel(after), 'update', formatFieldDiff(displayFields), { refId: payload.id, fields })
     } else {
       const created = {
         ...payload,
-        id: payload.id || crypto.randomUUID(),
+        id: payload.id || uuid(),
         growthLogs: Array.isArray(payload.growthLogs) ? payload.growthLogs : [],
       }
       state.value.seedlings.push(created)
@@ -798,7 +828,7 @@ export const useFarmStore = defineStore('farm', () => {
     for (const payload of payloads) {
       state.value.seedlings.push({
         ...payload,
-        id: payload.id || crypto.randomUUID(),
+        id: payload.id || uuid(),
         growthLogs: Array.isArray(payload.growthLogs) ? payload.growthLogs : [],
       })
     }
@@ -809,7 +839,7 @@ export const useFarmStore = defineStore('farm', () => {
   async function removeSeedling(id) {
     const target = state.value.seedlings.find((item) => item.id === id)
     state.value.seedlings = state.value.seedlings.filter((item) => item.id !== id)
-    if (target) logChange('묘목', seedlingLabel(target), 'delete')
+    if (target) logChange('묘목', seedlingLabel(target), 'delete', '', { snapshot: snapshotForRevert(target) })
     await persistAll()
   }
 
@@ -821,7 +851,7 @@ export const useFarmStore = defineStore('farm', () => {
 
     seedling.growthLogs = seedling.growthLogs || []
     seedling.growthLogs.unshift({
-      id: crypto.randomUUID(),
+      id: uuid(),
       date: new Date().toISOString(),
       note,
       photos: Array.isArray(photos) ? photos : [],
@@ -889,7 +919,7 @@ export const useFarmStore = defineStore('farm', () => {
       if (!alreadyExists) {
         const created = {
           ...payload,
-          id: payload.id || crypto.randomUUID(),
+          id: payload.id || uuid(),
           logs: Array.isArray(payload.logs) ? payload.logs : [],
           status: payload.status || '예정',
           progress: Number(payload.progress || 0),
@@ -907,7 +937,7 @@ export const useFarmStore = defineStore('farm', () => {
   async function removeTask(id) {
     const target = state.value.tasks.find((item) => item.id === id)
     state.value.tasks = state.value.tasks.filter((item) => item.id !== id)
-    if (target) logChange('작업', target.title, 'delete')
+    if (target) logChange('작업', target.title, 'delete', '', { snapshot: snapshotForRevert(target) })
     await persistAll()
   }
 
@@ -919,7 +949,7 @@ export const useFarmStore = defineStore('farm', () => {
 
     task.logs = task.logs || []
     task.logs.unshift({
-      id: crypto.randomUUID(),
+      id: uuid(),
       date: new Date().toISOString(),
       note,
       photos: Array.isArray(photos) ? photos : [],
@@ -969,18 +999,20 @@ export const useFarmStore = defineStore('farm', () => {
         ...payload,
       })
       const after = state.value.issues[index]
-      const fields = diffFields(withGreenhouseName(before), withGreenhouseName(after), {
+      // fields는 되돌리기에 쓰이므로 재배동 id를 그대로 담고, 표시용 문자열만 이름으로 바꾼다.
+      const fields = diffFields(before, after, {
         title: '제목',
         status: '상태',
         occurredAt: '발생일',
         symptoms: '증상',
         greenhouseId: '재배동',
       })
-      logChange('문제', after.title, 'update', formatFieldDiff(fields), { refId: payload.id, fields })
+      const displayFields = withDisplayFields(fields, { greenhouseId: facilityNameById })
+      logChange('문제', after.title, 'update', formatFieldDiff(displayFields), { refId: payload.id, fields })
     } else {
       const created = normalizeIssue({
         ...payload,
-        id: payload.id || crypto.randomUUID(),
+        id: payload.id || uuid(),
         resolutionSteps: Array.isArray(payload.resolutionSteps) ? payload.resolutionSteps : [],
         photos: Array.isArray(payload.photos) ? payload.photos : [],
       })
@@ -999,7 +1031,7 @@ export const useFarmStore = defineStore('farm', () => {
 
     issue.resolutionSteps = issue.resolutionSteps || []
     issue.resolutionSteps.push({
-      id: crypto.randomUUID(),
+      id: uuid(),
       date: new Date().toISOString(),
       note,
       photos: Array.isArray(photos) ? photos : [],
@@ -1040,7 +1072,7 @@ export const useFarmStore = defineStore('farm', () => {
   async function removeIssue(id) {
     const target = state.value.issues.find((item) => item.id === id)
     state.value.issues = state.value.issues.filter((item) => item.id !== id)
-    if (target) logChange('문제', target.title, 'delete')
+    if (target) logChange('문제', target.title, 'delete', '', { snapshot: snapshotForRevert(target) })
     await persistAll()
   }
 
@@ -1059,7 +1091,7 @@ export const useFarmStore = defineStore('farm', () => {
     } else {
       const created = normalizeUsageGuide({
         ...payload,
-        id: payload.id || crypto.randomUUID(),
+        id: payload.id || uuid(),
       })
       state.value.usageGuides.push(created)
       logChange('사용법', created.title, 'add')
@@ -1071,7 +1103,7 @@ export const useFarmStore = defineStore('farm', () => {
   async function removeUsageGuide(id) {
     const target = state.value.usageGuides.find((item) => item.id === id)
     state.value.usageGuides = state.value.usageGuides.filter((item) => item.id !== id)
-    if (target) logChange('사용법', target.title, 'delete')
+    if (target) logChange('사용법', target.title, 'delete', '', { snapshot: snapshotForRevert(target) })
     await persistAll()
   }
 
@@ -1086,7 +1118,7 @@ export const useFarmStore = defineStore('farm', () => {
 
     guide.steps = [
       ...(guide.steps || []),
-      { id: crypto.randomUUID(), text, photos: Array.isArray(photos) ? photos : [] },
+      { id: uuid(), text, photos: Array.isArray(photos) ? photos : [] },
     ]
     await persistAll()
   }
@@ -1183,7 +1215,7 @@ export const useFarmStore = defineStore('farm', () => {
         const src = photoMap[photo.id]
         if (!src?.dataUrl) continue
         const [saved] = await savePhotos([{
-          id: crypto.randomUUID(),
+          id: uuid(),
           name: photo.name,
           dataUrl: src.dataUrl,
           contentType: photo.contentType,
@@ -1197,7 +1229,7 @@ export const useFarmStore = defineStore('farm', () => {
     }
 
     const steps = (payload.guide.steps || []).map((s) => ({
-      id: crypto.randomUUID(),
+      id: uuid(),
       text: s.text || '',
       photos: (s.photos || []).map((p) => idMap.get(p.id)).filter(Boolean),
     }))
@@ -1285,7 +1317,7 @@ export const useFarmStore = defineStore('farm', () => {
     } else {
       state.value.scheduleRules.push({
         ...normalized,
-        id: normalized.id || crypto.randomUUID(),
+        id: normalized.id || uuid(),
       })
     }
 
@@ -1362,7 +1394,7 @@ export const useFarmStore = defineStore('farm', () => {
         }
 
         generatedTasks.push({
-          id: crypto.randomUUID(),
+          id: uuid(),
           title: normalizedRule.title,
           dueDate,
           frequency: normalizedRule.frequency,
@@ -1422,7 +1454,7 @@ export const useFarmStore = defineStore('farm', () => {
       const fields = diffFields(before, state.value.ancillaries[index], { name: '이름', type: '유형', notes: '메모' })
       logChange('시설·장비', state.value.ancillaries[index].name, 'update', formatFieldDiff(fields), { refId: payload.id, fields })
     } else {
-      const created = { ...payload, id: payload.id || crypto.randomUUID() }
+      const created = { ...payload, id: payload.id || uuid() }
       state.value.ancillaries.push(created)
       logChange('시설·장비', created.name, 'add')
     }
@@ -1433,7 +1465,7 @@ export const useFarmStore = defineStore('farm', () => {
   async function removeAncillary(id) {
     const target = state.value.ancillaries.find((item) => item.id === id)
     state.value.ancillaries = state.value.ancillaries.filter((item) => item.id !== id)
-    if (target) logChange('시설·장비', target.name, 'delete')
+    if (target) logChange('시설·장비', target.name, 'delete', '', { snapshot: snapshotForRevert(target) })
     await persistAll()
   }
 
@@ -1463,8 +1495,10 @@ export const useFarmStore = defineStore('farm', () => {
     } else {
       const created = normalizeInventoryItem({
         ...payload,
-        id: payload.id || crypto.randomUUID(),
-        txns: [],
+        id: payload.id || uuid(),
+        // 새 품목 등록 폼은 txns를 넘기지 않으므로 평소엔 항상 []. 삭제 되돌리기(복원)만
+        // 스냅샷에 담긴 입출고 이력을 그대로 넘겨서, 복원 시 이력까지 함께 되살아나게 한다.
+        txns: Array.isArray(payload.txns) ? payload.txns : [],
       })
       state.value.inventory.push(created)
       logChange(`${created.category}재고`, created.name, 'add')
@@ -1476,7 +1510,7 @@ export const useFarmStore = defineStore('farm', () => {
   async function removeInventoryItem(id) {
     const target = state.value.inventory.find((item) => item.id === id)
     state.value.inventory = state.value.inventory.filter((item) => item.id !== id)
-    if (target) logChange(`${target.category}재고`, target.name, 'delete')
+    if (target) logChange(`${target.category}재고`, target.name, 'delete', '', { snapshot: snapshotForRevert(target) })
     await persistAll()
   }
 
@@ -1492,7 +1526,7 @@ export const useFarmStore = defineStore('farm', () => {
     const resolvedType = type === '사용' ? '사용' : '입고'
     item.txns = item.txns || []
     item.txns.unshift({
-      id: crypto.randomUUID(),
+      id: uuid(),
       date: date || new Date().toISOString(),
       type: resolvedType,
       volume: volume || '기본',
@@ -1608,6 +1642,58 @@ export const useFarmStore = defineStore('farm', () => {
     state.value.inventory = state.value.inventory.filter((item) => item.category !== category)
     if (count > 0) logChange(`${category}재고`, `전체 초기화 (${count}개)`, 'delete')
     await persistAll()
+  }
+
+  // ── 변경 이력 되돌리기 ────────────────────────────────────────────────────────
+  // entity 문자열로 어느 목록·upsert 함수를 쓸지 찾는다. 비료/농약 재고는 entity가
+  // "비료재고"/"농약재고"처럼 카테고리에 따라 달라져서 접미사로 판단한다.
+  function revertTargetFor(entity) {
+    if (entity === '재배동') return { upsert: upsertFacility, list: () => state.value.facilities }
+    if (entity === '시설·장비') return { upsert: upsertAncillary, list: () => state.value.ancillaries }
+    if (entity === '묘목') return { upsert: upsertSeedling, list: () => state.value.seedlings }
+    if (entity === '작업') return { upsert: upsertTask, list: () => state.value.tasks }
+    if (entity === '문제') return { upsert: upsertIssue, list: () => state.value.issues }
+    if (entity === '사용법') return { upsert: upsertUsageGuide, list: () => state.value.usageGuides }
+    if (entity.endsWith('재고')) return { upsert: upsertInventoryItem, list: () => state.value.inventory }
+    return null
+  }
+
+  // 변경 이력 한 줄을 되돌린다.
+  // - 수정(update): 그때 바뀐 필드만 이전 값으로 되돌린다(다른 필드는 지금 값 그대로 유지).
+  // - 삭제(delete): 저장해둔 스냅샷으로 그 항목을 원래 id 그대로 복원한다.
+  // 되돌리기 자체도 보통의 수정/추가로 처리되므로, 그 결과로 새 변경 이력 한 줄이
+  // 자연스럽게 남는다(되돌렸다는 사실 자체가 감사 로그에서 사라지지 않음).
+  // 재배동 삭제 되돌리기는 재배동 자체만 복원하며, 함께 지워졌던 묘목·문제는 복원하지 않는다.
+  async function revertChangeLogEntry(entryId) {
+    const entry = (state.value.changeLog || []).find((e) => e.id === entryId)
+    if (!entry) return { ok: false, reason: '이력을 찾을 수 없습니다.' }
+
+    const target = revertTargetFor(entry.entity)
+    if (!target) return { ok: false, reason: '이 항목은 되돌리기를 지원하지 않습니다.' }
+
+    if (entry.action === 'update') {
+      if (!entry.refId || !entry.fields) return { ok: false, reason: '되돌릴 정보가 없습니다.' }
+      if (!target.list().some((item) => item.id === entry.refId)) {
+        return { ok: false, reason: '이미 삭제된 항목이라 되돌릴 수 없습니다.' }
+      }
+      const patch = { id: entry.refId }
+      for (const [key, field] of Object.entries(entry.fields)) {
+        patch[key] = field.from
+      }
+      await target.upsert(patch)
+      return { ok: true }
+    }
+
+    if (entry.action === 'delete') {
+      if (!entry.snapshot) return { ok: false, reason: '되돌릴 정보가 저장되어 있지 않습니다.' }
+      if (target.list().some((item) => item.id === entry.snapshot.id)) {
+        return { ok: false, reason: '이미 같은 항목이 존재합니다.' }
+      }
+      await target.upsert(entry.snapshot)
+      return { ok: true }
+    }
+
+    return { ok: false, reason: '이 종류의 기록은 되돌리기를 지원하지 않습니다.' }
   }
 
   // ── 변경 이력 삭제 (관리 모드에서 기능을 켜둔 경우에만 화면에 노출된다) ───────────
@@ -1868,6 +1954,7 @@ export const useFarmStore = defineStore('farm', () => {
     actorName,
     setActorName,
     logChange,
+    revertChangeLogEntry,
     removeChangeLogEntry,
     clearChangeLog,
   }

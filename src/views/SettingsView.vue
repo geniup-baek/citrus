@@ -101,6 +101,35 @@ const showChangeLogDeleteButton = computed(() =>
   policyStore.policy.enableChangeLogDeleteFeature && recSettingsStore.settings.showChangeLogDeleteButtons,
 )
 
+// 수정은 그때 바뀐 필드를, 삭제는 저장해둔 스냅샷을 되돌릴 수 있을 때만 버튼을 보여준다.
+function canRevertEntry(entry) {
+  if (entry.action === 'update') return !!(entry.refId && entry.fields)
+  if (entry.action === 'delete') return !!entry.snapshot
+  return false
+}
+
+const revertingId = ref('')
+const revertMessage = ref('')
+
+// 방제이력은 farmStore가 아니라 treatmentStore 소속이라 entity로 분기해서 되돌린다.
+async function revertHistoryEntry(entry) {
+  const ok = await confirm({
+    message: '이 변경을 되돌립니다. 되돌리는 것도 새 변경 이력으로 남습니다. 계속할까요?',
+    confirmLabel: '되돌리기',
+  })
+  if (!ok) return
+  revertingId.value = entry.id
+  revertMessage.value = ''
+  try {
+    const result = entry.entity === '방제이력'
+      ? await treatStore.revertTreatmentLogEntry(entry)
+      : await store.revertChangeLogEntry(entry.id)
+    revertMessage.value = result.ok ? '되돌렸습니다.' : (result.reason || '되돌리지 못했습니다.')
+  } finally {
+    revertingId.value = ''
+  }
+}
+
 async function removeChangeLogEntry(id) {
   const ok = await confirm({ message: '이 변경 이력 항목을 삭제합니다. 되돌릴 수 없습니다.' })
   if (!ok) return
@@ -1232,7 +1261,9 @@ function saveEdit(key, i, isPair) {
           </div>
           <p class="muted settings-group-hint">
             재배동·시설장비·묘목·작업·문제·재고·사용법·방제이력의 추가·수정·삭제 및 입출고 기록입니다. 최근 300건까지 보관됩니다.
+            수정·삭제 기록 중 되돌릴 정보가 남아있는 항목은 "되돌리기"로 이전 상태로 복원할 수 있습니다.
           </p>
+          <p v-if="revertMessage" class="muted text-sm">{{ revertMessage }}</p>
 
           <div class="inline-filters history-filters">
             <button
@@ -1253,6 +1284,14 @@ function saveEdit(key, i, isPair) {
                 <span class="muted history-meta">
                   {{ formatHistoryAt(entry.at) }}<template v-if="entry.actor"> · {{ entry.actor }}</template>
                 </span>
+                <button
+                  v-if="canRevertEntry(entry)"
+                  class="ghost compact-btn"
+                  type="button"
+                  :disabled="revertingId === entry.id"
+                  title="이 변경을 되돌리기"
+                  @click="revertHistoryEntry(entry)"
+                >{{ revertingId === entry.id ? '되돌리는 중...' : '되돌리기' }}</button>
                 <button
                   v-if="showChangeLogDeleteButton"
                   class="ghost compact-btn history-delete-btn"

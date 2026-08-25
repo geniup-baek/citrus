@@ -4,6 +4,7 @@ import {
   collection, doc, getDoc, getDocs, onSnapshot, setDoc, deleteDoc, deleteField,
 } from 'firebase/firestore'
 import { db, firebaseEnabled } from '../services/firebase.js'
+import { uuid } from '../utils/uuid.js'
 
 const LS_ACTIVE = 'citrus:active-farm'
 const LS_MODE = 'citrus:app-mode' // '' | 'farm' | 'admin'. localStorage에 키 자체가 없으면(null) "한 번도 선택한 적 없음"으로 취급한다.
@@ -129,7 +130,7 @@ export const useFarmsStore = defineStore('farms', () => {
   async function createFarm({ name, logo = '', pin = '' }) {
     const trimmed = name.trim()
     if (!trimmed) return null
-    const id = crypto.randomUUID()
+    const id = uuid()
     await setDoc(doc(db, 'farms', id), {
       name: trimmed,
       logo,

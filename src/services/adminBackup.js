@@ -2,6 +2,7 @@ import {
   collection, doc, getDoc, getDocs, setDoc, deleteDoc,
 } from 'firebase/firestore'
 import { db } from './firebase.js'
+import { uuid } from '../utils/uuid.js'
 
 const BACKUP_TYPE = 'citrus-admin-backup'
 const CHANGE_LOG_LIMIT = 300 // farmStore.js의 값과 맞춘다
@@ -134,7 +135,7 @@ export async function restoreAllFarmsBackup(payload) {
       }
       for (const t of farmPayload.treatments) {
         const { id, ...rest } = t
-        await setDoc(doc(db, 'farms', farmId, 'treatments', id || crypto.randomUUID()), rest)
+        await setDoc(doc(db, 'farms', farmId, 'treatments', id || uuid()), rest)
       }
     }
   }
