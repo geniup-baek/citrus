@@ -1,8 +1,10 @@
 import {
-  collection, doc, getDoc, getDocs, setDoc, deleteDoc,
+  collection, doc, getDoc, getDocs, setDoc,
 } from 'firebase/firestore'
-import { db } from './firebase.js'
+import { doc as liteDoc, writeBatch as liteWriteBatch } from 'firebase/firestore/lite'
+import { db, dbLite } from './firebase.js'
 import { uuid } from '../utils/uuid.js'
+import { DOMAIN_KEYS, domainFields } from '../utils/farmDataSchema.js'
 
 const BACKUP_TYPE = 'citrus-admin-backup'
 const CHANGE_LOG_LIMIT = 300 // farmStore.js의 값과 맞춘다
@@ -32,15 +34,27 @@ export async function exportAllFarmsBackup() {
   const farms = {}
   for (const farmDoc of farmsSnap.docs) {
     const farmId = farmDoc.id
-    const [farmDataSnap, apSnap, recSnap, treatSnap] = await Promise.all([
-      getDoc(doc(db, 'farms', farmId, 'data', 'farmData')),
+    // 농장별 데이터는 이제 facilities/tasks/issues/... 문서로 나뉘어 있다(src/utils/farmDataSchema.js의
+    // DOMAIN_SYNC 참고). 백업 파일 형식은 그대로 유지하기 위해 여기서 한 번 합쳐 예전과 같은
+    // "farmData 문서 하나" 모양(모든 필드가 한 객체에 들어있는 형태)으로 만든다
+    // — 복원(restoreAllFarmsBackup)에서 다시 문서별로 나눠 쓴다.
+    const [domainSnaps, apSnap, recSnap, treatSnap] = await Promise.all([
+      Promise.all(DOMAIN_KEYS.map((key) => getDoc(doc(db, 'farms', farmId, 'data', key)))),
       getDoc(doc(db, 'farms', farmId, 'data', 'availablePesticide')),
       getDoc(doc(db, 'farms', farmId, 'data', 'recommendSettings')),
       getDocs(collection(db, 'farms', farmId, 'treatments')),
     ])
+    const farmData = {}
+    let hasAnyDomainDoc = false
+    domainSnaps.forEach((snap) => {
+      if (snap.exists()) {
+        hasAnyDomainDoc = true
+        Object.assign(farmData, snap.data())
+      }
+    })
     farms[farmId] = {
       meta: farmDoc.data(),
-      farmData: farmDataSnap.exists() ? farmDataSnap.data() : null,
+      farmData: hasAnyDomainDoc ? farmData : null,
       availablePesticide: apSnap.exists() ? apSnap.data() : null,
       recommendSettings: recSnap.exists() ? recSnap.data() : null,
       treatments: treatSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
@@ -103,12 +117,14 @@ export async function restoreAllFarmsBackup(payload) {
       await setDoc(doc(db, 'farms', farmId), farmPayload.meta, { merge: true })
     }
     if (farmPayload.farmData) {
-      // 변경 이력(changeLog)은 백업 시점 스냅샷으로 통째로 덮어쓰면 그 사이에 쌓인 기록이 사라진다.
-      // farmData 문서 안에 같이 들어있으므로, 쓰기 전에 현재 값과 id 기준으로 합쳐서 보존한다.
+      // farmPayload.farmData는 예전 단일 문서와 같은 모양의 평면 객체다(내보낼 때 문서별로
+      // 나뉜 데이터를 합쳐서 만든 것 — exportAllFarmsBackup 참고). 여기서 다시 문서별로
+      // 나눠 쓴다. 변경 이력(changeLog)은 백업 시점 스냅샷으로 통째로 덮어쓰면 그 사이에
+      // 쌓인 기록이 사라지므로, 쓰기 전에 현재 값과 id 기준으로 합쳐서 보존한다.
       const farmDataToWrite = { ...farmPayload.farmData }
       const incomingLog = Array.isArray(farmDataToWrite.changeLog) ? farmDataToWrite.changeLog : []
       if (incomingLog.length > 0) {
-        const currentSnap = await getDoc(doc(db, 'farms', farmId, 'data', 'farmData'))
+        const currentSnap = await getDoc(doc(db, 'farms', farmId, 'data', 'changeLog'))
         const currentLog = Array.isArray(currentSnap.data()?.changeLog) ? currentSnap.data().changeLog : []
         const seenIds = new Set()
         farmDataToWrite.changeLog = [...incomingLog, ...currentLog]
@@ -120,7 +136,24 @@ export async function restoreAllFarmsBackup(payload) {
           .sort((a, b) => (b.at || '').localeCompare(a.at || ''))
           .slice(0, CHANGE_LOG_LIMIT)
       }
-      await setDoc(doc(db, 'farms', farmId, 'data', 'farmData'), farmDataToWrite, { merge: true })
+
+      const now = new Date().toISOString()
+      await Promise.all(
+        DOMAIN_KEYS.map((key) => {
+          const fields = domainFields(key)
+          const docPayload = {}
+          let hasField = false
+          fields.forEach((field) => {
+            if (farmDataToWrite[field] !== undefined) {
+              docPayload[field] = farmDataToWrite[field]
+              hasField = true
+            }
+          })
+          if (!hasField) return null // 백업에 이 문서에 해당하는 필드가 하나도 없으면(구버전 백업 등) 건드리지 않는다.
+          docPayload.updatedAt = now
+          return setDoc(doc(db, 'farms', farmId, 'data', key), docPayload, { merge: true })
+        }).filter(Boolean),
+      )
     }
     if (farmPayload.availablePesticide) {
       await setDoc(doc(db, 'farms', farmId, 'data', 'availablePesticide'), farmPayload.availablePesticide, { merge: true })
@@ -129,13 +162,25 @@ export async function restoreAllFarmsBackup(payload) {
       await setDoc(doc(db, 'farms', farmId, 'data', 'recommendSettings'), farmPayload.recommendSettings, { merge: true })
     }
     if (Array.isArray(farmPayload.treatments)) {
+      // writeBatch(일반 db)도 실시간 리스너용 영속 Write 스트림을 같이 쓰기 때문에, 대량
+      // 복원에서는 배치로 건수를 줄여도 그 스트림 자체의 "대기 가능한 쓰기 수" 한도에 걸려
+      // "Write stream exhausted maximum allowed queued writes" 오류가 난 게 이 때문이다
+      // (farmStore/backup.js의 사진 복원과 같은 문제, 실측으로 확인됨). firestore/lite는
+      // 스트림이 아니라 매 커밋마다 일반 HTTP 요청으로 끝나므로 그 한도가 적용되지 않는다.
+      const BATCH_SIZE = 400 // Firestore 배치 한도(500)보다 여유 있게
       const existing = await getDocs(collection(db, 'farms', farmId, 'treatments'))
-      for (const d of existing.docs) {
-        await deleteDoc(d.ref)
+      for (let i = 0; i < existing.docs.length; i += BATCH_SIZE) {
+        const batch = liteWriteBatch(dbLite)
+        for (const d of existing.docs.slice(i, i + BATCH_SIZE)) batch.delete(liteDoc(dbLite, d.ref.path))
+        await batch.commit()
       }
-      for (const t of farmPayload.treatments) {
-        const { id, ...rest } = t
-        await setDoc(doc(db, 'farms', farmId, 'treatments', id || uuid()), rest)
+      for (let i = 0; i < farmPayload.treatments.length; i += BATCH_SIZE) {
+        const batch = liteWriteBatch(dbLite)
+        for (const t of farmPayload.treatments.slice(i, i + BATCH_SIZE)) {
+          const { id, ...rest } = t
+          batch.set(liteDoc(dbLite, 'farms', farmId, 'treatments', id || uuid()), rest)
+        }
+        await batch.commit()
       }
     }
   }

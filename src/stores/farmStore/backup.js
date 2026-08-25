@@ -1,8 +1,9 @@
 // 농장별 백업 내보내기/복원.
 // 사용자가 변경할 수 있는 모든 데이터를 백업한다.
 // (annualTaskTemplates = 앱 고정 템플릿, notifications = 시스템 추적값이므로 제외)
-import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { db, firebaseEnabled } from '../../services/firebase'
+import { doc, getDoc } from 'firebase/firestore'
+import { doc as liteDoc, writeBatch as liteWriteBatch } from 'firebase/firestore/lite'
+import { db, dbLite, firebaseEnabled } from '../../services/firebase'
 import { CHANGE_LOG_LIMIT } from './changeLog.js'
 import {
   normalizeAppSettings,
@@ -12,7 +13,7 @@ import {
   normalizeRule,
   normalizeScheduleSettings,
   normalizeUsageGuide,
-} from './normalize.js'
+} from '../../utils/farmDataSchema.js'
 
 const BACKUP_TYPE = 'citrus-farm-backup'
 const BACKUP_ARRAY_KEYS = ['facilities', 'ancillaries', 'seedlings', 'tasks', 'scheduleRules', 'issues', 'inventory', 'usageGuides']
@@ -23,7 +24,7 @@ const BACKUP_KEYS = [...BACKUP_ARRAY_KEYS, ...BACKUP_OBJECT_KEYS]
 // farmStore.js(오케스트레이터)가 그대로 갖고 있고, 여기서는 인자로 받는다.
 export function createBackupActions(ctx) {
   const {
-    state, persistAll, logChange,
+    state, persist, logChange,
     photoCache, currentReferencedPhotoIds, migrateInlinePhotos,
     appSettingsLsKey, scheduleAppSettingsWrite,
   } = ctx
@@ -142,23 +143,46 @@ export function createBackupActions(ctx) {
 
     logChange('전체', `백업 복원${payload.exportedAt ? ` (백업일: ${String(payload.exportedAt).slice(0, 10)})` : ''}`, 'update')
 
+    // 백업 복원은 거의 모든 항목을 통째로 덮어쓰므로 어느 문서가 실제로 바뀌었는지 가리지 않고
+    // 전체 문서를 다시 쓴다(persist('all') 아래 migrateInlinePhotos 뒤에서 한 번만 호출).
     // 신버전(v3) 백업: 사진 본문(base64) 복원
     const photosMap = payload.data?.photos
     if (photosMap && typeof photosMap === 'object') {
-      if (firebaseEnabled && db) {
-        // 클라우드: photos 컬렉션에 기록 + 캐시
-        for (const [id, photo] of Object.entries(photosMap)) {
-          const dataUrl = photo?.dataUrl
-          if (!dataUrl) continue
-          photoCache.value = { ...photoCache.value, [id]: dataUrl }
-          try {
-            await setDoc(doc(db, 'photos', id), {
-              dataUrl,
+      if (firebaseEnabled && dbLite) {
+        // 클라우드: photos 컬렉션에 기록 + 캐시.
+        // writeBatch(일반 db)조차도 실시간 리스너용 영속 Write 스트림을 같이 쓰기 때문에,
+        // 대량 복원에서는 배치로 건수를 줄여도 그 스트림 자체의 "대기 가능한 쓰기 수" 한도에
+        // 걸려 "Write stream exhausted maximum allowed queued writes" 오류가 났다(실측: 1500장
+        // ×40KB 재현됨). firestore/lite는 스트림이 아니라 매 커밋마다 일반 HTTP 요청으로
+        // 끝나므로 그 한도 자체가 적용되지 않는다 — 대량 일괄 쓰기는 lite 인스턴스를 쓴다.
+        const photoEntries = Object.entries(photosMap).filter(([, photo]) => photo?.dataUrl)
+        const MAX_BATCH_OPS = 20
+        const MAX_BATCH_BYTES = 3 * 1024 * 1024 // Firestore 배치 요청 전체 한도(~10MiB)에 크게 여유를 둔다
+        let idx = 0
+        while (idx < photoEntries.length) {
+          const batch = liteWriteBatch(dbLite)
+          const batchEntries = []
+          let bytes = 0
+          while (idx < photoEntries.length && batchEntries.length < MAX_BATCH_OPS) {
+            const [id, photo] = photoEntries[idx]
+            const size = photo.dataUrl.length
+            if (batchEntries.length > 0 && bytes + size > MAX_BATCH_BYTES) break
+            batch.set(liteDoc(dbLite, 'photos', id), {
+              dataUrl: photo.dataUrl,
               contentType: photo.contentType || 'image/jpeg',
               createdAt: photo.createdAt || new Date().toISOString(),
             })
+            batchEntries.push([id, photo])
+            bytes += size
+            idx++
+          }
+          try {
+            await batch.commit()
+            for (const [id, photo] of batchEntries) {
+              photoCache.value = { ...photoCache.value, [id]: photo.dataUrl }
+            }
           } catch (e) {
-            console.warn('[farmStore] 백업 사진 복원 실패', id, e)
+            console.warn('[farmStore] 백업 사진 복원 실패(배치)', batchEntries.map(([id]) => id), e)
           }
         }
       } else {
@@ -184,7 +208,7 @@ export function createBackupActions(ctx) {
     // 구버전 백업(사진이 배열에 인라인으로 박힌 경우)은 먼저 photos 컬렉션으로 이전해
     // 거대한 인라인 상태가 localStorage/Firestore 한도에 걸리는 일을 막는다.
     await migrateInlinePhotos()
-    await persistAll()
+    await persist('all')
     return backupSummary(payload)
   }
 

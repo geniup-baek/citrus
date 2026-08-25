@@ -2,10 +2,11 @@
 // 사진(base64)을 farmData 문서가 아닌 사진별 개별 문서에 저장해 문서 1 MiB 한도를 피한다.
 import { ref } from 'vue'
 import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore'
-import { db, firebaseEnabled } from '../../services/firebase'
+import { doc as liteDoc, writeBatch as liteWriteBatch } from 'firebase/firestore/lite'
+import { db, dbLite, firebaseEnabled } from '../../services/firebase'
 
-// state/persistAll을 받아 사진 관련 함수 묶음을 만든다.
-export function createPhotoActions(state, persistAll) {
+// state/persist를 받아 사진 관련 함수 묶음을 만든다.
+export function createPhotoActions(state, persist) {
   const photoCache = ref({}) // id -> dataUrl (메모리 캐시)
   const photoInflight = new Set()
 
@@ -94,23 +95,54 @@ export function createPhotoActions(state, persistAll) {
 
   let photosMigrating = false
   async function migrateInlinePhotos() {
-    if (!firebaseEnabled || !db || photosMigrating) return
+    if (!firebaseEnabled || !dbLite || photosMigrating) return
     const inline = collectInlinePhotos()
     if (!inline.length) return
     photosMigrating = true
     try {
-      for (const p of inline) {
-        if (p.id) {
-          await setDoc(doc(db, 'photos', p.id), {
+      // writeBatch(일반 db)도 실시간 리스너용 영속 Write 스트림을 같이 쓰기 때문에, 대량
+      // 이전에서는 배치로 건수를 줄여도 그 스트림 자체의 "대기 가능한 쓰기 수" 한도에 걸려
+      // "Write stream exhausted maximum allowed queued writes" 오류가 났다(백업 복원의 사진
+      // 복원에서도 같은 문제가 있었다 — backup.js 참고, 실측으로 확인됨). firestore/lite는
+      // 스트림이 아니라 매 커밋마다 일반 HTTP 요청으로 끝나므로 그 한도가 적용되지 않는다.
+      const withId = inline.filter((p) => p.id)
+      const MAX_BATCH_OPS = 20
+      const MAX_BATCH_BYTES = 3 * 1024 * 1024 // Firestore 배치 요청 전체 한도(~10MiB)에 크게 여유를 둔다
+      let idx = 0
+      while (idx < withId.length) {
+        const batch = liteWriteBatch(dbLite)
+        const batchPhotos = []
+        let bytes = 0
+        while (idx < withId.length && batchPhotos.length < MAX_BATCH_OPS) {
+          const p = withId[idx]
+          const size = p.dataUrl.length
+          if (batchPhotos.length > 0 && bytes + size > MAX_BATCH_BYTES) break
+          batch.set(liteDoc(dbLite, 'photos', p.id), {
             dataUrl: p.dataUrl,
             contentType: p.contentType || 'image/jpeg',
             createdAt: p.createdAt || new Date().toISOString(),
           })
-          photoCache.value = { ...photoCache.value, [p.id]: p.dataUrl }
+          batchPhotos.push(p)
+          bytes += size
+          idx++
         }
-        delete p.dataUrl
+        try {
+          await batch.commit()
+          for (const p of batchPhotos) {
+            photoCache.value = { ...photoCache.value, [p.id]: p.dataUrl }
+          }
+        } catch (e) {
+          console.warn('[farmStore] 사진 이전 실패(배치)', batchPhotos.map((p) => p.id), e)
+        }
       }
-      await persistAll()
+      // Firestore로 옮겼든(성공) 못 옮겼든(실패) 인라인 base64는 여기서 걷어낸다 — 실패한
+      // 항목은 사진이 사라지지만, 실패했다고 매번 다시 시도하며 거대한 인라인 상태를
+      // 계속 들고 있는 것보다는 안전하다(어차피 다음 저장에서도 다시 실패할 데이터다).
+      for (const p of inline) delete p.dataUrl
+      // 사진은 재배동·시설장비·묘목·작업·문제·사용법 여러 도메인에 걸쳐 나타날 수 있어
+      // 어느 문서가 실제로 바뀌었는지 일일이 추적하는 대신 전체 문서를 한 번에 맞춘다
+      // (드물게 한 번만 일어나는 이전 작업이라 효율보다 정확성을 우선한다).
+      await persist('all')
     } catch (e) {
       console.warn('[farmStore] 사진 이전 실패', e)
     } finally {
@@ -145,7 +177,7 @@ export function createPhotoActions(state, persistAll) {
     knownPhotoIds = currentReferencedPhotoIds()
   }
 
-  // persistAll 직후 호출: 더 이상 참조되지 않는 사진 문서를 정리한다.
+  // persist 직후 호출: 더 이상 참조되지 않는 사진 문서를 정리한다.
   // 폼 취소는 state를 바꾸지 않으므로 자연히 삭제 대상에서 제외된다.
   // 사진은 전역 컬렉션이지만, 다른 농장이 참조하는 사진 id는 이 농장의 knownPhotoIds에
   // 애초에 포함되지 않으므로(활성 농장 데이터만 추적) 다른 농장 사진을 지우지 않는다.
