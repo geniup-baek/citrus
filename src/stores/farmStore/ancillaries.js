@@ -1,6 +1,6 @@
 // 시설·장비 CRUD + 정렬 + 전체 초기화.
 import { uuid } from '../../utils/uuid.js'
-import { diffFields, formatFieldDiff, snapshotForRevert } from './changeLogUtils.js'
+import { diffFields, formatFieldDiff, snapshotForRevert } from '../../utils/changeLogUtils.js'
 
 export function createAncillaryActions(ctx) {
   const { state, persistAll, logChange } = ctx

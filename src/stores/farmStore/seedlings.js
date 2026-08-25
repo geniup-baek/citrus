@@ -1,6 +1,6 @@
 // 묘목 CRUD(+ 일괄 추가) + 생육기록 CRUD + 전체 초기화.
 import { uuid } from '../../utils/uuid.js'
-import { diffFields, formatFieldDiff, withDisplayFields, snapshotForRevert, truncateForLog } from './changeLogUtils.js'
+import { diffFields, formatFieldDiff, withDisplayFields, snapshotForRevert, truncateForLog } from '../../utils/changeLogUtils.js'
 
 export function createSeedlingActions(ctx) {
   const { state, persistAll, logChange, facilityNameById } = ctx

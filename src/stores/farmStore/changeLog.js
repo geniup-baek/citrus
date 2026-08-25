@@ -1,7 +1,7 @@
 // 변경 이력(감사 로그) 기록 — state.value.changeLog에 쓰는 부분만 여기 있다.
 // 비교·서식(diffFields 등)은 changeLogUtils.js, 되돌리기 실행은 revert.js에 있다.
 import { uuid } from '../../utils/uuid.js'
-import { formatFieldDiff } from './changeLogUtils.js'
+import { formatFieldDiff } from '../../utils/changeLogUtils.js'
 
 export const CHANGE_LOG_LIMIT = 300 // 농장별 변경 이력 최대 보관 건수(Firestore 문서 용량 보호)
 

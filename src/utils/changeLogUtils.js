@@ -1,5 +1,7 @@
-// 변경 이력(감사 로그) 표시·비교용 순수 함수 — state를 참조하지 않는다.
-// state가 필요한 부분(logChange 자체, 되돌리기 실행)은 changeLog.js/revert.js에 있다.
+// 변경 이력(감사 로그) 표시·비교용 순수 함수 — 특정 스토어의 state를 참조하지 않는다.
+// farmStore(재배동·묘목·작업 등)와 treatmentStore(방제이력) 양쪽이 함께 쓴다.
+// state가 필요한 부분(logChange 자체, 되돌리기 실행)은 각 스토어 안에 있다
+// (farmStore는 src/stores/farmStore/changeLog.js·revert.js).
 
 // 값 하나를 로그에 넣기 좋은 짧은 문자열로 정리한다(너무 길면 잘라서 문서 용량을 아낀다).
 export function truncateForLog(value) {

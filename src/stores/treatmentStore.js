@@ -6,46 +6,13 @@ import {
   addDoc, deleteDoc, doc, updateDoc, Timestamp,
 } from 'firebase/firestore'
 import { useFarmStore } from './farmStore.js'
+import { diffFields, formatFieldDiff, snapshotForRevert } from '../utils/changeLogUtils.js'
 
 function treatmentLabel(record) {
   return [record?.date, record?.brandName].filter(Boolean).join(' ')
 }
 
 const TREATMENT_FIELD_LABELS = { date: '날짜', brandName: '농약', moa: '계통', category: '구분', memo: '메모' }
-
-// farmStore.diffFields와 동일한 형태({필드키: {label, from, to}})로 돌려준다 —
-// logChange의 짧은 시간 내 재수정 병합(refId+fields)이 여기서도 동작하도록.
-function diffTreatmentFields(before, after) {
-  const fields = {}
-  for (const [key, label] of Object.entries(TREATMENT_FIELD_LABELS)) {
-    const prevValue = before?.[key] ?? ''
-    const nextValue = after?.[key] ?? ''
-    if (prevValue !== nextValue) {
-      // Firestore는 undefined 값이 섞인 문서를 통째로 거부하므로 null로 채운다.
-      fields[key] = { label, from: before?.[key] ?? null, to: after?.[key] ?? null }
-    }
-  }
-  return fields
-}
-
-function formatTreatmentFieldDiff(fields) {
-  return Object.values(fields)
-    .map((f) => `${f.label}: ${f.from || '(없음)'} → ${f.to || '(없음)'}`)
-    .join(', ')
-}
-
-// 삭제 전 데이터를 되돌리기용으로 저장해둔다(farmStore.snapshotForRevert와 같은 크기 보호).
-const MAX_SNAPSHOT_JSON_LENGTH = 8000
-function snapshotForRevert(record) {
-  if (!record) return null
-  try {
-    const json = JSON.stringify(record)
-    if (json.length > MAX_SNAPSHOT_JSON_LENGTH) return null
-    return JSON.parse(json)
-  } catch {
-    return null
-  }
-}
 
 function lsKey(farmId) {
   return `citrus:treatments:${farmId}`
@@ -122,8 +89,8 @@ export const useTreatmentStore = defineStore('treatment', () => {
       )
       saveLS(treatments.value)
     }
-    const fields = diffTreatmentFields(before, record)
-    useFarmStore().logChange('방제이력', treatmentLabel(record), 'update', formatTreatmentFieldDiff(fields), { refId: id, fields })
+    const fields = diffFields(before, record, TREATMENT_FIELD_LABELS)
+    useFarmStore().logChange('방제이력', treatmentLabel(record), 'update', formatFieldDiff(fields), { refId: id, fields })
   }
 
   async function replaceAllTreatments(records) {

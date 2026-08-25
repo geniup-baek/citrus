@@ -1,6 +1,6 @@
 // 문제 CRUD + 해결단계 CRUD + 유사 사례 추천 + 전체 초기화.
 import { uuid } from '../../utils/uuid.js'
-import { diffFields, formatFieldDiff, withDisplayFields, snapshotForRevert, truncateForLog } from './changeLogUtils.js'
+import { diffFields, formatFieldDiff, withDisplayFields, snapshotForRevert, truncateForLog } from '../../utils/changeLogUtils.js'
 import { normalizeIssue } from './normalize.js'
 
 function scoreSimilarity(base, sample) {
