@@ -67,7 +67,7 @@ npm run preview  # 빌드 결과 미리보기
 | 스토어 | 범위 | Firestore 경로 | 역할 |
 |---|---|---|---|
 | `farmsStore.js` | 전역(농장 목록) | `farms/{farmId}`, 마이그레이션 플래그 `shared/appMeta` | 농장 생성/이름변경/로고/PIN/삭제(소프트)/복원, 관리모드 전환. **농장 "데이터"는 다루지 않음** |
-| `farmStore.js` | 농장 1개 | `farms/{farmId}/data/farmData` | 재배동·시설장비·묘목·작업·문제·재고·사용법·**변경이력(changeLog)**. 앱에서 가장 크고 중심적인 스토어 |
+| `farmStore.js` | 농장 1개 | `farms/{farmId}/data/farmData` | 재배동·시설장비·묘목·작업·문제·재고·사용법·**변경이력(changeLog)**. 앱에서 가장 크고 중심적인 스토어. `farmStore.js` 자체는 배관(초기화·저장·구독)만 하고, 실제 CRUD는 `src/stores/farmStore/*.js`로 도메인별로 나뉘어 있음(6.1 참고) |
 | `treatmentStore.js` | 농장 1개 | `farms/{farmId}/treatments/{id}` | 방제이력(방제 스프레이 기록). 문서 하나가 아니라 **레코드별 컬렉션**이라 다른 스토어와 저장 방식이 다름 |
 | `availablePesticideStore.js` | 농장 1개 | `farms/{farmId}/data/availablePesticide` | "가용농약" = 구입가능 텍스트 입력 + 재고 데이터를 합쳐서 만든 실사용 가능 농약 목록 |
 | `recommendSettingsStore.js` | 농장 1개(정책) + 기기 로컬(취향) | `farms/{farmId}/data/recommendSettings` | 농약 추천 정책(MOA 충돌일수, 연간 최대 사용횟수 등), 재배 품종, **"초기화 버튼 표시"/"변경이력 삭제 버튼 표시" 같은 농장별 기능 노출 여부** |
@@ -80,9 +80,24 @@ npm run preview  # 빌드 결과 미리보기
 
 ## 6. 핵심 관례 (새 기능을 추가하기 전에 알아야 할 패턴)
 
-### 6.1 CRUD 패턴: `upsertX` / `removeX` + `persistAll()`
+### 6.1 `farmStore.js`는 배관만, CRUD는 `src/stores/farmStore/*.js`
 
-`farmStore.js`의 모든 변경 함수는 이 모양을 따릅니다:
+`farmStore.js`(약 300줄)는 `state`/`actorName` 정의, 초기화(`init`)·저장(`persistAll`)·구독(`onSnapshot`) 배관, 그리고 아래 도메인 모듈들을 만들어 엮는 일만 합니다. 실제 엔티티별 로직은 `src/stores/farmStore/` 폴더에 있습니다:
+
+| 파일 | 내용 |
+|---|---|
+| `normalize.js` | 기본값·정규화 함수(순수 함수, state 없음) |
+| `changeLogUtils.js` | diff·서식 순수 함수(`diffFields`/`formatFieldDiff`/`snapshotForRevert` 등) |
+| `changeLog.js` | `logChange()` 본체(state 필요) |
+| `revert.js` | 변경 이력 되돌리기 dispatch + 이력 삭제 |
+| `photos.js` | 사진 분산 저장(캐시·업로드·GC) |
+| `facilities.js` / `ancillaries.js` / `seedlings.js` / `tasks.js` / `issues.js` / `usageGuides.js` / `inventory.js` | 엔티티별 CRUD(+하위 기록) + 그 항목의 "전체 초기화" |
+| `scheduler.js` | 반복 작업 규칙 + 자동 생성 |
+| `backup.js` | 농장별 백업 내보내기/복원 |
+
+각 도메인 파일은 `createXActions(ctx)` 형태의 **팩토리 함수**를 export합니다. `ctx`는 `farmStore.js`가 만들어 넘기는 공유 객체로 `{ state, persistAll, logChange, facilityNameById, photoCache, savePhotos, ... }`를 담고 있습니다. 되돌리기(`revert.js`)는 모든 도메인 모듈이 만들어진 **뒤**에 그 모듈들의 upsert/update 함수를 참조(registry)로 받아 조립됩니다 — 이 순서를 지켜야 순환 참조 없이 되돌리기가 어떤 엔티티든 처리할 수 있습니다.
+
+모든 변경 함수는 이 모양을 따릅니다:
 
 ```js
 async function upsertFacility(payload) {
@@ -90,7 +105,7 @@ async function upsertFacility(payload) {
   if (index >= 0) {
     // 수정
   } else {
-    // 추가 (crypto.randomUUID()로 id 생성)
+    // 추가 (uuid()로 id 생성 — src/utils/uuid.js, crypto.randomUUID 폴백 포함)
   }
   await persistAll()
 }
@@ -143,7 +158,7 @@ async function upsertFacility(payload) {
 ## 7. 알고 있어야 할 제약/한계
 
 - **Firestore 문서 1MiB 한도.** `changeLog`(300건 캡), 농약 상세정보 인덱스(`t/f/n/c` 같은 한 글자 키로 압축) 등 여러 곳에서 이 한도를 피하려는 설계가 보입니다. 새 필드를 대량으로 문서 안에 추가할 때는 이 한도를 항상 의식하세요.
-- **사진은 `farmData` 문서 안에 들어있지 않습니다.** 전역 `photos/{photoId}` 컬렉션에 base64로 별도 저장되고, `farmStore.js`의 `gcOrphanPhotos()`/`collectInlinePhotos()`가 참조 없는 사진을 정리합니다. 사진을 참조하는 새 필드를 추가한다면 이 GC 로직도 그 필드를 인식하게 고쳐야 누수가 안 생깁니다.
+- **사진은 `farmData` 문서 안에 들어있지 않습니다.** 전역 `photos/{photoId}` 컬렉션에 base64로 별도 저장되고, `src/stores/farmStore/photos.js`의 `gcOrphanPhotos()`/`collectInlinePhotos()`가 참조 없는 사진을 정리합니다. 사진을 참조하는 새 필드를 추가한다면 이 GC 로직도 그 필드를 인식하게 고쳐야 누수가 안 생깁니다.
 - **`localeStore`는 실제로는 다국어가 아닙니다.** 언젠가 진짜 다국어 지원이 필요해지면 지금의 "메시지 트리 + 문자열 치환" 구조를 다시 설계해야 합니다.
 - **NCPMS 예측 API(`getPrediction`)에 운영 도메인이 하드코딩**되어 있습니다(`https://citrus-collab-2026.web.app`). GitHub Pages 배포 주소나 커스텀 도메인이 바뀌면 이 부분이 깨집니다.
 - **테스트 코드가 없습니다.** 이 세션에서 새 기능을 검증할 때는 Playwright로 즉석 스크립트를 작성해 브라우저를 띄워 직접 클릭해보는 방식으로 확인했습니다(`package.json`에 등록된 정식 테스트 스위트는 아님). 회귀 테스트를 자동화하고 싶다면 이 부분부터 갖추는 것을 고려해보세요.
@@ -158,7 +173,7 @@ async function upsertFacility(payload) {
 |---|---|
 | 방금 바꾼 값이 새로고침하면 사라짐 | Firestore 쓰기 디바운스(500ms)가 끝나기 전에 새로고침했을 가능성. 잠시 기다려보고 다시 확인 |
 | 시스템 관리 모드 진입이 안 됨 | `.env.local`의 `VITE_ADMIN_PIN` 확인. 값이 없으면 PIN 없이 바로 진입, 있으면 정확히 그 값 입력 |
-| 새 기능을 만들었는데 백업 파일에 안 들어있음 | `farmStore.js`의 `BACKUP_ARRAY_KEYS`/`BACKUP_OBJECT_KEYS`(또는 `SettingsView.vue`의 `datasetLabels`/`extendedSummary`)에 추가했는지 확인 |
+| 새 기능을 만들었는데 백업 파일에 안 들어있음 | `src/stores/farmStore/backup.js`의 `BACKUP_ARRAY_KEYS`/`BACKUP_OBJECT_KEYS`(또는 `SettingsView.vue`의 `datasetLabels`/`extendedSummary`)에 추가했는지 확인 |
 | 농약/병해충 검색 결과가 이상하게 옛날 데이터 | `sharedCache/*` 캐시가 오래됨. 개발 환경에서 전체 가져오기를 다시 실행해 캐시 갱신 필요 |
 | 변경 이력에 이상하게 많은 항목이 한 번에 쌓임 | 일괄 처리(대량 추가/자동 생성) 코드에서 항목별로 `logChange`를 부르고 있는지 확인 — 요약 1건으로 바꿔야 함 |
 | "초기화"/"변경이력 삭제" 버튼이 안 보임 | 설정 > 동작 탭에서 시스템 관리 모드 스위치(전역)와 농장 모드 스위치(농장별)가 **둘 다** 켜져 있는지 확인(6.4 참고) |
@@ -168,13 +183,14 @@ async function upsertFacility(payload) {
 ## 9. 새 데이터 종류(엔티티)를 추가할 때 체크리스트
 
 1. `src/data/defaults.js`에 기본값 추가(필요하다면).
-2. `farmStore.js`의 `createDefaultFarmData()`/`normalizeFarmData()`에 필드 추가(구버전 데이터 호환을 위해 `Array.isArray` 가드 필수).
-3. `upsertX`/`removeX` 함수 작성 — 6.1 패턴대로, 마지막에 `persistAll()`.
-4. 변경 이력에 남기고 싶다면 6.2 패턴대로 `diffFields`+`logChange` 연결.
-5. 백업 대상에 넣고 싶다면 6.3 패턴대로 `BACKUP_ARRAY_KEYS` 등에 추가.
-6. UI 패널 작성 — 기존 패널(`FacilitiesPanel.vue` 등)의 목록/편집폼/사진첨부 구조를 참고하면 스타일이 일관됩니다.
-7. 파괴적 기능(초기화 등)이 필요하다면 6.4의 2단계 게이팅 패턴을 그대로 사용.
-8. 새 스토어를 만들었다면 `App.vue`의 초기화 순서(4장)에 추가하고, `farmsStore.js`의 `permanentlyDeleteFarm`(농장 완전 삭제 시 이 데이터도 지워야 함)도 확인.
+2. `src/stores/farmStore/normalize.js`의 `createDefaultFarmData()`/`normalizeFarmData()`에 필드 추가(구버전 데이터 호환을 위해 `Array.isArray` 가드 필수).
+3. 완전히 새로운 엔티티라면 `src/stores/farmStore/` 아래 새 파일(`createXActions(ctx)` 팩토리)을 만들고, 기존 항목의 하위 기능이라면 그 항목의 파일에 함수를 추가합니다. `upsertX`/`removeX` 함수는 6.1 패턴대로 작성하고 마지막에 `ctx.persistAll()`을 호출합니다.
+4. 새 파일을 만들었다면 `farmStore.js`에서 `createXActions(ctx)`를 호출해 조립하고, 반환 객체(`return { ... }`)에 그 함수들을 펼쳐(`...xActions`) 넣어야 컴포넌트에서 `store.upsertX(...)`로 쓸 수 있습니다.
+5. 변경 이력에 남기고 싶다면 6.2 패턴대로 `diffFields`+`logChange` 연결(둘 다 `import`로 가져다 씀 — `diffFields`는 `changeLogUtils.js`, `logChange`는 `ctx.logChange`). 되돌리기까지 지원하려면 `farmStore.js`에서 `createRevertActions`에 넘기는 registry에 그 upsert/update 함수도 추가해야 합니다.
+6. 백업 대상에 넣고 싶다면 6.3 패턴대로 `backup.js`의 `BACKUP_ARRAY_KEYS` 등에 추가.
+7. UI 패널 작성 — 기존 패널(`FacilitiesPanel.vue` 등)의 목록/편집폼/사진첨부 구조를 참고하면 스타일이 일관됩니다.
+8. 파괴적 기능(초기화 등)이 필요하다면 6.4의 2단계 게이팅 패턴을 그대로 사용.
+9. 새 스토어를 만들었다면 `App.vue`의 초기화 순서(4장)에 추가하고, `farmsStore.js`의 `permanentlyDeleteFarm`(농장 완전 삭제 시 이 데이터도 지워야 함)도 확인.
 
 ---
 
@@ -187,7 +203,11 @@ src/
 ├── router/index.js         라우트 정의, 관리모드 접근 가드
 ├── stores/
 │   ├── farmsStore.js       농장 목록/생성/PIN/삭제, 관리모드 전환
-│   ├── farmStore.js        ★ 농장 데이터 전체 + 변경이력(changeLog) — 가장 중요한 파일
+│   ├── farmStore.js        ★ 배관(초기화·저장·구독)만 — 실제 CRUD는 farmStore/ 폴더
+│   ├── farmStore/          농장 데이터 CRUD를 도메인별로 나눈 파일들(6.1 참고)
+│   │   ├── normalize.js, changeLogUtils.js, changeLog.js, revert.js, photos.js
+│   │   └── facilities.js, ancillaries.js, seedlings.js, tasks.js, issues.js,
+│   │       usageGuides.js, inventory.js, scheduler.js, backup.js
 │   ├── treatmentStore.js   방제이력(컬렉션 기반, farmData와 별도 저장)
 │   ├── availablePesticideStore.js  가용농약(구입가능목록+재고 병합)
 │   ├── recommendSettingsStore.js   농장별 정책/취향, 기능 노출 스위치
