@@ -1,7 +1,7 @@
 // 작업 CRUD + 진행기록 CRUD + 알림/템플릿/예정 목록 + 전체 초기화.
 import { addDays, formatISO, parseISO } from 'date-fns'
 import { uuid } from '../../utils/uuid.js'
-import { diffFields, formatFieldDiff, snapshotForRevert, truncateForLog } from './changeLogUtils.js'
+import { diffFields, formatFieldDiff, snapshotForRevert, truncateForLog } from '../../utils/changeLogUtils.js'
 import { toKey } from './scheduler.js'
 
 export function createTaskActions(ctx) {

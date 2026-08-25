@@ -2,7 +2,7 @@
 // 품목은 메타데이터 + 입출고 이력(txns)만 보관한다.
 // 현재 재고(로트별 수량)는 txns로부터 계산하므로 단일 출처라 편집/삭제가 단순하다.
 import { uuid } from '../../utils/uuid.js'
-import { diffFields, formatFieldDiff, snapshotForRevert } from './changeLogUtils.js'
+import { diffFields, formatFieldDiff, snapshotForRevert } from '../../utils/changeLogUtils.js'
 import { normalizeInventoryItem } from './normalize.js'
 
 export function createInventoryActions(ctx) {

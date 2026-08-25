@@ -2,7 +2,7 @@
 import { doc, getDoc } from 'firebase/firestore'
 import { db, firebaseEnabled } from '../../services/firebase'
 import { uuid } from '../../utils/uuid.js'
-import { diffFields, formatFieldDiff, snapshotForRevert, truncateForLog } from './changeLogUtils.js'
+import { diffFields, formatFieldDiff, snapshotForRevert, truncateForLog } from '../../utils/changeLogUtils.js'
 import { normalizeUsageGuide } from './normalize.js'
 
 const USAGE_GUIDE_FILE_TYPE = 'citrus-usage-guide'
