@@ -5,6 +5,7 @@ import { useLocaleStore } from '../stores/localeStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { compressImageFile } from '../utils/imageProcessing'
+import { uuid } from '../utils/uuid.js'
 import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
 import { useLightboxBack } from '../composables/useLightboxBack'
@@ -108,7 +109,7 @@ async function filesToPreviews(files) {
       originalTotal += compressed.originalSize
       compressedTotal += compressed.compressedSize
       return {
-        id: crypto.randomUUID(),
+        id: uuid(),
         name: file.name,
         dataUrl: compressed.dataUrl,
         contentType: compressed.contentType,

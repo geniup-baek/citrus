@@ -12,6 +12,7 @@ import { useIsMobile } from '../composables/useIsMobile.js'
 import { useFarmsStore } from '../stores/farmsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { confirmFilteredExport, downloadCsv, exportFileName, openPrintReport } from '../utils/dataExport.js'
+import { uuid } from '../utils/uuid.js'
 
 const store      = useFarmStore()
 const localeStr  = useLocaleStore()
@@ -379,7 +380,7 @@ async function importBulkInventory() {
       const existing = store.state.inventory.find((i) => i.category === CATEGORY && i.name === row.name)
       let itemId = existing?.id
       if (!itemId) {
-        itemId = crypto.randomUUID()
+        itemId = uuid()
         const match = findBestMatchInCache(row.name)
         const mappedType = match ? resolveType(match.pesticideType) : ''
         await store.upsertInventoryItem({
