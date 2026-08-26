@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, watch } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
-import FarmSelectView from './components/FarmSelectView.vue'
+import FarmSelectScreen from './components/FarmSelectScreen.vue'
 import { useFarmStore } from './stores/farmStore'
 import { useLocaleStore } from './stores/localeStore'
 import { useTreatmentStore } from './stores/treatmentStore'
@@ -64,7 +64,7 @@ useTaskNotifier(store)
       </div>
     </div>
 
-    <FarmSelectView v-else-if="farmsStore.needsFarmCreate || farmsStore.needsFarmSelect" />
+    <FarmSelectScreen v-else-if="farmsStore.needsFarmCreate || farmsStore.needsFarmSelect" />
 
     <template v-else>
       <AppHeader />

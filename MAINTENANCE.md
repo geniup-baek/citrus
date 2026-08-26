@@ -26,7 +26,7 @@
 이 앱을 유지보수하기 전에 반드시 이해해야 하는 구조적 전제입니다.
 
 - **인증이 없습니다.** Firebase Auth를 쓰지 않습니다. `firestore.rules`는 모든 경로에 대해 `allow read, write: if true`입니다 — 즉 **Firestore 설정값(`VITE_FIREBASE_*`)을 아는 사람은 누구나 전체 데이터를 읽고 쓰고 지울 수 있습니다.** 이건 의도적인 설계(소규모 팀 내부용 협업 도구)이지, 실수로 빠진 게 아닙니다. 하지만 실제 서비스로 키우거나 외부에 노출한다면 **가장 먼저 손봐야 할 부분**입니다.
-- **농장/시스템관리 PIN은 진짜 인증이 아닙니다.** `src/components/FarmSelectView.vue`의 PIN 입력은 "실수로 다른 농장에 들어가는 것을 막는" 가벼운 확인 절차일 뿐입니다. 시스템 관리 PIN은 `.env.local`의 `VITE_ADMIN_PIN`에 있습니다(빌드에 포함되므로 클라이언트에서 그대로 노출됨 — 민감한 값이 아니라는 뜻입니다).
+- **농장/시스템관리 PIN은 진짜 인증이 아닙니다.** `src/components/FarmSelectScreen.vue`의 PIN 입력은 "실수로 다른 농장에 들어가는 것을 막는" 가벼운 확인 절차일 뿐입니다. 시스템 관리 PIN은 `.env.local`의 `VITE_ADMIN_PIN`에 있습니다(빌드에 포함되므로 클라이언트에서 그대로 노출됨 — 민감한 값이 아니라는 뜻입니다).
 - **변경 이력(감사 로그)의 "누가"도 로그인 기반이 아닙니다.** 기기별로 로컬에 저장하는 자율 입력 이름(`citrus:actor-name`, localStorage만, Firestore 동기화 안 함)입니다. 신뢰할 수 있는 신원 증명이 아니라 "참고용" 표시입니다.
 
 ---
@@ -56,7 +56,7 @@ npm run preview  # 빌드 결과 미리보기
 2. `App.vue` `onMounted`: `farmsStore.init()`, `appPolicyStore.init()`, `farmStore.initAppSettings()`를 동시에 실행(이 셋은 농장과 무관하게 항상 필요).
 3. `farmsStore.activeFarm.id`가 정해지는 순간(`watch`, `immediate: true`) — **농장 전환/관리모드 전환은 항상 전체 페이지 새로고침(`window.location.reload()`)으로 처리**하므로 이 watch는 실질적으로 "앱 시작 시 1회"만 의미 있게 동작합니다 — 다음 순서로 농장별 스토어를 초기화합니다:
    `farmStore.init(farmId)` → `treatmentStore.init(farmId)` → `availablePesticideStore.init(farmId)` → `recommendSettingsStore.init(farmId)`
-4. 화면 분기: 로딩 중 → 마이그레이션 오류 → `FarmSelectView`(농장이 없거나 아직 선택 안 함) → 일반 앱 화면.
+4. 화면 분기: 로딩 중 → 마이그레이션 오류 → `FarmSelectScreen`(농장이 없거나 아직 선택 안 함) → 일반 앱 화면.
 
 시스템 관리 모드에서는 농장별 스토어가 초기화되지 않으므로, 라우터 가드(`src/router/index.js`)가 관리 모드에서 `/resources`, `/settings` 외의 경로 접근을 막고 `/resources`로 돌려보냅니다.
 
