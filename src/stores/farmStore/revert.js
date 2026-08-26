@@ -9,6 +9,7 @@ function revertTargetFor(state, registry, entity) {
   if (entity === '시설·장비') return { upsert: registry.upsertAncillary, list: () => state.value.ancillaries }
   if (entity === '묘목') return { upsert: registry.upsertSeedling, list: () => state.value.seedlings }
   if (entity === '작업') return { upsert: registry.upsertTask, list: () => state.value.tasks }
+  if (entity === '작업 템플릿') return { upsert: registry.upsertChecklistTemplate, list: () => state.value.checklistTemplates }
   if (entity === '문제') return { upsert: registry.upsertIssue, list: () => state.value.issues }
   if (entity === '사용법') return { upsert: registry.upsertUsageGuide, list: () => state.value.usageGuides }
   if (entity.endsWith('재고')) return { upsert: registry.upsertInventoryItem, list: () => state.value.inventory }
@@ -27,6 +28,16 @@ function subRecordTargetFor(state, registry, entity) {
       arrayKey: 'logs',
       update: registry.updateTaskLog,
       restore: (parent, snapshot) => { parent.logs = parent.logs || []; parent.logs.unshift(snapshot) },
+    }
+  }
+  if (entity === '작업 체크리스트') {
+    return {
+      domainKey: 'tasks',
+      findParent: (parentId) => state.value.tasks.find((t) => t.id === parentId),
+      arrayKey: 'checklist',
+      update: registry.updateChecklistItem,
+      // 원래 순서(몇 번째 항목이었는지)는 저장해두지 않아 맨 뒤에 되살아난다.
+      restore: (parent, snapshot) => { parent.checklist = [...(parent.checklist || []), snapshot] },
     }
   }
   if (entity === '묘목 생육기록') {

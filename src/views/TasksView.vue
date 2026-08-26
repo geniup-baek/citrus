@@ -27,6 +27,7 @@ import { useLightbox } from '../composables/useLightbox'
 import { useFilesToPreviews } from '../composables/usePhotoPreviews'
 import TaskSchedulerPanel from '../components/TaskSchedulerPanel.vue'
 import TaskTemplatePanel from '../components/TaskTemplatePanel.vue'
+import TaskChecklistTemplatePanel from '../components/TaskChecklistTemplatePanel.vue'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -89,6 +90,13 @@ const { filesToPreviews } = useFilesToPreviews('tasks.compressedReport')
 // 진행 기록 인라인 패널 (목록 항목의 '로그' 버튼)
 const expandedTaskId = ref('')
 const showAddLog = ref(false)
+
+// 체크리스트 인라인 패널 (목록 항목의 '체크리스트' 버튼) — 편집모드(showForm) 진입 없이
+// 목록에서 바로 추가/완료체크/수정/순서변경/삭제할 수 있다(진행기록과 같은 방식).
+const checklistTaskId = ref('')
+const newChecklistText = ref('')
+const editingChecklistItemId = ref('')
+const editChecklistText = ref('')
 
 // 작업 로그 편집
 const editingLogId = ref('')
@@ -323,8 +331,10 @@ async function confirmDeleteTask(task) {
 function openDetail(taskId) {
   // 이미 이 작업 상세가 열려 있으면 그대로 둔다(재클릭해도 닫지 않음)
   if (rightPanel.value === 'detail' && selectedTaskId.value === taskId) return
-  // 진행기록 패널과 상호 배타: 상세를 열면 진행기록 패널을 닫는다
+  // 진행기록·체크리스트 패널과 상호 배타: 상세를 열면 둘 다 닫는다
   expandedTaskId.value = ''
+  checklistTaskId.value = ''
+  cancelEditChecklistItem()
   formOpen.value = true
   selectedTaskId.value = taskId
   const task = store.state.tasks.find((t) => t.id === taskId)
@@ -363,6 +373,73 @@ function toggleLogPanel(task) {
   logPhotoPreviews.value = []
   logCompressionReport.value = ''
   cancelEditLog()
+  // 진행기록 패널과도 상호 배타: 한쪽을 열면 다른 쪽은 닫는다
+  checklistTaskId.value = ''
+  cancelEditChecklistItem()
+}
+
+// ── 체크리스트 인라인 패널 ────────────────────────────────────────────────────
+function toggleChecklistPanel(task) {
+  if (checklistTaskId.value === task.id) {
+    checklistTaskId.value = ''
+    return
+  }
+  if (rightPanel.value === 'detail') {
+    rightPanel.value = 'task'
+    selectedTaskId.value = ''
+  }
+  formOpen.value = false
+  expandedTaskId.value = ''
+  checklistTaskId.value = task.id
+  newChecklistText.value = ''
+  cancelEditChecklistItem()
+}
+
+function checklistDone(task) {
+  return (task.checklist || []).filter((item) => item.done).length
+}
+
+async function submitChecklistItem() {
+  if (!checklistTaskId.value || !newChecklistText.value.trim()) return
+  await store.addChecklistItem(checklistTaskId.value, newChecklistText.value)
+  newChecklistText.value = ''
+}
+
+async function deleteChecklistItem(task, item) {
+  const ok = await confirm({ message: '이 체크리스트 항목을 삭제합니다. 되돌릴 수 없습니다.' })
+  if (!ok) return
+  await store.removeChecklistItem(task.id, item.id)
+  if (editingChecklistItemId.value === item.id) cancelEditChecklistItem()
+}
+
+// 배열 안에서 i번째 항목을 dir(-1|1)만큼 옮긴 새 배열을 반환한다(경계에서는 그대로).
+function moved(arr, i, dir) {
+  const j = i + dir
+  if (j < 0 || j >= arr.length) return arr
+  const res = [...arr]
+  ;[res[i], res[j]] = [res[j], res[i]]
+  return res
+}
+
+// 순서변경은 변경 이력에 남기지 않는다(reorderChecklistItems 참고).
+function moveChecklistItem(task, i, dir) {
+  store.reorderChecklistItems(task.id, moved(task.checklist || [], i, dir))
+}
+
+function startEditChecklistItem(item) {
+  editingChecklistItemId.value = item.id
+  editChecklistText.value = item.text
+}
+
+function cancelEditChecklistItem() {
+  editingChecklistItemId.value = ''
+  editChecklistText.value = ''
+}
+
+async function saveEditChecklistItem(task) {
+  if (!editingChecklistItemId.value || !editChecklistText.value.trim()) return
+  await store.updateChecklistItem(task.id, editingChecklistItemId.value, { text: editChecklistText.value.trim() })
+  cancelEditChecklistItem()
 }
 
 function openAddLog() {
@@ -646,10 +723,46 @@ form.category = taskCategories.value[0] ?? ''
             <div class="row-actions">
               <button :class="statusClass(task.status)" :title="localeStore.t('tasks.statusChange')" @click="cycleStatus(task)">{{ task.status }}</button>
               <button :class="{ ghost: expandedTaskId !== task.id }" @click="toggleLogPanel(task)">{{ localeStore.t('tasks.recordProgress') }} {{ expandedTaskId === task.id ? '▲' : '▼' }}</button>
+              <button :class="{ ghost: checklistTaskId !== task.id }" @click="toggleChecklistPanel(task)">
+                {{ localeStore.t('tasks.checklist') }}
+                <template v-if="task.checklist?.length">({{ checklistDone(task) }}/{{ task.checklist.length }})</template>
+                {{ checklistTaskId === task.id ? '▲' : '▼' }}
+              </button>
               <template v-if="showForm">
                 <button :class="{ ghost: !(rightPanel === 'detail' && selectedTaskId === task.id) }" @click="openDetail(task.id)">상세</button>
                 <button class="danger" @click="confirmDeleteTask(task)">{{ localeStore.t('common.delete') }}</button>
               </template>
+            </div>
+
+            <!-- 체크리스트 인라인 패널 -->
+            <div v-if="checklistTaskId === task.id" class="log-panel">
+              <ul class="list clean checklist">
+                <li v-for="(item, ci) in (task.checklist || [])" :key="item.id" class="checklist-item">
+                  <!-- 표시 모드 -->
+                  <template v-if="editingChecklistItemId !== item.id">
+                    <label class="checklist-label">
+                      <input type="checkbox" :checked="item.done" @change="store.toggleChecklistItem(task.id, item.id)" />
+                      <span :class="{ 'checklist-done': item.done }">{{ item.text }}</span>
+                    </label>
+                    <button class="ghost icon-btn" type="button" :disabled="ci === 0" :title="localeStore.t('common.moveUp')" :aria-label="localeStore.t('common.moveUp')" @click="moveChecklistItem(task, ci, -1)">↑</button>
+                    <button class="ghost icon-btn" type="button" :disabled="ci === task.checklist.length - 1" :title="localeStore.t('common.moveDown')" :aria-label="localeStore.t('common.moveDown')" @click="moveChecklistItem(task, ci, 1)">↓</button>
+                    <button class="ghost icon-btn" type="button" :title="localeStore.t('common.edit')" :aria-label="localeStore.t('common.edit')" @click="startEditChecklistItem(item)">✎</button>
+                    <button class="danger icon-btn" type="button" :title="localeStore.t('common.delete')" :aria-label="localeStore.t('common.delete')" @click="deleteChecklistItem(task, item)">✕</button>
+                  </template>
+
+                  <!-- 편집 모드 -->
+                  <form v-else class="row-actions" style="flex: 1;" @submit.prevent="saveEditChecklistItem(task)">
+                    <input v-model="editChecklistText" type="text" required style="flex: 1;" />
+                    <button type="submit">{{ localeStore.t('common.change') }}</button>
+                    <button class="ghost" type="button" @click="cancelEditChecklistItem">{{ localeStore.t('common.cancel') }}</button>
+                  </form>
+                </li>
+                <li v-if="!task.checklist?.length" class="muted text-sm">{{ localeStore.t('tasks.checklistEmpty') }}</li>
+              </ul>
+              <form class="row-actions" style="margin-top: 0.5rem;" @submit.prevent="submitChecklistItem">
+                <input v-model="newChecklistText" type="text" :placeholder="localeStore.t('tasks.checklistPlaceholder')" style="flex: 1;" />
+                <button type="submit">{{ localeStore.t('tasks.checklistAdd') }}</button>
+              </form>
             </div>
 
             <!-- 진행 기록 인라인 패널 -->
@@ -832,10 +945,11 @@ form.category = taskCategories.value[0] ?? ''
 
       <!-- ① 작업 추가 탭 -->
       <template v-if="rightPanel === 'task'">
-        <!-- 서브 토글: 단일 작업 | 반복 규칙 -->
+        <!-- 서브 토글: 단일 작업 | 반복 규칙 | 체크리스트 템플릿 -->
         <div class="inline-filters" style="margin-bottom: 1rem;">
           <button :class="{ ghost: taskMode !== 'single' }" @click="taskMode = 'single'">단일 작업</button>
           <button :class="{ ghost: taskMode !== 'rule' }" @click="taskMode = 'rule'">반복 규칙</button>
+          <button :class="{ ghost: taskMode !== 'checklistTemplate' }" @click="taskMode = 'checklistTemplate'">{{ localeStore.t('tasks.checklistTemplateTab') }}</button>
         </div>
 
         <!-- ① - A  단일 작업 폼 -->
@@ -870,6 +984,9 @@ form.category = taskCategories.value[0] ?? ''
 
         <!-- ① - B  반복 규칙 -->
         <TaskSchedulerPanel v-if="taskMode === 'rule'" />
+
+        <!-- ① - C  체크리스트 템플릿 -->
+        <TaskChecklistTemplatePanel v-if="taskMode === 'checklistTemplate'" />
       </template>
 
       <!-- ② 작업 상세 + 편집 + 진행 기록 -->

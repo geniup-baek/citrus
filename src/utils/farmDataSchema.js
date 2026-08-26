@@ -49,6 +49,9 @@ export const DOMAIN_SYNC = {
     scheduleRules: (Array.isArray(d?.scheduleRules) ? d.scheduleRules : [...defaultScheduleRules]).map(normalizeRule),
     scheduleSettings: normalizeScheduleSettings(d?.scheduleSettings),
     notifications: d?.notifications && typeof d.notifications === 'object' ? d.notifications : {},
+    // 계절 작업(annualTaskTemplates)과 달리 앱 고정 데이터가 아니라 농장에서 직접 만들어
+    // 쓰는 체크리스트 템플릿이라 여기(농장 데이터)에 저장한다.
+    checklistTemplates: Array.isArray(d?.checklistTemplates) ? d.checklistTemplates : [],
   }),
   issues: (d) => ({
     issues: (Array.isArray(d?.issues) ? d.issues : [...defaultIssues]).map(normalizeIssue),

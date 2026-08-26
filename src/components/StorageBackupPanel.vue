@@ -157,6 +157,7 @@ const datasetLabels = {
   issues: () => localeStore.t('nav.issues'),
   inventory: () => '재고',
   usageGuides: () => localeStore.t('nav.usageGuides'),
+  checklistTemplates: () => '체크리스트 템플릿',
   treatments: () => '방제기록',
   availablePesticides: () => '가용농약',
   changeLog: () => '변경 이력',

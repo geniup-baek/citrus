@@ -162,7 +162,7 @@ async function upsertFacility(payload) {
 `FarmStatusView.vue`/`ResourcesView.vue`가 먼저 쓰던 패턴을 `PesticideRecommendView.vue`·`SettingsView.vue`·`TasksView.vue`도 따르도록 정리했습니다: 뷰 파일은 `activeTab` ref와 탭 버튼, `<TabPanel v-if="activeTab === 'x'" />` 나열만 하고, 탭 하나의 실제 상태·로직·마크업은 `src/components/`의 별도 패널 컴포넌트가 갖습니다.
 
 - **탭들이 서로 다른 스토어를 쓰거나(예: 방제이력=treatStore, 가용농약=apStore, 재고=farmStore) 별개의 화면 상태만 공유한다면** 탭마다 패널 컴포넌트를 하나씩 만드세요(`TreatmentHistoryPanel.vue`/`AvailablePesticidePanel.vue`/`RecommendSettingsPanel.vue`/`PesticideRecommendationPanel.vue`, `FarmManagementPanel.vue`/`CategorySettingsPanel.vue`/`BehaviorSettingsPanel.vue`/`StorageBackupPanel.vue`/`ChangeHistoryPanel.vue`가 이 경우입니다).
-- **탭들이 하나의 선택/패널 상태(예: 목록에서 항목을 고르면 오른쪽 패널이 그 항목 상세로 바뀌는 구조)를 깊이 공유한다면 억지로 쪼개지 마세요.** `TasksView.vue`가 이 경우였습니다 — 목록·캘린더·상세편집이 `rightPanel`/`selectedTaskId`/`formTarget`을 공유해서 그대로 하나로 남겨두고, 그 상태와 무관한 두 조각(`TaskSchedulerPanel.vue`=반복 규칙 관리, `TaskTemplatePanel.vue`=계절 작업 템플릿)만 따로 뗐습니다. 억지로 쪼개면 부모-자식 간 prop/emit 배선만 늘고 오히려 읽기 어려워집니다 — 쪼갤지 말지는 "탭마다 다른 스토어/독립 상태인가" 기준으로 판단하세요.
+- **탭들이 하나의 선택/패널 상태(예: 목록에서 항목을 고르면 오른쪽 패널이 그 항목 상세로 바뀌는 구조)를 깊이 공유한다면 억지로 쪼개지 마세요.** `TasksView.vue`가 이 경우였습니다 — 목록·캘린더·상세편집이 `rightPanel`/`selectedTaskId`/`formTarget`을 공유해서 그대로 하나로 남겨두고, 그 상태와 무관한 조각들(`TaskSchedulerPanel.vue`=반복 규칙 관리, `TaskTemplatePanel.vue`=계절 작업 템플릿, `TaskChecklistTemplatePanel.vue`=사용자가 만든 체크리스트 템플릿 관리+선택 생성 — "작업 추가" 탭 안에서 단일 작업/반복 규칙과 같은 레벨의 서브탭)만 따로 뗐습니다. 억지로 쪼개면 부모-자식 간 prop/emit 배선만 늘고 오히려 읽기 어려워집니다 — 쪼갤지 말지는 "탭마다 다른 스토어/독립 상태인가" 기준으로 판단하세요.
 - 여러 화면이 똑같이 반복하던 자잘한 패턴은 컴포넌트/컴포저블로 뽑아 재사용합니다. 새 화면을 만들 때 아래를 먼저 확인하세요:
   - 사진 첨부(압축→미리보기): `composables/usePhotoPreviews.js`의 `useFilesToPreviews(reportKey)`
   - 사진 확대보기(라이트박스): `composables/useLightbox.js`의 `useLightbox()`

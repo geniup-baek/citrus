@@ -16,7 +16,7 @@ import {
 } from '../../utils/farmDataSchema.js'
 
 const BACKUP_TYPE = 'citrus-farm-backup'
-const BACKUP_ARRAY_KEYS = ['facilities', 'ancillaries', 'seedlings', 'tasks', 'scheduleRules', 'issues', 'inventory', 'usageGuides']
+const BACKUP_ARRAY_KEYS = ['facilities', 'ancillaries', 'seedlings', 'tasks', 'scheduleRules', 'issues', 'inventory', 'usageGuides', 'checklistTemplates']
 const BACKUP_OBJECT_KEYS = ['appSettings', 'scheduleSettings']
 const BACKUP_KEYS = [...BACKUP_ARRAY_KEYS, ...BACKUP_OBJECT_KEYS]
 

@@ -1184,6 +1184,32 @@ button.pill:hover {
   flex-shrink: 0;
 }
 
+/* ── 작업 체크리스트(세부항목) ── */
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+}
+
+.checklist-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.checklist-label input[type='checkbox'] {
+  flex-shrink: 0;
+}
+
+.checklist-done {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
 .lineage-grid {
   margin-top: 0.8rem;
   display: grid;
