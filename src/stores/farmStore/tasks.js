@@ -165,7 +165,18 @@ export function createTaskActions(ctx) {
     }
 
     const fields = diffFields(before, item, { text: '내용', done: '완료' })
-    logChange('작업 체크리스트', task.title, 'update', formatFieldDiff(fields), {
+    // done은 true/false 원값을 그대로 보여주면("완료: false → true") 사용자에게 의미가
+    // 없어 자연스러운 말로 바꾼다 — 체크(완료로 바뀜)는 굳이 이전 상태를 말할 필요가
+    // 없어 "완료"만, 체크 해제(되돌림)는 "완료 → 미완료"처럼 되돌아간 티를 낸다.
+    const parts = []
+    if (fields.text) parts.push(formatFieldDiff({ text: fields.text }))
+    if (fields.done) parts.push(fields.done.to ? '완료' : '완료 → 미완료')
+    const summary = parts.join(', ')
+    // 완료체크만 한 경우(text는 안 바뀜) summary만으로는 어느 항목인지 알 수 없다 —
+    // 그때만 항목 내용을 앞에 붙인다(내용이 바뀐 경우는 summary 자체에 이전/이후 내용이
+    // 다 나오니 중복해서 붙이지 않는다).
+    const detail = fields.text ? summary : `${item.text}: ${summary}`
+    logChange('작업 체크리스트', task.title, 'update', detail, {
       refId: `${taskId}:${itemId}`,
       fields,
     })

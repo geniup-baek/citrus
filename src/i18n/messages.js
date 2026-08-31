@@ -243,6 +243,8 @@ export const messages = {
     compressedReport: '{count}개 파일 압축: {from}KB -> {to}KB ({ratio}%)',
     existingPhotos: '첨부된 사진',
     checklist: '체크리스트',
+    checklistEditTrigger: '체크리스트 편집',
+    checklistEditExit: '편집 종료',
     checklistAdd: '+ 항목 추가',
     checklistPlaceholder: '체크리스트 항목 입력',
     checklistEmpty: '체크리스트 항목이 없습니다.',

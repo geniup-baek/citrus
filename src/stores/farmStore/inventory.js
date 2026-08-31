@@ -1,9 +1,18 @@
 // 비료·농약 재고(로트=규격+유효기간 기반) CRUD + 입출고 CRUD + 분류별 초기화.
 // 품목은 메타데이터 + 입출고 이력(txns)만 보관한다.
 // 현재 재고(로트별 수량)는 txns로부터 계산하므로 단일 출처라 편집/삭제가 단순하다.
+import { format } from 'date-fns'
 import { uuid } from '../../utils/uuid.js'
-import { diffFields, formatFieldDiff, snapshotForRevert } from '../../utils/changeLogUtils.js'
+import { diffFields, formatFieldDiff, withDisplayFields, snapshotForRevert } from '../../utils/changeLogUtils.js'
 import { normalizeInventoryItem } from '../../utils/farmDataSchema.js'
+
+// 입출고 일자는 시각까지 포함한 ISO 문자열로 저장되지만, 변경 이력에는 시각까지 보여줄
+// 필요가 없다 — 화면에서 날짜를 표시할 때 쓰는 형식(PesticideInventoryPanel.vue의
+// formatTxnDate)과 맞춰 로컬 날짜만 보여준다(되돌리기용 fields 자체는 원본 그대로 둔다).
+function formatTxnDateForLog(value) {
+  if (!value) return value
+  try { return format(new Date(value), 'yyyy-MM-dd') } catch { return value }
+}
 
 export function createInventoryActions(ctx) {
   const { state, persist, logChange } = ctx
@@ -107,7 +116,8 @@ export function createInventoryActions(ctx) {
       amount: '수량',
       note: '비고',
     })
-    logChange(`${item.category}재고 입출고`, `${item.name} 입출고 수정`, 'update', formatFieldDiff(fields), {
+    const displayFields = withDisplayFields(fields, { date: formatTxnDateForLog })
+    logChange(`${item.category}재고 입출고`, `${item.name} 입출고 수정`, 'update', formatFieldDiff(displayFields), {
       refId: `${itemId}:${txnId}`,
       fields,
     })

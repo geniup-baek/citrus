@@ -91,9 +91,13 @@ const { filesToPreviews } = useFilesToPreviews('tasks.compressedReport')
 const expandedTaskId = ref('')
 const showAddLog = ref(false)
 
-// 체크리스트 인라인 패널 (목록 항목의 '체크리스트' 버튼) — 편집모드(showForm) 진입 없이
-// 목록에서 바로 추가/완료체크/수정/순서변경/삭제할 수 있다(진행기록과 같은 방식).
+// 체크리스트 인라인 패널 (목록 항목의 '체크리스트' 버튼) — 작업 편집모드(showForm) 진입
+// 없이 목록에서 바로 완료체크할 수 있다(진행기록과 같은 방식). 다만 항목 추가/수정/
+// 순서변경/삭제 같은 "편집" 동작은 실수로 건드리기 쉬워, 평소엔 체크박스만 보이고
+// '체크리스트 편집' 버튼을 눌렀을 때만 그 조작들이 나오게 한다(진행기록의 '+ 새 기록
+// 추가'가 입력 폼만 감추는 것보다 한 단계 더 — 여기선 기존 항목의 편집 버튼들도 감춘다).
 const checklistTaskId = ref('')
+const checklistEditMode = ref(false)
 const newChecklistText = ref('')
 const editingChecklistItemId = ref('')
 const editChecklistText = ref('')
@@ -334,6 +338,7 @@ function openDetail(taskId) {
   // 진행기록·체크리스트 패널과 상호 배타: 상세를 열면 둘 다 닫는다
   expandedTaskId.value = ''
   checklistTaskId.value = ''
+  checklistEditMode.value = false
   cancelEditChecklistItem()
   formOpen.value = true
   selectedTaskId.value = taskId
@@ -375,6 +380,7 @@ function toggleLogPanel(task) {
   cancelEditLog()
   // 진행기록 패널과도 상호 배타: 한쪽을 열면 다른 쪽은 닫는다
   checklistTaskId.value = ''
+  checklistEditMode.value = false
   cancelEditChecklistItem()
 }
 
@@ -382,6 +388,7 @@ function toggleLogPanel(task) {
 function toggleChecklistPanel(task) {
   if (checklistTaskId.value === task.id) {
     checklistTaskId.value = ''
+    checklistEditMode.value = false
     return
   }
   if (rightPanel.value === 'detail') {
@@ -391,7 +398,13 @@ function toggleChecklistPanel(task) {
   formOpen.value = false
   expandedTaskId.value = ''
   checklistTaskId.value = task.id
+  checklistEditMode.value = false
   newChecklistText.value = ''
+  cancelEditChecklistItem()
+}
+
+function toggleChecklistEditMode() {
+  checklistEditMode.value = !checklistEditMode.value
   cancelEditChecklistItem()
 }
 
@@ -736,6 +749,14 @@ form.category = taskCategories.value[0] ?? ''
 
             <!-- 체크리스트 인라인 패널 -->
             <div v-if="checklistTaskId === task.id" class="log-panel">
+              <div class="row-actions align-start log-history-label">
+                <p class="muted" style="margin: 0;">{{ localeStore.t('tasks.checklist') }}</p>
+                <button
+                  class="ghost compact-btn"
+                  type="button"
+                  @click="toggleChecklistEditMode"
+                >{{ checklistEditMode ? localeStore.t('tasks.checklistEditExit') : localeStore.t('tasks.checklistEditTrigger') }}</button>
+              </div>
               <ul class="list clean checklist">
                 <li v-for="(item, ci) in (task.checklist || [])" :key="item.id" class="checklist-item">
                   <!-- 표시 모드 -->
@@ -744,13 +765,15 @@ form.category = taskCategories.value[0] ?? ''
                       <input type="checkbox" :checked="item.done" @change="store.toggleChecklistItem(task.id, item.id)" />
                       <span :class="{ 'checklist-done': item.done }">{{ item.text }}</span>
                     </label>
-                    <button class="ghost icon-btn" type="button" :disabled="ci === 0" :title="localeStore.t('common.moveUp')" :aria-label="localeStore.t('common.moveUp')" @click="moveChecklistItem(task, ci, -1)">↑</button>
-                    <button class="ghost icon-btn" type="button" :disabled="ci === task.checklist.length - 1" :title="localeStore.t('common.moveDown')" :aria-label="localeStore.t('common.moveDown')" @click="moveChecklistItem(task, ci, 1)">↓</button>
-                    <button class="ghost icon-btn" type="button" :title="localeStore.t('common.edit')" :aria-label="localeStore.t('common.edit')" @click="startEditChecklistItem(item)">✎</button>
-                    <button class="danger icon-btn" type="button" :title="localeStore.t('common.delete')" :aria-label="localeStore.t('common.delete')" @click="deleteChecklistItem(task, item)">✕</button>
+                    <template v-if="checklistEditMode">
+                      <button class="ghost icon-btn" type="button" :disabled="ci === 0" :title="localeStore.t('common.moveUp')" :aria-label="localeStore.t('common.moveUp')" @click="moveChecklistItem(task, ci, -1)">↑</button>
+                      <button class="ghost icon-btn" type="button" :disabled="ci === task.checklist.length - 1" :title="localeStore.t('common.moveDown')" :aria-label="localeStore.t('common.moveDown')" @click="moveChecklistItem(task, ci, 1)">↓</button>
+                      <button class="ghost icon-btn" type="button" :title="localeStore.t('common.edit')" :aria-label="localeStore.t('common.edit')" @click="startEditChecklistItem(item)">✎</button>
+                      <button class="danger icon-btn" type="button" :title="localeStore.t('common.delete')" :aria-label="localeStore.t('common.delete')" @click="deleteChecklistItem(task, item)">✕</button>
+                    </template>
                   </template>
 
-                  <!-- 편집 모드 -->
+                  <!-- 편집 모드(항목 내용 수정) -->
                   <form v-else class="row-actions" style="flex: 1;" @submit.prevent="saveEditChecklistItem(task)">
                     <input v-model="editChecklistText" type="text" required style="flex: 1;" />
                     <button type="submit">{{ localeStore.t('common.change') }}</button>
@@ -759,7 +782,7 @@ form.category = taskCategories.value[0] ?? ''
                 </li>
                 <li v-if="!task.checklist?.length" class="muted text-sm">{{ localeStore.t('tasks.checklistEmpty') }}</li>
               </ul>
-              <form class="row-actions" style="margin-top: 0.5rem;" @submit.prevent="submitChecklistItem">
+              <form v-if="checklistEditMode" class="row-actions" style="margin-top: 0.5rem;" @submit.prevent="submitChecklistItem">
                 <input v-model="newChecklistText" type="text" :placeholder="localeStore.t('tasks.checklistPlaceholder')" style="flex: 1;" />
                 <button type="submit">{{ localeStore.t('tasks.checklistAdd') }}</button>
               </form>
