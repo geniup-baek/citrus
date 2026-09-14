@@ -8,6 +8,7 @@ import { getPesticideDetail, modeOfActionColor, warmFullCache, warmAllDetails, s
 import { confirm } from '../composables/useConfirm'
 import { withCache, pullSharedCache } from '../services/cache.js'
 import CacheStatusBanner from './CacheStatusBanner.vue'
+import MobileFilterBar from './MobileFilterBar.vue'
 
 const localeStore = useLocaleStore()
 const settingsStore = useRecommendSettingsStore()
@@ -44,6 +45,22 @@ const isFiltered = computed(() =>
 )
 // 요약칩의 분모 — 현재 상표명묶기/병해충별 보기 모드에 맞는 전체 건수를 쓴다.
 const grandTotal = computed(() => groupMode.value ? groupedTotal.value : ungroupedTotal.value)
+
+// 모바일 필터시트(MobileFilterBar)에 표시할 "적용된 필터" 요약 — 기존 ref 를 그대로 읽고 쓴다.
+const searchActiveFilters = computed(() => [
+  typeFilter.value !== 'all' && {
+    key: 'type', label: typeFilter.value, clear: () => { typeFilter.value = 'all'; search() },
+  },
+  manualOnly.value && {
+    key: 'manual', label: `직접등록만 (${manualCount.value})`, clear: () => { manualOnly.value = false; search() },
+  },
+].filter(Boolean))
+
+function searchClearAllFilters() {
+  typeFilter.value = 'all'
+  manualOnly.value = false
+  search()
+}
 
 function refreshStats() {
   detailCoverage.value = getDetailCoverage()
@@ -397,8 +414,10 @@ onMounted(async () => {
     </div>
   </div>
 
-  <div class="sort-filter-bar">
-    <span v-if="total > 0" class="summary-chip">{{ isFiltered ? localeStore.t('common.filteredCount', { shown: total, total: grandTotal }) : localeStore.t('common.totalCount', { n: total }) }}</span>
+  <MobileFilterBar :active="searchActiveFilters" :on-reset-all="searchClearAllFilters" title="필터">
+    <template #always>
+      <span v-if="total > 0" class="summary-chip">{{ isFiltered ? localeStore.t('common.filteredCount', { shown: total, total: grandTotal }) : localeStore.t('common.totalCount', { n: total }) }}</span>
+    </template>
     <span class="filter-sep">|</span>
     <div class="seg-filter">
       <button
@@ -448,7 +467,7 @@ onMounted(async () => {
         @click="nameMode = 'product'; search()"
       >품목명</button>
     </div>
-  </div>
+  </MobileFilterBar>
 
   <p v-if="error" class="error-msg">{{ t('pest.apiError') }} {{ error }}</p>
   <CacheStatusBanner :cache-info="cacheInfo" :loading="loading" :show-refresh="farmsStore.isAdminMode">

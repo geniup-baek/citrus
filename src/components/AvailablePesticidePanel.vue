@@ -17,6 +17,8 @@ import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { confirmFilteredExport, downloadCsv, exportFileName, openPrintReport, today } from '../utils/dataExport.js'
 import { categoryClass, toxicClass, fishToxicClass } from '../utils/pesticideBadgeClass.js'
 import PesticideLinkResults from './PesticideLinkResults.vue'
+import MobileFilterBar from './MobileFilterBar.vue'
+import OverflowMenu from './OverflowMenu.vue'
 
 const settingsStore = useRecommendSettingsStore()
 const apStore       = useAvailablePesticideStore()
@@ -154,6 +156,32 @@ const apStats = computed(() => {
 const apIsFiltered = computed(() =>
   apSourceFilter.value !== 'all' || apUnmatchedOnly.value || apManualOnly.value || !!apFilter.value.trim(),
 )
+
+// 모바일 필터시트(MobileFilterBar)에 표시할 "적용된 필터" 요약 — 기존 ref 를 그대로 읽고 쓴다.
+const apActiveFilters = computed(() => [
+  apSourceFilter.value === 'purchase' && {
+    key: 'source', label: `구입가능 (${apSourceCounts.value.purchase})`, clear: () => { apSourceFilter.value = 'all' },
+  },
+  apSourceFilter.value === 'inventory' && {
+    key: 'source', label: `재고 (${apSourceCounts.value.inventory})`, clear: () => { apSourceFilter.value = 'all' },
+  },
+  apUnmatchedOnly.value && {
+    key: 'unmatched', label: `미연결만 (${apStats.value.unmatched})`, clear: () => { apUnmatchedOnly.value = false },
+  },
+  apManualOnly.value && {
+    key: 'manual', label: `수동만 (${apStats.value.manual})`, clear: () => { apManualOnly.value = false },
+  },
+  apFilter.value.trim() && {
+    key: 'text', label: `"${apFilter.value.trim()}"`, clear: () => { apFilter.value = '' },
+  },
+].filter(Boolean))
+
+function apClearAllFilters() {
+  apSourceFilter.value = 'all'
+  apUnmatchedOnly.value = false
+  apManualOnly.value = false
+  apFilter.value = ''
+}
 
 // '재고'는 재고에 실제로 있는 항목 전체(구입가능 목록과 겹치는 'both' 포함),
 // '구입가능'은 구입 가능한 항목 전체('both' 포함) — 둘은 서로 배타적이지 않다.
@@ -419,30 +447,27 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 
     <div class="pip-header">
       <div class="pip-actions">
-        <button
-          v-if="apEditMode && showResetButton && apHasData"
-          class="danger"
-          type="button"
-          @click="resetAvailablePesticides"
-        >{{ localeStore.t('common.reset') }}</button>
-        <button v-if="apEditMode && apStore.availableList.length > 0" class="ghost" type="button" @click="refreshAllPesticideInfo">
-          전체 재연결
-        </button>
-        <button v-if="apEditMode && inventoryPesticides.length > 0" class="ghost" type="button" @click="applyInventoryToApList">
-          재고반영
-        </button>
-        <button
-          v-if="!apEditMode && apStore.availableList.length > 0"
-          class="ghost"
-          type="button"
-          @click="printApList"
-        >{{ localeStore.t('inventory.printReport') }}</button>
-        <button
-          v-if="!apEditMode && apStore.availableList.length > 0"
-          class="ghost"
-          type="button"
-          @click="downloadApListCsv"
-        >{{ localeStore.t('inventory.downloadReport') }}</button>
+        <OverflowMenu
+          v-if="apEditMode && ((showResetButton && apHasData) || apStore.availableList.length > 0 || inventoryPesticides.length > 0)"
+          title="더보기"
+        >
+          <button
+            v-if="showResetButton && apHasData"
+            class="danger"
+            type="button"
+            @click="resetAvailablePesticides"
+          >{{ localeStore.t('common.reset') }}</button>
+          <button v-if="apStore.availableList.length > 0" class="ghost" type="button" @click="refreshAllPesticideInfo">
+            전체 재연결
+          </button>
+          <button v-if="inventoryPesticides.length > 0" class="ghost" type="button" @click="applyInventoryToApList">
+            재고반영
+          </button>
+        </OverflowMenu>
+        <OverflowMenu v-else-if="apStore.availableList.length > 0" title="더보기">
+          <button class="ghost" type="button" @click="printApList">{{ localeStore.t('inventory.printReport') }}</button>
+          <button class="ghost" type="button" @click="downloadApListCsv">{{ localeStore.t('inventory.downloadReport') }}</button>
+        </OverflowMenu>
         <button v-if="!apEditMode" type="button" @click="apEditMode = true">{{ localeStore.t('common.edit') }}</button>
         <button v-else class="ghost" type="button" @click="closeApEdit">{{ localeStore.t('common.exitEdit') }}</button>
       </div>
@@ -461,8 +486,10 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
 
     <!-- 가용농약 목록 -->
     <template v-if="apStore.availableList.length > 0">
-      <div class="sort-filter-bar">
-        <span class="summary-chip">{{ apIsFiltered ? localeStore.t('common.filteredCount', { shown: filteredApList.length, total: apStats.total }) : localeStore.t('common.totalCount', { n: filteredApList.length }) }}</span>
+      <MobileFilterBar :active="apActiveFilters" :on-reset-all="apClearAllFilters" title="필터">
+        <template #always>
+          <span class="summary-chip">{{ apIsFiltered ? localeStore.t('common.filteredCount', { shown: filteredApList.length, total: apStats.total }) : localeStore.t('common.totalCount', { n: filteredApList.length }) }}</span>
+        </template>
         <span class="filter-sep">|</span>
         <div class="seg-filter">
           <button class="seg-btn" :class="{ active: apSourceFilter === 'all' }"       @click="apSourceFilter = 'all'">전체 ({{ apStats.total }})</button>
@@ -485,7 +512,7 @@ watch(() => apStore.purchaseInput, (v) => { apInputText.value = v }, { immediate
           class="ap-filter-input"
           placeholder="필터 (농약명, 분류, 작용기작, 병해충)"
         />
-      </div>
+      </MobileFilterBar>
 
       <div id="ap-form-top-list" class="mobile-form-slot"></div>
 

@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useLocaleStore } from '../stores/localeStore'
 import { useFarmsStore } from '../stores/farmsStore'
@@ -30,6 +30,20 @@ const activePath = computed(() => route.path)
 
 /* global __APP_VERSION__ */
 const appVersion = __APP_VERSION__
+
+// 모바일에서 내비가 한 줄 가로 스크롤이라, 뒤쪽 탭(문제/자료/설정 등)이 활성일 때
+// 화면 밖에서 시작할 수 있다 — 진입/이동 시 활성 알약이 보이도록 스크롤한다.
+// block:'nearest' 가 핵심 — 'start' 를 쓰면 라우트가 바뀔 때마다 페이지 자체가
+// 헤더 위치로 스크롤돼 버린다.
+const navEl = ref(null)
+function revealActiveLink() {
+  nextTick(() => {
+    navEl.value?.querySelector('.nav-link.active')
+      ?.scrollIntoView({ inline: 'center', block: 'nearest' })
+  })
+}
+onMounted(revealActiveLink)
+watch(activePath, revealActiveLink)
 </script>
 
 <template>
@@ -55,7 +69,7 @@ const appVersion = __APP_VERSION__
       </div>
     </div>
 
-    <nav class="main-nav" :aria-label="localeStore.t('nav.mainNavigation')">
+    <nav ref="navEl" class="main-nav" :aria-label="localeStore.t('nav.mainNavigation')">
       <RouterLink
         v-for="link in links"
         :key="link.to"
@@ -98,5 +112,36 @@ const appVersion = __APP_VERSION__
   background: var(--primary);
   color: var(--primary-ink);
   font-size: 0.85rem;
+}
+
+/* ⚠ 이 파일의 .header-top-row/.header-right 는 scoped(specificity 0,2,0)라
+   style.css 의 전역 규칙(0,1,0)을 항상 이긴다 — 모바일 헤더 override 는
+   반드시 여기(scoped)에 둬야 실제로 적용된다. */
+@media (max-width: 900px) {
+  .header-top-row {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .header-right {
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+  .active-farm-badge {
+    gap: 0.35rem;
+    min-width: 0;
+  }
+  .active-farm-name {
+    max-width: 6.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .admin-badge {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.45rem;
+  }
 }
 </style>

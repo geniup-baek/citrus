@@ -14,6 +14,8 @@ import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { confirmFilteredExport, downloadCsv, exportFileName, openPrintReport } from '../utils/dataExport.js'
 import { uuid } from '../utils/uuid.js'
 import PesticideLinkResults from './PesticideLinkResults.vue'
+import MobileFilterBar from './MobileFilterBar.vue'
+import OverflowMenu from './OverflowMenu.vue'
 
 const store      = useFarmStore()
 const localeStr  = useLocaleStore()
@@ -265,6 +267,26 @@ const summary = computed(() => {
 })
 
 const isFiltered = computed(() => unmatchedOnly.value || outOfStockOnly.value)
+
+// 모바일 필터시트(MobileFilterBar)에 표시할 "적용된 필터" 요약 — 기존 ref 를
+// 그대로 읽고 쓴다. 시트/데스크톱 인라인 어느 쪽에서도 같은 상태를 가리킨다.
+const activeFilters = computed(() => [
+  unmatchedOnly.value && {
+    key: 'unmatched',
+    label: `미연결만 (${summary.value.unmatched})`,
+    clear: () => { unmatchedOnly.value = false },
+  },
+  outOfStockOnly.value && {
+    key: 'oos',
+    label: `재고없음 (${summary.value.outOfStock})`,
+    clear: () => { outOfStockOnly.value = false },
+  },
+].filter(Boolean))
+
+function clearAllFilters() {
+  unmatchedOnly.value = false
+  outOfStockOnly.value = false
+}
 
 // ── 폼 ───────────────────────────────────────────────────────────────────────
 function clearForm() {
@@ -629,25 +651,24 @@ async function printReport() {
       <!-- 헤더: 액션 -->
       <div class="pip-header">
         <div class="pip-actions">
-          <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="printReport">{{ t('inventory.printReport') }}</button>
-          <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="downloadReport">{{ t('inventory.downloadReport') }}</button>
+          <OverflowMenu v-if="!showForm" title="더보기">
+            <button class="ghost" type="button" :disabled="!summary.total" @click="printReport">{{ t('inventory.printReport') }}</button>
+            <button class="ghost" type="button" :disabled="!summary.total" @click="downloadReport">{{ t('inventory.downloadReport') }}</button>
+          </OverflowMenu>
+          <OverflowMenu v-else-if="showResetButton && summary.categoryTotal > 0" title="더보기">
+            <button class="danger" type="button" @click="resetAllItems">{{ t('common.reset') }}</button>
+          </OverflowMenu>
           <button v-if="!showForm" type="button" @click="openAdd">{{ t('common.edit') }}</button>
-          <template v-else>
-            <button
-              v-if="showResetButton && summary.categoryTotal > 0"
-              class="danger"
-              type="button"
-              @click="resetAllItems"
-            >{{ t('common.reset') }}</button>
-            <button class="ghost" type="button" @click="closeForm">{{ t('common.exitEdit') }}</button>
-          </template>
+          <button v-else class="ghost" type="button" @click="closeForm">{{ t('common.exitEdit') }}</button>
         </div>
       </div>
 
       <!-- 요약 + 정렬 + 필터 -->
-      <div class="sort-filter-bar">
-        <span class="summary-chip">{{ isFiltered ? t('common.filteredCount', { shown: summary.total, total: summary.categoryTotal }) : t('common.totalCount', { n: summary.total }) }}</span>
-        <span v-if="summary.expiring" class="summary-chip chip-danger">{{ t('inventory.summaryExpiring', { count: summary.expiring }) }}</span>
+      <MobileFilterBar :active="activeFilters" :on-reset-all="clearAllFilters" title="필터">
+        <template #always>
+          <span class="summary-chip">{{ isFiltered ? t('common.filteredCount', { shown: summary.total, total: summary.categoryTotal }) : t('common.totalCount', { n: summary.total }) }}</span>
+          <span v-if="summary.expiring" class="summary-chip chip-danger">{{ t('inventory.summaryExpiring', { count: summary.expiring }) }}</span>
+        </template>
         <span class="filter-sep">|</span>
         <span class="filter-label">{{ t('inventory.sortBy') }}</span>
         <select v-model="sortBy" class="compact-select">
@@ -668,7 +689,7 @@ async function printReport() {
           type="button"
           @click="outOfStockOnly = !outOfStockOnly"
         >재고없음 ({{ summary.outOfStock }})</button>
-      </div>
+      </MobileFilterBar>
 
       <!-- 품목 목록 -->
       <div id="pip-form-top" class="mobile-form-slot"></div>

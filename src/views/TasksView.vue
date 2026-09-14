@@ -28,6 +28,8 @@ import { useFilesToPreviews } from '../composables/usePhotoPreviews'
 import TaskSchedulerPanel from '../components/TaskSchedulerPanel.vue'
 import TaskTemplatePanel from '../components/TaskTemplatePanel.vue'
 import TaskChecklistTemplatePanel from '../components/TaskChecklistTemplatePanel.vue'
+import MobileFilterBar from '../components/MobileFilterBar.vue'
+import OverflowMenu from '../components/OverflowMenu.vue'
 
 const store = useFarmStore()
 const localeStore = useLocaleStore()
@@ -140,6 +142,48 @@ const logForm = reactive({
 
 // ── computed ────────────────────────────────────────────────────────────────
 const taskCategories = computed(() => store.state.appSettings?.taskCategories ?? ['기타'])
+
+// 모바일 필터시트(MobileFilterBar)에 표시할 "적용된 필터" 요약 — 기존 ref 를 그대로 읽고
+// 쓴다. 기간(filter) 중 오늘/이번주/기한초과는 요약 strip 칩이 이미 강조해서 보여주지만,
+// 연간·이번달처럼 strip에 없는 값을 고르면 어디에도 표시되지 않으므로 그 경우만 칩으로 보충한다.
+const taskActiveFilters = computed(() => [
+  !['all', 'today', 'week', 'overdue'].includes(filter.value) && {
+    key: 'period', label: taskPeriodLabel(filter.value), clear: () => { filter.value = 'all' },
+  },
+  categoryFilter.value !== 'all' && {
+    key: 'category', label: categoryFilter.value, clear: () => { categoryFilter.value = 'all' },
+  },
+  statusFilter.value !== 'all' && {
+    key: 'status', label: taskStatusLabel(statusFilter.value), clear: () => { statusFilter.value = 'all' },
+  },
+].filter(Boolean))
+
+function taskClearAllFilters() {
+  filter.value = 'all'
+  categoryFilter.value = 'all'
+  statusFilter.value = 'all'
+}
+
+function taskPeriodLabel(value) {
+  const map = {
+    annual: localeStore.t('tasks.filterAnnual'),
+    month: localeStore.t('tasks.filterMonth'),
+    week: localeStore.t('tasks.filterWeek'),
+    today: localeStore.t('tasks.filterToday'),
+    overdue: localeStore.t('tasks.filterOverdue'),
+    all: localeStore.t('tasks.filterAll'),
+  }
+  return map[value] || value
+}
+
+function taskStatusLabel(value) {
+  const map = {
+    '예정': localeStore.t('tasks.statusTodo'),
+    '진행중': localeStore.t('tasks.statusInProgress'),
+    '완료': localeStore.t('tasks.statusDone'),
+  }
+  return map[value] || value
+}
 
 const selectedTask = computed(() =>
   store.state.tasks.find((t) => t.id === selectedTaskId.value),
@@ -650,14 +694,20 @@ form.category = taskCategories.value[0] ?? ''
         <h2>{{ localeStore.t('tasks.taskBoard') }}</h2>
         <div class="row-actions">
           <!-- 초기화는 다른 화면과 같이 버튼 묶음의 맨 왼쪽에 둔다. -->
-          <button
-            v-if="showForm && showResetButton && (store.state.tasks.length > 0 || store.state.scheduleRules.length > 0)"
-            class="danger"
-            type="button"
-            @click="resetAllTasks"
-          >{{ localeStore.t('common.reset') }}</button>
-          <button :class="{ ghost: viewMode !== 'list' }" @click="viewMode = 'list'">목록</button>
-          <button :class="{ ghost: viewMode !== 'calendar' }" @click="viewMode = 'calendar'">캘린더</button>
+          <OverflowMenu v-if="showForm && showResetButton && (store.state.tasks.length > 0 || store.state.scheduleRules.length > 0)" title="더보기">
+            <button
+              class="danger"
+              type="button"
+              @click="resetAllTasks"
+            >{{ localeStore.t('common.reset') }}</button>
+          </OverflowMenu>
+          <!-- 목록/캘린더는 하나로 묶인 보기 전환(세그먼트)이고, 편집은 별개의 모드
+               진입 액션이다 — 둘 다 같은 주황 버튼이면 나란히 있을 때 구분이 안 되므로
+               보기 전환 쪽을 다른 화면의 세그먼트 필터와 같은 모양으로 묶어 분리한다. -->
+          <div class="seg-filter">
+            <button class="seg-btn" :class="{ active: viewMode === 'list' }" type="button" @click="viewMode = 'list'">목록</button>
+            <button class="seg-btn" :class="{ active: viewMode === 'calendar' }" type="button" @click="viewMode = 'calendar'">캘린더</button>
+          </div>
           <button v-if="!showForm" @click="showForm = true; formOpen = true">{{ localeStore.t('common.edit') }}</button>
           <button v-else class="ghost" @click="exitEdit">{{ localeStore.t('common.exitEdit') }}</button>
         </div>
@@ -681,15 +731,19 @@ form.category = taskCategories.value[0] ?? ''
           :class="{ 'chip-active': filter === 'overdue' }"
           @click="filter = 'overdue'; statusFilter = 'all'"
         >{{ localeStore.t('tasks.summaryOverdue') }} {{ overdueCount }}</button>
-        <button v-if="showForm" class="ghost" style="margin-left: auto;" @click="runDeduplicate">
-          {{ localeStore.t('tasks.deduplicateBtn') }}
-        </button>
+        <span v-if="showForm" style="margin-left: auto;">
+          <OverflowMenu title="더보기">
+            <button class="ghost" @click="runDeduplicate">
+              {{ localeStore.t('tasks.deduplicateBtn') }}
+            </button>
+          </OverflowMenu>
+        </span>
       </div>
       <p v-if="deduplicateResult" class="muted text-sm" style="margin-bottom: 0.5rem;">{{ deduplicateResult }}</p>
 
       <!-- ▸ 목록 뷰 -->
       <template v-if="viewMode === 'list'">
-        <div class="sort-filter-bar">
+        <MobileFilterBar :active="taskActiveFilters" :on-reset-all="taskClearAllFilters" title="필터">
           <span class="filter-label">{{ localeStore.t('tasks.filterPeriod') }}</span>
           <select v-model="filter" class="compact-select">
             <option value="annual">{{ localeStore.t('tasks.filterAnnual') }}</option>
@@ -712,7 +766,7 @@ form.category = taskCategories.value[0] ?? ''
             <option value="진행중">{{ localeStore.t('tasks.statusInProgress') }}</option>
             <option value="완료">{{ localeStore.t('tasks.statusDone') }}</option>
           </select>
-        </div>
+        </MobileFilterBar>
 
         <div id="task-form-top-list" class="mobile-form-slot"></div>
 

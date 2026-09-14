@@ -928,11 +928,6 @@ button.pill:hover {
 .match-ok   { background: var(--tone-yellow-bg); color: var(--tone-yellow-text); border-color: var(--tone-yellow-border); }
 .match-none { background: #f9fafb; color: var(--muted); border-color: var(--line); }
 
-/* ── 변경 이력(감사 로그) ─────────────────────────────────────────────────── */
-.history-filters {
-  margin-bottom: 0.6rem;
-}
-
 .history-item {
   display: flex;
   flex-wrap: wrap;
@@ -1443,11 +1438,14 @@ button.pill:hover {
 @media (max-width: 760px) {
   .app-shell {
     padding: 0.75rem;
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
 
-  .stats-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  /* 대시보드 통계 카드는 좁은 폰에서도 2열을 유지한다 — 숫자·라벨이 짧아
+     한 칸 폭에서도 읽기 충분하고, 세로 스크롤을 크게 줄여준다. 유일하게
+     "한라봉 N그루 · 카라향 N그루"처럼 긴 보조문구만 1줄 대신 2줄로 줄바꿈된다. */
 
   .row-scheduler-grid,
   .photo-grid {
@@ -1458,7 +1456,347 @@ button.pill:hover {
     font-size: 0.88rem;
   }
 
-  .header-top-row {
-    flex-direction: column;
+  /* 헤더 1줄 압축은 AppHeader.vue 의 scoped 스타일이 담당한다(specificity 상
+     scoped 규칙이 여기 전역 규칙을 이긴다) — 여기서 .header-top-row 를 column 으로
+     바꿔봤자 무시된다. */
+
+  /* 좁은 폰에서 7열 캘린더 그리드가 너무 빽빽해지는 것을 완화 */
+  .cal-cell {
+    min-height: 64px;
+    padding: 0.25rem 0.3rem;
+  }
+
+  .cal-chip {
+    font-size: 0.62rem;
+    padding: 0.08rem 0.22rem;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   모바일(≤900px) 패스 — 터치 타깃 확대 + 필터/탭 행을 한 줄 가로 스크롤로.
+   composables/useIsMobile.js 의 MOBILE_MEDIA_QUERY 와 반드시 같은 폭을 쓴다.
+   데스크톱(≥901px)에는 이 블록의 어떤 규칙도 적용되지 않는다.
+   ══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  :root {
+    /* 정렬·필터 바의 알약/버튼/드롭다운 공통 높이: 1.7rem(27px) → 2.5rem(40px) */
+    --filter-ctl-h: 2.5rem;
+  }
+
+  /* 버튼 기본값. height 를 명시한 컨트롤(.compact-btn/.summary-chip/.type-btn/
+     .seg-filter/.compact-select/.ap-unmatched-btn)은 --filter-ctl-h 를 그대로
+     쓰므로 여기서 다시 안 건드려도 같이 커진다. */
+  button {
+    min-height: var(--filter-ctl-h);
+    padding: 0.5rem 0.85rem;
+    font-size: 0.86rem;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(209, 91, 30, 0.15);
+  }
+
+  /* 입력/선택: font-size 1rem 은 iOS 자동확대 방지용이므로 그대로 두고
+     padding 만 키운다 (39px → 44px 근접). */
+  input,
+  select,
+  textarea {
+    padding: 0.58rem 0.65rem;
+  }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  .inline-checkbox {
+    min-height: var(--filter-ctl-h);
+  }
+
+  /* 아이콘 버튼(↑↓ 정렬방향 등)은 정사각에 가깝게 */
+  .icon-btn {
+    min-width: var(--filter-ctl-h);
+    min-height: var(--filter-ctl-h);
+    padding: 0 0.5rem;
+    font-size: 1rem;
+  }
+
+  /* .pill 은 대부분 상태 배지(span)다 — 실제로 누르는 button.pill 일 때만 키운다.
+     span.pill 까지 키우면 목록 항목 높이가 전부 늘어난다. */
+  button.pill {
+    min-height: var(--filter-ctl-h);
+    padding: 0.3rem 0.75rem;
+    font-size: 0.82rem;
+  }
+
+  /* 밑줄 탭 */
+  .tab-btn {
+    min-height: 2.75rem;
+    padding: 0.65rem 0.95rem;
+    font-size: 0.92rem;
+  }
+
+  /* 사진 카드 삭제 버튼 */
+  .photo-card-delete {
+    min-height: 2.5rem;
+    padding: 0.55rem;
+    font-size: 0.8rem;
+  }
+
+  /* 컨트롤끼리 붙어서 오탭하지 않도록 간격 확대 */
+  .sort-filter-bar,
+  .summary-strip,
+  .type-filter,
+  .inline-filters,
+  .row-actions,
+  .pip-actions,
+  .pip-header,
+  .cal-nav {
+    gap: 0.5rem;
+  }
+
+  /* 필터바의 '|' 구분자는 가로 스크롤 공간만 잡아먹으므로 숨긴다 */
+  .filter-sep {
+    display: none;
+  }
+
+  /* ── 줄바꿈 필터/탭 행 → 한 줄 가로 스크롤 ─────────────────────────
+     이 클래스들은 .card(패딩 1rem)뿐 아니라 .sub-card(0.85rem)·
+     .list-item.card-like(0.65rem) 안에서도 쓰인다 — 조상 패딩이 제각각이라
+     "음수 마진으로 패딩을 상쇄해 화면 끝까지 뚫는" 방식은 패딩 값이 안 맞는
+     조상에서 카드 테두리를 살짝 벗어나 모서리가 끊긴 것처럼 보이는 문제가
+     있었다(변경이력 화면=.sub-card 에서 실제로 발생). 대신 조상 패딩 안에서만
+     스크롤되게 하고(내용이 넘칠 때만 스크롤, 화면 끝까지 닿진 않음), 패딩과
+     무관하게 항상 안전하게 만든다. */
+  .sort-filter-bar,
+  .summary-strip,
+  .type-filter,
+  .inline-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    /* 내용이 조상 폭보다 좁을 때(예: 버튼이 "필터 ▾" 하나뿐)는 컨테이너를 그
+       폭 전체로 늘리지 않는다 — 안 그러면 남는 빈 공간에 아래 가장자리 그림자가
+       버튼과 떨어진 채 떠서 테두리가 끊긴 것처럼 보인다. 내용이 넘칠 때는
+       fit-content 가 자동으로 가용 폭까지 채워 기존처럼 스크롤된다. */
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .sort-filter-bar::-webkit-scrollbar,
+  .summary-strip::-webkit-scrollbar,
+  .type-filter::-webkit-scrollbar,
+  .inline-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sort-filter-bar > *,
+  .summary-strip > *,
+  .type-filter > *,
+  .inline-filters > * {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+  }
+
+  /* 더 스크롤할 게 있는지 알려주는 가장자리 그림자/페이드 — JS 없이 순수 CSS로.
+     "local" 배경(카드 배경색 → 투명)은 내용과 함께 스크롤되어 그 끝(맨 처음/맨 끝)에
+     닿으면 뒤의 그림자를 가린다. "scroll" 배경(그림자)은 컨테이너에 고정돼 있어서
+     반대쪽으로 스크롤할 여지가 있는 동안만 드러난다. */
+  .sort-filter-bar,
+  .summary-strip,
+  .type-filter,
+  .inline-filters {
+    background:
+      linear-gradient(to right, var(--surface) 40%, rgba(255, 248, 235, 0)) left center / 28px 100% no-repeat local,
+      linear-gradient(to left,  var(--surface) 40%, rgba(255, 248, 235, 0)) right center / 28px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%,    rgba(104, 68, 20, 0.22), rgba(104, 68, 20, 0)) left center / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(104, 68, 20, 0.22), rgba(104, 68, 20, 0)) right center / 12px 100% no-repeat scroll;
+  }
+
+  /* 가로 스크롤 행 안의 자유 입력 칸은 max-width:100% 가 무의미해진다
+     (컨테이너 폭이 곧 콘텐츠 폭이 되므로) — 고정 폭을 준다. */
+  .sort-filter-bar input[type='text'] {
+    flex: 0 0 11rem;
+    width: 11rem;
+  }
+
+  /* 세그먼트 필터(연도·유형별 버튼)는 통째로 스크롤시킨다. 단 연도/유형처럼
+     버튼 개수가 무제한인 경우 이 필터 하나만으로 화면을 넘길 수 있어, 뒤에 오는
+     다른 필터가 닿지 않는 문제가 남는다 — 근본 해결은 2단계(선택 상자화)에서. */
+  .seg-filter {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .seg-filter::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 탭바: border-bottom 대신 inset shadow — overflow-x:auto 가 overflow-y 도
+     auto 로 만들어 기존 border-bottom(+ .tab-btn 의 margin-bottom:-1px)이
+     잘리는 것을 막는다. */
+  .tab-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-bottom: none;
+    box-shadow: inset 0 -1px 0 var(--line);
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding: 0 1rem;
+    /* 탭이 적어 화면보다 좁을 때(설정 화면 등) 카드 폭 전체로 늘어나지 않게 —
+       그러지 않으면 빈 공간에 아래 가장자리 그림자가 떠서 끊겨 보인다. */
+    width: fit-content;
+    max-width: 100%;
+    /* 더 스크롤할 탭이 있는지 알려주는 가장자리 페이드/그림자 — 위 sort-filter-bar
+       와 같은 원리(local 커버가 scroll 그림자를 필요할 때만 드러낸다). */
+    background:
+      linear-gradient(to right, var(--surface) 40%, rgba(255, 248, 235, 0)) left center / 28px 100% no-repeat local,
+      linear-gradient(to left,  var(--surface) 40%, rgba(255, 248, 235, 0)) right center / 28px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%,    rgba(104, 68, 20, 0.22), rgba(104, 68, 20, 0)) left center / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(104, 68, 20, 0.22), rgba(104, 68, 20, 0)) right center / 12px 100% no-repeat scroll;
+  }
+  .tab-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .tab-btn {
+    flex-shrink: 0;
+    margin-bottom: 0;
+    scroll-snap-align: start;
+  }
+
+  /* 목록 헤더 액션(편집/편집종료/초기화 등)은 가로 스크롤로 숨기면 안 되는
+     주요 액션이다 — 줄바꿈만 유지하고(기존 데스크톱 규칙 그대로) 버튼은 작업
+     화면처럼 원래 크기로 오른쪽 정렬한다. 버튼 하나만 있을 때 전체 폭으로
+     늘어나던 것을 되돌린다. */
+  .pip-actions {
+    flex-wrap: wrap;
+  }
+
+  /* 제목 + 액션 묶음(작업/문제 화면 상단 밴드) — 무조건 세로로 쌓지 않는다.
+     기본 .row-actions 가 이미 flex-wrap: wrap 이라 제목+버튼이 한 줄에 들어가면
+     한 줄로 두고(문제 화면처럼 버튼이 적을 때), 안 들어갈 때만(작업 화면처럼
+     버튼이 많을 때) 버튼 묶음 전체가 자연스럽게 다음 줄로 내려간다. */
+  .row-actions.align-start {
+    row-gap: 0.6rem;
+  }
+
+  /* sticky 헤더 아래로 스크롤 대상 항목이 숨지 않게 여유를 둔다
+     (각 패널의 scrollToItem() 이 scrollIntoView({block:'start'})를 쓴다) */
+  html {
+    scroll-padding-top: 6.5rem;
+  }
+
+  /* ── 헤더 압축 + 고정 ───────────────────────────────────────────
+     z-index 40: 라이트박스(1000) < 바텀시트(1050, 2단계) < 확인창(1100)보다
+     모두 아래에 둔다. .app-shell 에는 overflow 가 없어 sticky 가 정상 동작한다. */
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: linear-gradient(145deg, #fff7e8, #faebcb);
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    margin: -1rem -1rem 0;
+    padding: 0.55rem 1rem 0.5rem;
+    gap: 0.5rem;
+  }
+
+  /* 버전 문구는 모바일에서 굳이 필요 없다 — eyebrow 와 함께 숨긴다
+     (데스크톱 DOM은 그대로 유지). */
+  .eyebrow {
+    display: none;
+  }
+
+  .app-header h1 {
+    font-size: 1.05rem;
+    line-height: 1.3;
+  }
+
+  /* 내비: 한 줄 가로 스크롤 (헤더 padding 을 상쇄하는 bleed).
+     가장자리 페이드/그림자로 더 스크롤할 메뉴가 있는지 알려준다 — 헤더 배경
+     그라디언트(rgba(250,235,203,*))가 내비가 놓이는 하단부에서 근접한 색이라
+     그 값으로 커버 그라디언트를 맞췄다. */
+  .main-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    background:
+      linear-gradient(to right, #faebcb 40%, rgba(250, 235, 203, 0)) left center / 24px 100% no-repeat local,
+      linear-gradient(to left,  #faebcb 40%, rgba(250, 235, 203, 0)) right center / 24px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%,    rgba(104, 68, 20, 0.28), rgba(104, 68, 20, 0)) left center / 10px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(104, 68, 20, 0.28), rgba(104, 68, 20, 0)) right center / 10px 100% no-repeat scroll;
+    margin: 0 -1rem;
+    padding: 0.1rem 1rem;
+    /* 관리자 모드(메뉴 2개)처럼 내용이 화면보다 좁을 때 헤더 폭 전체로 늘어나지
+       않게 — 그러지 않으면 빈 공간에 오른쪽 그림자가 메뉴와 떨어져 떠 보인다. */
+    width: fit-content;
+    max-width: 100%;
+  }
+  .main-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-link {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+  }
+
+  /* rise-in 은 0.45초 동안 .app-shell 에 transform 을 걸어 그 사이 이 안의
+     position:fixed 자식(확인창 등)의 기준을 흔든다 — 모바일에서는 끈다.
+     ⚠ .app-shell/.content 에는 transform·filter·backdrop-filter·contain 을
+       추가하지 말 것(확인창·라이트박스가 화면 기준이 아니라 이 요소 기준으로
+       잘못 배치된다). */
+  .app-shell {
+    animation: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-header {
+    margin: -0.75rem -0.75rem 0;
+    padding: 0.5rem 0.75rem;
+  }
+  .main-nav {
+    margin: 0 -0.75rem;
+    padding: 0.1rem 0.75rem;
+  }
+}
+
+/* 가로 모드 저신장 화면(예: 844×390)에서는 sticky 헤더가 뷰포트의 지나치게
+   큰 비율을 차지한다 — 이 구간에서는 일반 흐름으로 되돌린다. */
+@media (max-width: 900px) and (max-height: 480px) {
+  .app-header {
+    position: static;
+  }
+}
+
+/* 터치 기기에서는 탭 후 :hover 가 그대로 남아 눌린 채로 보인다 — 되돌린다. */
+@media (hover: none) {
+  .nav-link:hover {
+    transform: none;
+  }
+  .summary-chip:hover {
+    background: var(--surface-strong);
+  }
+  .cal-cell:hover {
+    background: var(--surface);
+  }
+  .tab-btn:hover:not(.active) {
+    color: var(--muted);
+  }
+  .seg-btn:not(.active):hover {
+    background: none;
+    color: var(--muted);
+  }
+  button.pill:hover {
+    opacity: 1;
   }
 }

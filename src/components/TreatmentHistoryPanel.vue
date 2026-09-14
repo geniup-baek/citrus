@@ -15,6 +15,8 @@ import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { confirmFilteredExport, downloadCsv, exportFileName, openPrintReport, today } from '../utils/dataExport.js'
 import { categoryClass } from '../utils/pesticideBadgeClass.js'
 import PesticideLinkResults from './PesticideLinkResults.vue'
+import MobileFilterBar from './MobileFilterBar.vue'
+import OverflowMenu from './OverflowMenu.vue'
 
 const treatStore    = useTreatmentStore()
 const settingsStore = useRecommendSettingsStore()
@@ -69,6 +71,21 @@ const histYearCounts = computed(() => {
 const histUnmatchedCount = computed(() => treatStore.treatments.filter(t => !t.moa).length)
 
 const histIsFiltered = computed(() => !!histYear.value || histUnmatchedOnly.value)
+
+// 모바일 필터시트(MobileFilterBar)에 표시할 "적용된 필터" 요약 — 기존 ref 를 그대로 읽고 쓴다.
+const histActiveFilters = computed(() => [
+  histYear.value && {
+    key: 'year', label: `${histYear.value}년 (${histYearCounts.value[histYear.value] ?? 0})`, clear: () => { histYear.value = '' },
+  },
+  histUnmatchedOnly.value && {
+    key: 'unmatched', label: `미연결만 (${histUnmatchedCount.value})`, clear: () => { histUnmatchedOnly.value = false },
+  },
+].filter(Boolean))
+
+function histClearAllFilters() {
+  histYear.value = ''
+  histUnmatchedOnly.value = false
+}
 
 const filteredTreatments = computed(() => {
   let list = treatStore.treatments
@@ -447,36 +464,34 @@ function formatDate(d) {
     <article>
       <div class="pip-header">
         <div class="pip-actions">
-          <button
-            v-if="showHistoryForm && showResetButton && treatStore.treatments.length > 0"
-            class="danger"
-            type="button"
-            @click="resetAllTreatments"
-          >{{ localeStore.t('common.reset') }}</button>
-          <button v-if="showHistoryForm && treatStore.treatments.length > 0" class="ghost" type="button" @click="refreshAllTreatmentLinks">
-            전체 재연결 ({{ settingsStore.settings.overwriteLinkedTreatments ? '기존 연결도 덮어쓰기' : '미연결만' }})
-          </button>
-          <button
-            v-if="!showHistoryForm && treatStore.treatments.length > 0"
-            class="ghost"
-            type="button"
-            @click="printTreatments"
-          >{{ localeStore.t('inventory.printReport') }}</button>
-          <button
-            v-if="!showHistoryForm && treatStore.treatments.length > 0"
-            class="ghost"
-            type="button"
-            @click="downloadTreatmentsCsv"
-          >{{ localeStore.t('inventory.downloadReport') }}</button>
+          <OverflowMenu v-if="showHistoryForm && treatStore.treatments.length > 0" title="더보기">
+            <button
+              v-if="showResetButton"
+              class="danger"
+              type="button"
+              @click="resetAllTreatments"
+            >{{ localeStore.t('common.reset') }}</button>
+            <button class="ghost" type="button" @click="refreshAllTreatmentLinks">
+              전체 재연결 ({{ settingsStore.settings.overwriteLinkedTreatments ? '기존 연결도 덮어쓰기' : '미연결만' }})
+            </button>
+          </OverflowMenu>
+          <OverflowMenu v-else-if="treatStore.treatments.length > 0" title="더보기">
+            <button class="ghost" type="button" @click="printTreatments">{{ localeStore.t('inventory.printReport') }}</button>
+            <button class="ghost" type="button" @click="downloadTreatmentsCsv">{{ localeStore.t('inventory.downloadReport') }}</button>
+          </OverflowMenu>
           <button v-if="!showHistoryForm" type="button" @click="showHistoryForm = true">{{ localeStore.t('common.edit') }}</button>
           <button v-else class="ghost" type="button" @click="resetForm(); showHistoryForm = false; histRefreshMessage = ''">{{ localeStore.t('common.exitEdit') }}</button>
         </div>
       </div>
       <p v-if="histRefreshMessage" class="muted text-sm" style="margin: -0.4rem 0 0.6rem;">{{ histRefreshMessage }}</p>
-      <div v-if="histYears.length" class="sort-filter-bar">
-        <span class="summary-chip">{{ histIsFiltered ? localeStore.t('common.filteredCount', { shown: filteredTreatments.length, total: treatStore.treatments.length }) : localeStore.t('common.totalCount', { n: filteredTreatments.length }) }}</span>
+      <MobileFilterBar v-if="histYears.length" :active="histActiveFilters" :on-reset-all="histClearAllFilters" title="필터">
+        <template #always>
+          <span class="summary-chip">{{ histIsFiltered ? localeStore.t('common.filteredCount', { shown: filteredTreatments.length, total: treatStore.treatments.length }) : localeStore.t('common.totalCount', { n: filteredTreatments.length }) }}</span>
+        </template>
         <span class="filter-sep">|</span>
-        <div class="seg-filter">
+        <!-- 연도 버튼은 개수가 무제한이라 좁은 화면에서 그 자체로 화면을 넘길 수 있다 —
+             모바일 시트 안에서는 select 로, 데스크톱에서는 기존 seg-filter 그대로. -->
+        <div v-if="!isMobile" class="seg-filter">
           <button
             class="seg-btn"
             :class="{ active: histYear === '' }"
@@ -492,13 +507,17 @@ function formatDate(d) {
             @click="histYear = y"
           >{{ y }}년 ({{ histYearCounts[y] ?? 0 }})</button>
         </div>
+        <select v-else v-model="histYear" class="compact-select">
+          <option value="">전체 ({{ treatStore.treatments.length }})</option>
+          <option v-for="y in histYears" :key="y" :value="y">{{ y }}년 ({{ histYearCounts[y] ?? 0 }})</option>
+        </select>
         <button
           class="ghost ap-unmatched-btn"
           :class="{ 'ap-unmatched-active': histUnmatchedOnly }"
           type="button"
           @click="histUnmatchedOnly = !histUnmatchedOnly"
         >미연결만 ({{ histUnmatchedCount }})</button>
-      </div>
+      </MobileFilterBar>
       <div id="hist-form-top" class="mobile-form-slot"></div>
       <div v-if="treatStore.treatments.length === 0" class="empty-msg">
         {{ showHistoryForm ? '저장하면 목록에 표시됩니다.' : '기록된 방제 이력이 없습니다.' }}

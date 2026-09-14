@@ -141,7 +141,10 @@ export function createBackupActions(ctx) {
     try { localStorage.setItem(appSettingsLsKey, JSON.stringify(state.value.appSettings)) } catch {}
     scheduleAppSettingsWrite()
 
-    logChange('전체', `백업 복원${payload.exportedAt ? ` (백업일: ${String(payload.exportedAt).slice(0, 10)})` : ''}`, 'update')
+    // entity 이름을 '전체'로 쓰면 변경이력 화면의 "전체 보기" 필터 버튼과 이름이 겹쳐
+    // 버튼이 두 개로 보이는 문제가 있었다(ChangeHistoryPanel.vue 의 historyEntities 가
+    // 실제 로그에 쓰인 entity 값도 필터 버튼으로 나열하기 때문) — 구분되는 이름을 쓴다.
+    logChange('백업/복원', `백업 복원${payload.exportedAt ? ` (백업일: ${String(payload.exportedAt).slice(0, 10)})` : ''}`, 'update')
 
     // 백업 복원은 거의 모든 항목을 통째로 덮어쓰므로 어느 문서가 실제로 바뀌었는지 가리지 않고
     // 전체 문서를 다시 쓴다(persist('all') 아래 migrateInlinePhotos 뒤에서 한 번만 호출).

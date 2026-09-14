@@ -9,6 +9,8 @@ import { confirm } from '../composables/useConfirm'
 import { useIsMobile } from '../composables/useIsMobile'
 import { useLightbox } from '../composables/useLightbox'
 import { useFilesToPreviews } from '../composables/usePhotoPreviews'
+import MobileFilterBar from './MobileFilterBar.vue'
+import OverflowMenu from './OverflowMenu.vue'
 
 // 재배동 목록에서 '묘목 보기'로 넘어온 경우, 그 재배동으로 미리 필터링해서 보여준다.
 const props = defineProps({
@@ -60,6 +62,21 @@ const filterGreenhouseId = ref(props.initialGreenhouseId || '')
 const filterVariety = ref('')
 
 const isFiltered = computed(() => !!filterGreenhouseId.value || !!filterVariety.value)
+
+// 모바일 필터시트(MobileFilterBar)에 표시할 "적용된 필터" 요약 — 기존 ref 를 그대로 읽고 쓴다.
+const seedlingActiveFilters = computed(() => [
+  filterGreenhouseId.value && {
+    key: 'greenhouse', label: greenhouseName(filterGreenhouseId.value), clear: () => { filterGreenhouseId.value = '' },
+  },
+  filterVariety.value && {
+    key: 'variety', label: filterVariety.value, clear: () => { filterVariety.value = '' },
+  },
+].filter(Boolean))
+
+function seedlingClearAllFilters() {
+  filterGreenhouseId.value = ''
+  filterVariety.value = ''
+}
 
 function greenhouseName(greenhouseId) {
   return (
@@ -479,19 +496,18 @@ clearForm()
         <div class="pip-actions">
           <button v-if="!showForm" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
           <template v-else>
-            <button
-              v-if="showResetButton && store.state.seedlings.length > 0"
-              class="danger"
-              type="button"
-              @click="resetAllSeedlings"
-            >{{ localeStore.t('common.reset') }}</button>
+            <OverflowMenu v-if="showResetButton && store.state.seedlings.length > 0" title="더보기">
+              <button class="danger" type="button" @click="resetAllSeedlings">{{ localeStore.t('common.reset') }}</button>
+            </OverflowMenu>
             <button class="ghost" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
           </template>
         </div>
       </div>
 
-      <div class="sort-filter-bar">
-        <span class="summary-chip">{{ isFiltered ? localeStore.t('common.filteredCount', { shown: displayedSeedlings.length, total: store.state.seedlings.length }) : localeStore.t('common.totalCount', { n: displayedSeedlings.length }) }}</span>
+      <MobileFilterBar :active="seedlingActiveFilters" :on-reset-all="seedlingClearAllFilters" title="필터">
+        <template #always>
+          <span class="summary-chip">{{ isFiltered ? localeStore.t('common.filteredCount', { shown: displayedSeedlings.length, total: store.state.seedlings.length }) : localeStore.t('common.totalCount', { n: displayedSeedlings.length }) }}</span>
+        </template>
         <span class="filter-sep">|</span>
         <span class="filter-label">{{ localeStore.t('seedlings.sortBy') }}</span>
         <select v-model="sortBy" class="compact-select">
@@ -516,7 +532,7 @@ clearForm()
           <option value="">{{ localeStore.t('seedlings.filterAll') }}</option>
           <option v-for="v in filterVarietyOptions" :key="v" :value="v">{{ v }}</option>
         </select>
-      </div>
+      </MobileFilterBar>
 
       <div id="seed-form-top" class="mobile-form-slot"></div>
 

@@ -5,6 +5,8 @@ import { useTreatmentStore } from '../stores/treatmentStore'
 import { useRecommendSettingsStore } from '../stores/recommendSettingsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { confirm } from '../composables/useConfirm'
+import MobileFilterBar from './MobileFilterBar.vue'
+import OverflowMenu from './OverflowMenu.vue'
 
 const store = useFarmStore()
 const treatStore = useTreatmentStore()
@@ -22,9 +24,26 @@ const historyEntityFilter = ref('전체')
 
 const historyEntities = computed(() => {
   const seen = new Set()
-  for (const entry of store.state.changeLog || []) seen.add(entry.entity)
+  for (const entry of store.state.changeLog || []) {
+    // '전체'는 아래 "전체 보기" 필터 버튼용으로 예약된 이름이다. 과거에 백업 복원
+    // 로그가 entity 값으로 '전체'를 그대로 써서(현재는 '백업/복원'으로 고침) 기존
+    // 데이터에는 여전히 남아있을 수 있으므로, 실제 로그 값 목록에서는 걸러낸다 —
+    // 안 그러면 '전체' 버튼이 두 개로 보인다.
+    if (entry.entity !== '전체') seen.add(entry.entity)
+  }
   return ['전체', ...seen]
 })
+
+// 모바일 필터시트(MobileFilterBar)에 표시할 "적용된 필터" 요약 — 기존 ref 를 그대로 읽고 쓴다.
+const historyActiveFilters = computed(() => [
+  historyEntityFilter.value !== '전체' && {
+    key: 'entity', label: historyEntityFilter.value, clear: () => { historyEntityFilter.value = '전체' },
+  },
+].filter(Boolean))
+
+function historyClearAllFilters() {
+  historyEntityFilter.value = '전체'
+}
 
 const filteredChangeLog = computed(() => {
   const list = Array.isArray(store.state.changeLog) ? store.state.changeLog : []
@@ -141,12 +160,9 @@ async function clearAllChangeLog() {
       <h3>변경 이력</h3>
       <div class="row-actions">
         <span class="pill">{{ filteredChangeLog.length }}건</span>
-        <button
-          v-if="showChangeLogDeleteButton && store.state.changeLog?.length"
-          class="danger compact-btn"
-          type="button"
-          @click="clearAllChangeLog"
-        >전체 삭제</button>
+        <OverflowMenu v-if="showChangeLogDeleteButton && store.state.changeLog?.length" title="더보기">
+          <button class="danger compact-btn" type="button" @click="clearAllChangeLog">전체 삭제</button>
+        </OverflowMenu>
       </div>
     </div>
     <p class="muted settings-group-hint">
@@ -155,7 +171,7 @@ async function clearAllChangeLog() {
     </p>
     <p v-if="revertMessage" class="muted text-sm">{{ revertMessage }}</p>
 
-    <div class="inline-filters history-filters">
+    <MobileFilterBar :active="historyActiveFilters" :on-reset-all="historyClearAllFilters" title="필터">
       <button
         v-for="entity in historyEntities"
         :key="entity"
@@ -163,7 +179,7 @@ async function clearAllChangeLog() {
         :class="{ ghost: historyEntityFilter !== entity }"
         @click="historyEntityFilter = entity"
       >{{ entity }}</button>
-    </div>
+    </MobileFilterBar>
 
     <ul v-if="filteredChangeLog.length" class="list clean compact history-list">
       <li v-for="entry in filteredChangeLog" :key="entry.id" class="list-item">

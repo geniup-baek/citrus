@@ -171,10 +171,29 @@ async function upsertFacility(payload) {
   - "제목+설명+둘 중 하나 선택" 형태 설정 카드: `components/BinaryToggleCard.vue`
   - 재고 농약 로트별 수량 계산: `composables/usePesticideInventoryStock.js`
   - 분류/독성/어독성 값 → 배지 CSS 클래스: `utils/pesticideBadgeClass.js`
+  - 모바일에서 필터바를 "필터 ▾" 바텀시트로 접기: `components/MobileFilterBar.vue`
+  - 모바일에서 부차 액션 버튼들을 "⋯" 바텀시트로 접기: `components/OverflowMenu.vue`
+  - 바텀시트 직접 구현이 필요할 때(위 두 컴포넌트가 안 맞는 특수한 경우): `components/BottomSheet.vue` — `<Teleport to="body">` + 스크롤 잠금 + `composables/useSheetBack.js`(뒤로가기로 닫기)까지 포함되어 있다
+
+### 6.7 반응형 기준폭 — 이 3개만 쓴다
+
+새 미디어 쿼리를 만들기 전에 먼저 확인하세요. 전부 desktop-first(`max-width`)이고, 데스크톱(≥1081px)에는 아무 규칙도 적용되지 않습니다.
+
+| 기준폭 | 용도 |
+|---|---|
+| `1080px` | 레이아웃 접힘 — `.page-grid.two-columns`/`.split-card`/`.settings-groups` 2열→1열, `.stats-grid` 4→2 |
+| `900px` | "모바일" 경계 — 터치 타깃 확대, 필터/탭 행 가로 스크롤, 헤더 sticky. `composables/useIsMobile.js`의 `MOBILE_MEDIA_QUERY`와 **반드시 같은 값**이어야 합니다(다르면 폼 Teleport 시점과 CSS 모바일 전환 시점이 어긋납니다) |
+| `760px` | 좁은 폰 추가 압축 — shell padding, 통계 1열, 캘린더 셀 축소 |
+
+`src/style.css` 파일 끝의 `@media (max-width: 900px)` 블록이 모바일 전용 규칙의 본체입니다. 새 패널을 추가할 때 툴바/필터바가 `.sort-filter-bar`/`.summary-strip`/`.type-filter`/`.inline-filters`/`.tab-bar` 같은 기존 클래스를 쓰면 이 블록의 터치 확대·가로 스크롤이 자동으로 적용됩니다.
+
+**scoped 스타일의 함정**: 컴포넌트의 `<style scoped>`가 같은 클래스명을 전역 `style.css`보다 먼저 정의하고 있으면(예: `AppHeader.vue`의 `.header-top-row`), scoped 쪽이 항상 이깁니다(specificity 0,2,0 > 0,1,0). 그 클래스의 모바일 override는 전역이 아니라 **그 컴포넌트의 scoped 블록 안에** 넣어야 실제로 적용됩니다.
 
 ---
 
 ## 7. 알고 있어야 할 제약/한계
+
+- **`.app-shell`/`.content`에 `transform`·`filter`·`backdrop-filter`·`contain`을 추가하지 마세요.** `.app-shell`의 진입 애니메이션(`rise-in`)이 0.45초간 `transform`을 걸기 때문에, 그 사이 이 요소 안에 있는 `position: fixed` 자식(`ConfirmDialog`, 사진 라이트박스)이 뷰포트가 아니라 `.app-shell` 기준으로 배치되는 잠재 버그가 있습니다. 모바일 sticky 헤더 구현 시 이 애니메이션을 `@media (max-width: 900px)`에서 끄고, 새 오버레이(바텀시트 등)는 항상 `<Teleport to="body">`로 렌더하세요.
 
 - **Firestore 문서 1MiB 한도.** `changeLog`(300건 캡), 농약 상세정보 인덱스(`t/f/n/c` 같은 한 글자 키로 압축) 등 여러 곳에서 이 한도를 피하려는 설계가 보입니다. 새 필드를 대량으로 문서 안에 추가할 때는 이 한도를 항상 의식하세요.
 - **사진은 `farmData` 문서 안에 들어있지 않습니다.** 전역 `photos/{photoId}` 컬렉션에 base64로 별도 저장되고, `src/stores/farmStore/photos.js`의 `gcOrphanPhotos()`/`collectInlinePhotos()`가 참조 없는 사진을 정리합니다. 사진을 참조하는 새 필드를 추가한다면 이 GC 로직도 그 필드를 인식하게 고쳐야 누수가 안 생깁니다.

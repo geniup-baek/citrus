@@ -9,6 +9,8 @@ import { useIsMobile } from '../composables/useIsMobile'
 import { useFarmsStore } from '../stores/farmsStore'
 import { useAppPolicyStore } from '../stores/appPolicyStore'
 import { downloadCsv, exportFileName, openPrintReport } from '../utils/dataExport.js'
+import MobileFilterBar from './MobileFilterBar.vue'
+import OverflowMenu from './OverflowMenu.vue'
 
 const store = useFarmStore()
 const farmsStore = useFarmsStore()
@@ -140,6 +142,14 @@ const summary = computed(() => {
     expiring: items.reduce((sum, item) => sum + expiringLotCount(item), 0),
   }
 })
+
+// 모바일 필터시트(MobileFilterBar)에 표시할 "적용된 필터" 요약 — 여기엔 켜고 끄는
+// 필터가 없어(정렬만 있음) 항상 빈 배열이지만, 시트 자체는 정렬 컨트롤을 담는 데 쓴다.
+const invActiveFilters = computed(() => [])
+function invClearAllFilters() {
+  sortBy.value = 'name'
+  sortDir.value = 'asc'
+}
 
 // ── 품목 폼 ──────────────────────────────────────────────────────────────────
 function clearForm() {
@@ -401,24 +411,23 @@ clearForm()
     <article>
       <div class="pip-header">
         <div class="pip-actions">
-          <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="printReport">{{ localeStore.t('inventory.printReport') }}</button>
-          <button v-if="!showForm" class="ghost" type="button" :disabled="!summary.total" @click="downloadReport">{{ localeStore.t('inventory.downloadReport') }}</button>
+          <OverflowMenu v-if="!showForm" title="더보기">
+            <button class="ghost" type="button" :disabled="!summary.total" @click="printReport">{{ localeStore.t('inventory.printReport') }}</button>
+            <button class="ghost" type="button" :disabled="!summary.total" @click="downloadReport">{{ localeStore.t('inventory.downloadReport') }}</button>
+          </OverflowMenu>
+          <OverflowMenu v-else-if="showResetButton && summary.total > 0" title="더보기">
+            <button class="danger" type="button" @click="resetAllItems">{{ localeStore.t('common.reset') }}</button>
+          </OverflowMenu>
           <button v-if="!showForm" type="button" @click="openAdd">{{ localeStore.t('common.edit') }}</button>
-          <template v-else>
-            <button
-              v-if="showResetButton && summary.total > 0"
-              class="danger"
-              type="button"
-              @click="resetAllItems"
-            >{{ localeStore.t('common.reset') }}</button>
-            <button class="ghost" type="button" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
-          </template>
+          <button v-else class="ghost" type="button" @click="closeForm">{{ localeStore.t('common.exitEdit') }}</button>
         </div>
       </div>
 
-      <div class="sort-filter-bar">
-        <span class="summary-chip">{{ localeStore.t('common.totalCount', { n: summary.total }) }}</span>
-        <span v-if="summary.expiring" class="summary-chip chip-danger">{{ localeStore.t('inventory.summaryExpiring', { count: summary.expiring }) }}</span>
+      <MobileFilterBar :active="invActiveFilters" :on-reset-all="invClearAllFilters" title="필터">
+        <template #always>
+          <span class="summary-chip">{{ localeStore.t('common.totalCount', { n: summary.total }) }}</span>
+          <span v-if="summary.expiring" class="summary-chip chip-danger">{{ localeStore.t('inventory.summaryExpiring', { count: summary.expiring }) }}</span>
+        </template>
         <span class="filter-sep">|</span>
         <span class="filter-label">{{ localeStore.t('inventory.sortBy') }}</span>
         <select v-model="sortBy" class="compact-select">
@@ -430,7 +439,7 @@ clearForm()
           type="button"
           @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'"
         >{{ sortDir === 'asc' ? '↑' : '↓' }}</button>
-      </div>
+      </MobileFilterBar>
 
       <div id="inv-form-top" class="mobile-form-slot"></div>
 

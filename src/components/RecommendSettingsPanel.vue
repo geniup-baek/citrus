@@ -172,6 +172,37 @@ const showFishToxicInfo = ref(false)
 }
 .info-icon-btn:hover { background: var(--primary); color: var(--primary-ink); }
 
+/* 모바일 터치 타깃 확대 — style.css 의 전역 ≤900px 블록이 닿지 않는
+   컴포넌트 전용(scoped) 클래스라 여기서 따로 키운다. */
+@media (max-width: 900px) {
+  .days-btn { width: 2.5rem; height: 2.5rem; font-size: 1.25rem; }
+  .days-btn-wide { width: auto; min-width: 3.25rem; padding: 0 0.7rem; }
+  .toggle { width: 52px; height: 30px; }
+  .toggle-slider::before { width: 24px; height: 24px; }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(22px); }
+  .info-icon-btn { width: 1.75rem; height: 1.75rem; }
+
+  /* 라벨(가로 폭 제한 없음) + 커진 컨트롤(days-control 등 버튼 여러 개)을 한 줄에
+     욱여넣으면, 라벨 쪽 flex item 이 기본값(min-width:auto)이라 줄바꿈 대신
+     "글자 하나당 한 줄"로 짜부라진다 — 라벨을 위, 컨트롤을 아래로 쌓아 피한다. */
+  .setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+  .setting-control {
+    align-self: stretch;
+  }
+  .days-control {
+    justify-content: center;
+  }
+  /* toxic-grade-checks 는 setting-control 클래스가 없어(체크박스만 있는 특수
+     케이스) 위 규칙이 안 닿는다 — 컬럼 모드에서도 카드 폭을 그대로 쓰도록 */
+  .toxic-grade-checks {
+    width: 100%;
+  }
+}
+
 .fish-toxic-info {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
