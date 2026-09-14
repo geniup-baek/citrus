@@ -1609,10 +1609,10 @@ button.pill:hover {
   .type-filter,
   .inline-filters {
     background:
-      linear-gradient(to right, var(--surface) 40%, rgba(255, 248, 235, 0)) left center / 28px 100% no-repeat local,
-      linear-gradient(to left,  var(--surface) 40%, rgba(255, 248, 235, 0)) right center / 28px 100% no-repeat local,
-      radial-gradient(farthest-side at 0 50%,    rgba(104, 68, 20, 0.22), rgba(104, 68, 20, 0)) left center / 12px 100% no-repeat scroll,
-      radial-gradient(farthest-side at 100% 50%, rgba(104, 68, 20, 0.22), rgba(104, 68, 20, 0)) right center / 12px 100% no-repeat scroll;
+      linear-gradient(to right, var(--surface) 45%, rgba(255, 248, 235, 0)) left center / 34px 100% no-repeat local,
+      linear-gradient(to left,  var(--surface) 45%, rgba(255, 248, 235, 0)) right center / 34px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%,    rgba(104, 68, 20, 0.35), rgba(104, 68, 20, 0)) left center / 16px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(104, 68, 20, 0.35), rgba(104, 68, 20, 0)) right center / 16px 100% no-repeat scroll;
   }
 
   /* 가로 스크롤 행 안의 자유 입력 칸은 max-width:100% 가 무의미해진다
@@ -1649,16 +1649,18 @@ button.pill:hover {
     margin-right: -1rem;
     padding: 0 1rem;
     /* 탭이 적어 화면보다 좁을 때(설정 화면 등) 카드 폭 전체로 늘어나지 않게 —
-       그러지 않으면 빈 공간에 아래 가장자리 그림자가 떠서 끊겨 보인다. */
+       그러지 않으면 빈 공간에 아래 가장자리 그림자가 떠서 끊겨 보인다.
+       max-width 의 %는 margin(-1rem씩, 총 2rem)을 감안하지 않아 100%로 두면
+       오른쪽 끝이 화면 끝에 못 미친다(main-nav 와 같은 문제) — 그만큼 더한다. */
     width: fit-content;
-    max-width: 100%;
+    max-width: calc(100% + 2rem);
     /* 더 스크롤할 탭이 있는지 알려주는 가장자리 페이드/그림자 — 위 sort-filter-bar
        와 같은 원리(local 커버가 scroll 그림자를 필요할 때만 드러낸다). */
     background:
-      linear-gradient(to right, var(--surface) 40%, rgba(255, 248, 235, 0)) left center / 28px 100% no-repeat local,
-      linear-gradient(to left,  var(--surface) 40%, rgba(255, 248, 235, 0)) right center / 28px 100% no-repeat local,
-      radial-gradient(farthest-side at 0 50%,    rgba(104, 68, 20, 0.22), rgba(104, 68, 20, 0)) left center / 12px 100% no-repeat scroll,
-      radial-gradient(farthest-side at 100% 50%, rgba(104, 68, 20, 0.22), rgba(104, 68, 20, 0)) right center / 12px 100% no-repeat scroll;
+      linear-gradient(to right, var(--surface) 45%, rgba(255, 248, 235, 0)) left center / 34px 100% no-repeat local,
+      linear-gradient(to left,  var(--surface) 45%, rgba(255, 248, 235, 0)) right center / 34px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%,    rgba(104, 68, 20, 0.35), rgba(104, 68, 20, 0)) left center / 16px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(104, 68, 20, 0.35), rgba(104, 68, 20, 0)) right center / 16px 100% no-repeat scroll;
   }
   .tab-bar::-webkit-scrollbar {
     display: none;
@@ -1718,10 +1720,12 @@ button.pill:hover {
     line-height: 1.3;
   }
 
-  /* 내비: 한 줄 가로 스크롤 (헤더 padding 을 상쇄하는 bleed).
-     가장자리 페이드/그림자로 더 스크롤할 메뉴가 있는지 알려준다 — 헤더 배경
-     그라디언트(rgba(250,235,203,*))가 내비가 놓이는 하단부에서 근접한 색이라
-     그 값으로 커버 그라디언트를 맞췄다. */
+  /* 내비: 한 줄 가로 스크롤. 화면 끝까지 뚫지 않고(bleed 없음) 헤더 자체의
+     padding 을 그대로 좌우 여백으로 둔다 — 스크롤이 끝(처음/마지막 메뉴)에
+     닿아도 이 여백은 카드 폭 계산에 포함되지 않는 헤더 자신의 padding이라
+     항상 그대로 보인다. 가장자리 페이드/그림자로 더 스크롤할 메뉴가 있는지도
+     알려준다 — 헤더 배경 그라디언트(rgba(250,235,203,*))가 내비가 놓이는
+     하단부에서 근접한 색이라 그 값으로 커버 그라디언트를 맞췄다. */
   .main-nav {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -1730,12 +1734,10 @@ button.pill:hover {
     scroll-snap-type: x proximity;
     scrollbar-width: none;
     background:
-      linear-gradient(to right, #faebcb 40%, rgba(250, 235, 203, 0)) left center / 24px 100% no-repeat local,
-      linear-gradient(to left,  #faebcb 40%, rgba(250, 235, 203, 0)) right center / 24px 100% no-repeat local,
-      radial-gradient(farthest-side at 0 50%,    rgba(104, 68, 20, 0.28), rgba(104, 68, 20, 0)) left center / 10px 100% no-repeat scroll,
-      radial-gradient(farthest-side at 100% 50%, rgba(104, 68, 20, 0.28), rgba(104, 68, 20, 0)) right center / 10px 100% no-repeat scroll;
-    margin: 0 -1rem;
-    padding: 0.1rem 1rem;
+      linear-gradient(to right, #faebcb 45%, rgba(250, 235, 203, 0)) left center / 34px 100% no-repeat local,
+      linear-gradient(to left,  #faebcb 45%, rgba(250, 235, 203, 0)) right center / 34px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%,    rgba(104, 68, 20, 0.4), rgba(104, 68, 20, 0)) left center / 16px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(104, 68, 20, 0.4), rgba(104, 68, 20, 0)) right center / 16px 100% no-repeat scroll;
     /* 관리자 모드(메뉴 2개)처럼 내용이 화면보다 좁을 때 헤더 폭 전체로 늘어나지
        않게 — 그러지 않으면 빈 공간에 오른쪽 그림자가 메뉴와 떨어져 떠 보인다. */
     width: fit-content;
@@ -1764,10 +1766,8 @@ button.pill:hover {
     margin: -0.75rem -0.75rem 0;
     padding: 0.5rem 0.75rem;
   }
-  .main-nav {
-    margin: 0 -0.75rem;
-    padding: 0.1rem 0.75rem;
-  }
+  /* .main-nav 는 이제 bleed 가 없어 헤더 자신의 padding(위에서 0.75rem 로
+     바뀜)을 그대로 물려받는다 — 여기서 따로 재정의할 게 없다. */
 }
 
 /* 가로 모드 저신장 화면(예: 844×390)에서는 sticky 헤더가 뷰포트의 지나치게
