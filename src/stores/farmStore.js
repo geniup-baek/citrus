@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { endOfMonth, endOfWeek, isSameDay, parseISO, startOfMonth, startOfWeek } from 'date-fns'
+import { endOfMonth, endOfWeek, isBefore, isSameDay, parseISO, startOfDay, startOfMonth, startOfWeek } from 'date-fns'
 import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db, firebaseEnabled } from '../services/firebase'
 import { defaultAppSettings } from '../data/defaults'
@@ -73,21 +73,34 @@ export const useFarmStore = defineStore('farm', () => {
     return counts
   })
 
-  const tasksToday = computed(() =>
-    state.value.tasks.filter((task) => isSameDay(parseISO(task.dueDate), today.value)),
-  )
+  // 작업 보드의 "오늘 미완료"와 동일한 기준: 오늘이 마감이거나 이미 마감이 지난(기한 초과)
+  // 미완료 작업까지 포함한다 — 마감일이 정확히 오늘인 작업만 세면 대시보드 숫자가
+  // 작업 보드보다 항상 작게 보이는 문제가 있었다.
+  const tasksToday = computed(() => {
+    const todayStart = startOfDay(today.value)
+    return state.value.tasks.filter((task) => {
+      const due = parseISO(task.dueDate)
+      return isSameDay(due, today.value) || isBefore(due, todayStart)
+    })
+  })
 
+  // 작업 보드의 기간 필터와 동일하게, 기간 이전이 마감이라도 미완료 작업은 계속 포함한다
+  // (기한을 넘긴 작업이 '이번 주 우선 작업' 목록에서 사라지지 않도록).
   const tasksThisWeek = computed(() =>
     state.value.tasks.filter((task) => {
       const due = parseISO(task.dueDate)
-      return due >= weekStart.value && due <= weekEnd.value
+      const inRange = due >= weekStart.value && due <= weekEnd.value
+      const carriedOver = due < weekStart.value && task.status !== '완료'
+      return inRange || carriedOver
     }),
   )
 
   const tasksThisMonth = computed(() =>
     state.value.tasks.filter((task) => {
       const due = parseISO(task.dueDate)
-      return due >= monthStart.value && due <= monthEnd.value
+      const inRange = due >= monthStart.value && due <= monthEnd.value
+      const carriedOver = due < monthStart.value && task.status !== '완료'
+      return inRange || carriedOver
     }),
   )
 
